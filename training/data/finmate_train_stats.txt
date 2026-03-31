@@ -1,0 +1,4 @@
+finmate_train.jsonl
+lines: 11103
+sources: ['_part_tracker.jsonl', '_part_indian.jsonl', '_part_invoice.jsonl', '_part_survey.jsonl', '_part_macro.jsonl']
++ example_sft.jsonl (3 lines)

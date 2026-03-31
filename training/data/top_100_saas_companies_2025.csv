@@ -1,0 +1,101 @@
+Company Name,Founded Year,HQ,Industry,Total Funding,ARR,Valuation,Employees,Top Investors,Product,G2 Rating
+Microsoft,1975,"Redmond, WA, USA",Enterprise Software,$1B,$270B,$3T,"221,000","Bill Gates, Paul Allen","Azure, Office 365, Teams",4.4
+Salesforce,1999,"San Francisco, CA, USA",CRM,$65.4M,$37.9B,$227.8B,"75,000","Halsey Minor, Larry Ellison","Sales Cloud, Service Cloud",4.3
+Adobe,1982,"San Jose, CA, USA",Creative Software,$2.5M,$19.4B,$240B,"29,945",Hambrecht & Quist,"Creative Cloud, Document Cloud",4.5
+Oracle,1977,"Austin, TX, USA",Database & Enterprise,$2K,$52.9B,$350B,"143,000","Larry Ellison, Bob Miner","Oracle Cloud, NetSuite",4.0
+SAP,1972,"Walldorf, Germany",Enterprise Software,N/A,$32.5B,$215B,"107,415","Dietmar Hopp, Klaus Tschira","S/4HANA, SuccessFactors",4.1
+Intuit,1983,"Mountain View, CA, USA",Financial Software,$273M,$14.4B,$180B,"18,200","Sierra Ventures, Kleiner Perkins","QuickBooks, TurboTax",4.4
+ServiceNow,2004,"Santa Clara, CA, USA",IT Service Management,$82.5M,$8.9B,$147B,"20,000","JMI Equity, Sequoia Capital",IT Service Management Platform,4.4
+Workday,2005,"Pleasanton, CA, USA",HR & Finance,$249.9M,$7.3B,$65B,"18,800","Greylock Partners, NEA","HCM, Financial Management",4.2
+Zoom,2011,"San Jose, CA, USA",Video Communications,$145.5M,$4.5B,$85B,"7,388","Sequoia Capital, Emergence",Video Conferencing Platform,4.5
+Shopify,2006,"Ottawa, Canada",E-commerce,$122.3M,$7.1B,$95B,"11,600","Bessemer, FirstMark, Felicis",E-commerce Platform,4.4
+Atlassian,2002,"Sydney, Australia",Collaboration Software,$60M,$3.5B,$55B,"11,800",Accel Partners,"Jira, Confluence, Trello",4.3
+Snowflake,2012,"Bozeman, MT, USA",Data Warehousing,$1.4B,$2.8B,$75B,"6,500","Sequoia, ICONIQ, Altimeter",Cloud Data Platform,4.4
+HubSpot,2006,"Cambridge, MA, USA",Marketing & Sales,$100.5M,$2.2B,$32B,"7,600","General Catalyst, Google Ventures","Marketing Hub, Sales Hub",4.4
+DocuSign,2003,"San Francisco, CA, USA",Digital Agreements,$514.3M,$2.5B,$10B,"7,336","Kleiner Perkins, Accel","eSignature, Contract Lifecycle",4.5
+Slack,2009,"San Francisco, CA, USA",Team Communication,$1.4B,$1.7B,$27.7B (Salesforce),"2,545","Accel, Andreessen Horowitz",Team Messaging Platform,4.5
+Notion,2013,"San Francisco, CA, USA",Productivity,$353M,$400M,$10B,800,"Index Ventures, Sequoia",All-in-one workspace,4.7
+Datadog,2010,"New York, NY, USA",Monitoring & Analytics,$147.9M,$2.1B,$44B,"5,200","ICONIQ, Index Ventures",Infrastructure Monitoring,4.4
+MongoDB,2007,"New York, NY, USA",Database,$311.2M,$1.7B,$26B,"4,500","Sequoia, NEA, USV",Document Database Platform,4.5
+Okta,2009,"San Francisco, CA, USA",Identity Management,$230.5M,$2.2B,$25B,"5,900","Andreessen Horowitz, Greylock",Identity & Access Management,4.4
+Twilio,2008,"San Francisco, CA, USA",Communications,$261.3M,$4.1B,$12B,"7,867","Bessemer, Union Square",Communications APIs,4.3
+Stripe,2010,"San Francisco, CA, USA",Payments,$8.7B,$14B,$65B,"8,000","Sequoia, Andreessen Horowitz",Payment Processing Platform,4.4
+Square,2009,"San Francisco, CA, USA",Payments,$590.5M,$19.7B,$85B,"8,500","Khosla Ventures, Sequoia",Payment & POS Solutions,4.2
+Palantir,2003,"Denver, CO, USA",Data Analytics,$2.6B,$2.2B,$52B,"3,500","Founders Fund, In-Q-Tel",Data Integration Platform,4.0
+Canva,2013,"Sydney, Australia",Design,$572.6M,$2B,$40B,"3,500","Sequoia, Bessemer, Bond",Design Platform,4.7
+Monday.com,2012,"Tel Aviv, Israel",Work Management,$234.1M,$736M,$14B,"1,900","Sapphire Ventures, Insight",Work OS Platform,4.6
+Asana,2008,"San Francisco, CA, USA",Work Management,$453.2M,$652M,$5.5B,"1,600","Benchmark, Founders Fund",Work Management Platform,4.3
+Airtable,2012,"San Francisco, CA, USA",Database/Spreadsheet,$735.1M,$500M,$11B,900,"Benchmark, Thrive Capital",Low-code Database Platform,4.6
+Figma,2012,"San Francisco, CA, USA",Design,$332.9M,$600M,$20B (Adobe),"1,300","Index Ventures, Greylock",Collaborative Design Tool,4.7
+GitLab,2011,"San Francisco, CA, USA",DevOps,$435.6M,$580M,$8B,"2,300","ICONIQ, Goldman Sachs",DevOps Platform,4.5
+Zendesk,2007,"San Francisco, CA, USA",Customer Service,$85.5M,$1.9B,$13.2B,"6,000","Benchmark, Matrix Partners",Customer Service Platform,4.3
+Box,2005,"Redwood City, CA, USA",Cloud Storage,$562.4M,$1B,$3.5B,"2,800","DFJ, NEA, Bessemer",Cloud Content Management,4.2
+Dropbox,2008,"San Francisco, CA, USA",Cloud Storage,$1.7B,$2.5B,$8.5B,"2,700","Sequoia, Accel, Index",Cloud Storage & Collaboration,4.4
+Freshworks,2010,"San Mateo, CA, USA",Customer Engagement,$484.7M,$596M,$5.2B,"5,000","Accel, Sequoia Capital India",Customer Engagement Suite,4.4
+Klaviyo,2012,"Boston, MA, USA",Marketing Automation,$778.2M,$698M,$9.5B,"1,500","Summit Partners, Accel",Email & SMS Marketing,4.6
+UiPath,2005,"New York, NY, USA",RPA,$2B,$1.3B,$7B,"4,013","Sequoia, Accel, IVP",Robotic Process Automation,4.5
+Databricks,2013,"San Francisco, CA, USA",Data & AI,$3.5B,$1.6B,$43B,"5,000","Andreessen Horowitz, NEA",Unified Analytics Platform,4.5
+Confluent,2014,"Mountain View, CA, USA",Data Streaming,$455.9M,$773M,$9.1B,"2,500","Sequoia, Benchmark, Index",Data Streaming Platform,4.4
+HashiCorp,2012,"San Francisco, CA, USA",Infrastructure,$349.5M,$541M,$13B,"2,200","GV, Mayfield, IVP",Infrastructure Automation,4.6
+Elastic,2012,"Mountain View, CA, USA",Search & Analytics,$162M,$1.1B,$8B,"3,000","NEA, Benchmark, Index",Search & Analytics Platform,4.4
+PagerDuty,2009,"San Francisco, CA, USA",Incident Response,$173.7M,$430M,$2.8B,"1,000","Andreessen Horowitz, Bessemer",Digital Operations Platform,4.3
+New Relic,2008,"San Francisco, CA, USA",Observability,$215M,$785M,$6.5B,"2,300","Benchmark, Trinity, Tenaya",Observability Platform,4.3
+Splunk,2003,"San Francisco, CA, USA",Data Analytics,$40M,$3.7B,$28B (Cisco),"8,000","August Capital, JK&B Capital",Data Platform,4.4
+Cloudflare,2009,"San Francisco, CA, USA",Web Infrastructure,$332.1M,$1.6B,$28B,"3,266","NEA, Venrock, Union Square",Web Performance & Security,4.7
+SendGrid,2009,"Denver, CO, USA",Email Delivery,$81M,$200M,$3B (Twilio),600,"Bessemer, Foundry Group",Email Delivery Platform,4.0
+Mailchimp,2001,"Atlanta, GA, USA",Email Marketing,$0,$1B,$12B (Intuit),"1,200",Bootstrapped,Marketing Platform,4.3
+Miro,2011,"San Francisco, CA, USA",Collaboration,$476.3M,$400M,$17.5B,"1,800","ICONIQ, Accel, GV",Visual Collaboration Platform,4.7
+Grammarly,2009,"San Francisco, CA, USA",Writing Assistant,$400M,$300M,$13B,600,"General Catalyst, IVP",AI Writing Assistant,4.6
+Calendly,2013,"Atlanta, GA, USA",Scheduling,$350.6M,$100M,$3B,700,"OpenView, ICONIQ",Scheduling Platform,4.7
+Intercom,2011,"San Francisco, CA, USA",Customer Messaging,$240.7M,$200M,$1.3B,800,"Kleiner Perkins, Bessemer",Customer Messaging Platform,4.4
+Segment,2012,"San Francisco, CA, USA",Customer Data,$284M,$200M,$3.2B (Twilio),600,"Accel, GV, Kleiner Perkins",Customer Data Platform,4.5
+Auth0,2013,"Bellevue, WA, USA",Identity,$330M,$200M,$6.5B (Okta),850,"Bessemer, Sapphire",Identity Platform,4.4
+Looker,2012,"Santa Cruz, CA, USA",Business Intelligence,$281.5M,$150M,$2.6B (Google),800,"CapitalG, Kleiner Perkins",Data Platform,4.4
+Amplitude,2012,"San Francisco, CA, USA",Product Analytics,$336M,$233M,$4B,700,"Sequoia, IVP, Battery",Product Analytics Platform,4.5
+Mixpanel,2009,"San Francisco, CA, USA",Product Analytics,$77M,$100M,$1.05B,300,"Andreessen Horowitz, Sequoia",Product Analytics,4.4
+Sumo Logic,2010,"Redwood City, CA, USA",Log Management,$235M,$299M,$2.3B,750,"Accel, DFJ, Greylock",Cloud Log Management,4.2
+Zscaler,2008,"San Jose, CA, USA",Cloud Security,$148M,$1.6B,$30B,"5,000","TPG, Lightspeed",Cloud Security Platform,4.4
+CrowdStrike,2011,"Austin, TX, USA",Cybersecurity,$481M,$3.1B,$70B,"7,900","Warburg Pincus, Accel",Endpoint Security Platform,4.7
+Palo Alto Networks,2005,"Santa Clara, CA, USA",Cybersecurity,$66.3M,$7.5B,$95B,"13,300","Sequoia, Greylock",Security Platform,4.5
+RingCentral,2003,"Belmont, CA, USA",Communications,$44M,$2.2B,$5B,"3,600","Sequoia, Khosla, Scale",Cloud Communications,4.2
+Five9,2001,"San Ramon, CA, USA",Contact Center,$242M,$787M,$8B,"2,800","Adams Street, Partech",Contact Center Platform,4.3
+Veeva Systems,2007,"Pleasanton, CA, USA",Life Sciences,$7M,$2.4B,$35B,"5,600",Emergence Capital,Life Sciences Cloud,4.3
+Coupa,2006,"San Mateo, CA, USA",Spend Management,$169.5M,$725M,$8B (Thoma Bravo),"3,200","Battery, Crosslink",Business Spend Management,4.3
+Bill.com,2006,"San Jose, CA, USA",Financial Operations,$402.7M,$900M,$9B,"2,500","Bank of America, TPG",Financial Operations Platform,4.3
+Zoom Info,2007,"Vancouver, WA, USA",Sales Intelligence,$241.7M,$1.1B,$12B,"3,500","TA Associates, Carlyle",Go-to-Market Platform,4.4
+Smartsheet,2005,"Bellevue, WA, USA",Work Management,$120.8M,$880M,$8.4B (Vista/Blackstone),"3,200","Insight Partners, Madrona",Work Management Platform,4.4
+Qualtrics,2002,"Provo, UT, USA",Experience Management,$400M,$1.5B,$12.5B (Silver Lake),"5,300","Sequoia, Accel, Insight",Experience Management Platform,4.4
+Wix,2006,"Tel Aviv, Israel",Website Building,$59M,$1.6B,$10B,"5,500","Benchmark, Bessemer",Website Builder Platform,4.2
+Toast,2011,"Boston, MA, USA",Restaurant Tech,$902M,$3.9B,$20B,"4,500","TCV, Tiger Global",Restaurant Management Platform,4.3
+Gong,2015,"San Francisco, CA, USA",Revenue Intelligence,$584M,$250M,$7.3B,"1,300","Sequoia, Coatue, Thrive",Revenue Intelligence Platform,4.7
+Outreach,2014,"Seattle, WA, USA",Sales Engagement,$489M,$200M,$4.4B,"1,000","Lone Pine, Meritech, Spark",Sales Engagement Platform,4.3
+Salesloft,2011,"Atlanta, GA, USA",Sales Engagement,$245M,$200M,$2.3B,900,"Insight Partners, HarbourVest",Sales Engagement Platform,4.4
+Braze,2011,"New York, NY, USA",Customer Engagement,$175M,$420M,$5.6B,"1,300","Spark Capital, NEA",Customer Engagement Platform,4.5
+LaunchDarkly,2014,"Oakland, CA, USA",Feature Management,$330M,$100M,$3B,350,"Bessemer, Redpoint",Feature Management Platform,4.7
+Gusto,2011,"San Francisco, CA, USA",HR & Payroll,$516M,$500M,$9.5B,"2,500","General Catalyst, CapitalG",HR & Payroll Platform,4.5
+Rippling,2016,"San Francisco, CA, USA",HR & IT,$1.2B,$350M,$13.5B,"2,000","Founders Fund, Greenoaks",Employee Management Platform,4.8
+Carta,2012,"San Francisco, CA, USA",Equity Management,$1.1B,$300M,$7.4B,"1,600","Andreessen Horowitz, Lightspeed",Equity Management Platform,4.4
+Plaid,2013,"San Francisco, CA, USA",Financial APIs,$734M,$400M,$13.4B,800,"NEA, Spark Capital",Financial Data Platform,4.5
+Marqeta,2010,"Oakland, CA, USA",Card Issuing,$528M,$717M,$4.3B,900,"ICONIQ, Goldman Sachs",Card Issuing Platform,4.3
+Affirm,2012,"San Francisco, CA, USA",BNPL,$1.5B,$1.6B,$12B,"2,500","Founders Fund, Lightspeed",Buy Now Pay Later Platform,4.1
+Ramp,2019,"New York, NY, USA",Expense Management,$1.2B,$300M,$8.1B,500,"Thrive Capital, Founders Fund",Finance Platform,4.8
+Brex,2017,"San Francisco, CA, USA",Corporate Cards,$1.5B,$400M,$12.3B,"1,100","DST Global, Ribbit Capital",Financial Platform,4.6
+Navan,2015,"Palo Alto, CA, USA",Travel & Expense,$1.5B,$400M,$9.2B,"2,500","Andreessen Horowitz, Addition",Travel & Expense Platform,4.7
+Benchling,2012,"San Francisco, CA, USA",Life Sciences R&D,$425M,$100M,$6.1B,600,"Altimeter, Lux Capital",Life Sciences R&D Platform,4.6
+Celonis,2011,"Munich, Germany",Process Mining,$1.4B,$600M,$13B,"3,000","Arena Holdings, Durable Capital",Process Mining Platform,4.5
+Redis,2011,"Mountain View, CA, USA",Database,$347M,$100M,$2B,800,"Tiger Global, Softbank",In-Memory Database,4.5
+Algolia,2012,"San Francisco, CA, USA",Search & Discovery,$334M,$100M,$2.3B,700,"Accel, Salesforce Ventures",Search & Discovery API,4.6
+Samsara,2015,"San Francisco, CA, USA",IoT,$930M,$856M,$12B,"2,100","Andreessen Horowitz, Tiger",Connected Operations Platform,4.4
+Verkada,2016,"San Mateo, CA, USA",Physical Security,$460M,$400M,$3.2B,"1,600","Sequoia, Felicis",Cloud Security Platform,4.7
+JFrog,2008,"Sunnyvale, CA, USA",DevOps,$228.5M,$265M,$5.7B,"1,000","Insight Partners, Qumra",DevOps Platform,4.4
+Netskope,2012,"Santa Clara, CA, USA",Cloud Security,$1.4B,$500M,$7.5B,"2,500","Sequoia, Lightspeed",SASE Platform,4.6
+OneTrust,2016,"Atlanta, GA, USA",Privacy & Security,$920M,$500M,$5.3B,"2,500","Generation IM, Insight",Trust Intelligence Platform,4.3
+Tanium,2007,"Kirkland, WA, USA",Endpoint Management,$1B,$500M,$9.5B,"2,000","Andreessen Horowitz, IVP",Endpoint Management Platform,4.2
+Rubrik,2014,"Palo Alto, CA, USA",Data Security,$750M,$600M,$6B,"2,600","Lightspeed, Greylock",Zero Trust Data Security,4.6
+AppDynamics,2008,"San Francisco, CA, USA",APM,$315M,$600M,$3.7B (Cisco),"2,000","Lightspeed, Greylock",Application Performance Monitoring,4.3
+Snyk,2015,"Boston, MA, USA",Developer Security,$1.4B,$200M,$7.4B,"1,300","Tiger Global, Accel",Developer Security Platform,4.5
+CircleCI,2011,"San Francisco, CA, USA",CI/CD,$315M,$100M,$1.7B,500,"IVP, DFJ Growth",CI/CD Platform,4.4
+ServiceTitan,2012,"Glendale, CA, USA",Field Service,$1.5B,$685M,$9.5B,"2,700","Tiger Global, Sequoia",Field Service Management,4.2
+Procore,2002,"Carpinteria, CA, USA",Construction,$899M,$943M,$9B,"3,200","Bessemer, Tiger Global",Construction Management Platform,4.5
+Automattic,2005,"San Francisco, CA, USA",Web Publishing,$987M,$400M,$7.5B,"2,000","Salesforce Ventures, Insight","WordPress.com, WooCommerce",4.4
+Vimeo,2004,"New York, NY, USA",Video Platform,$450M,$433M,$1.5B,"1,200","Thrive Capital, IAC",Video Platform,4.2
