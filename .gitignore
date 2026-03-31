@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+dist/
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ML / Colab
+*.pt
+*.bin
+checkpoints/
+wandb/
+.ipynb_checkpoints/
+
+# RAG / Chroma local store
+backend/data/
+
+# Training build intermediates (merged file kept)
+training/data/_part_*.jsonl
