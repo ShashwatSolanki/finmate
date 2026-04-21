@@ -1,0 +1,10 @@
+{"message":"My salary is 50000 and rent is 12000. Can you suggest a monthly budget split?", "expected_agent":"budget_planner"}
+{"message":"I spent 9500 on food last month and want to cut it to 7000. What should I change weekly?", "expected_agent":"budget_planner"}
+{"message":"Create an invoice for logo design 300 and hosting 29.99", "expected_agent":"invoice_generator"}
+{"message":"Please draft invoice line items: 1200 website redesign, 400 SEO audit, currency USD", "expected_agent":"invoice_generator"}
+{"message":"Should I buy AAPL now? I can invest 10000 over 6 months.", "expected_agent":"investment_analyser"}
+{"message":"Compare TSLA and MSFT trends and suggest a cautious entry strategy.", "expected_agent":"investment_analyser"}
+{"message":"Income is 80000, EMI 15000, groceries 9000. How much should I save monthly?", "expected_agent":"budget_planner"}
+{"message":"I need a client invoice: 75.50 domain renewal and 500 maintenance retainer", "expected_agent":"invoice_generator"}
+{"message":"Is $NVDA too expensive relative to recent trend? I am medium risk.", "expected_agent":"investment_analyser"}
+{"message":"Help me reduce impulse spending. Last month miscellaneous was 6200.", "expected_agent":"budget_planner"}

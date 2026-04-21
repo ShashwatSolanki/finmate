@@ -27,7 +27,13 @@ def add_memory(db: Session, user_id: UUID, content: str, source: str | None = "c
     return row.id
 
 
-def search_memory(db: Session, user_id: UUID, query: str, k: int = 5) -> list[str]:
+def search_memory(
+    db: Session,
+    user_id: UUID,
+    query: str,
+    k: int = 5,
+    min_similarity: float = 0.22,
+) -> list[str]:
     """
     Retrieve top-k chunks by cosine similarity to the query.
     Scans recent chunks only (cap) — swap for pgvector / FAISS / Chroma on Linux when you deploy.
@@ -53,8 +59,16 @@ def search_memory(db: Session, user_id: UUID, query: str, k: int = 5) -> list[st
         qn = qv / (np.linalg.norm(qv) + 1e-9)
         dn = docv / (np.linalg.norm(docv, axis=1, keepdims=True) + 1e-9)
         sims = dn @ qn
-        order = np.argsort(-sims)[:k]
-        return [texts[int(i)] for i in order]
+        order = np.argsort(-sims)
+        out: list[str] = []
+        for i in order:
+            if len(out) >= k:
+                break
+            score = float(sims[int(i)])
+            if score < min_similarity:
+                continue
+            out.append(texts[int(i)])
+        return out
     except Exception as e:
         logger.warning("Embedding retrieval failed, falling back to recent-only: %s", e)
         return [r.content for r in rows[:k]]
