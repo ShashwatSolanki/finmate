@@ -1,0 +1,200 @@
+{"message": "I am medium risk. Is $MSFT attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "My income is 31220 and rent is 37034. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Create invoice: 1558.42 for content writing and 868.85 for seo audit.", "expected_agent": "invoice_generator"}
+{"message": "Need an invoice in INR: 1618.99 content writing, 1092.62 seo audit.", "expected_agent": "invoice_generator"}
+{"message": "My income is 64741 and rent is 34730. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "I spent 9300 on food and 13543 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Create invoice: 1722.58 for seo audit and 741.39 for seo audit.", "expected_agent": "invoice_generator"}
+{"message": "My income is 100697 and rent is 7037. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Create invoice: 672.36 for maintenance and 455.55 for maintenance.", "expected_agent": "invoice_generator"}
+{"message": "Draft invoice line items: 488.08 hosting; 874.52 maintenance.", "expected_agent": "invoice_generator"}
+{"message": "Need an invoice in INR: 208.91 hosting, 610.30 hosting.", "expected_agent": "invoice_generator"}
+{"message": "Compare TSLA and NVDA and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "I spent 6965 on food and 6061 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Salary 69117, EMI 29985, groceries 8008. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "Compare META and AMZN and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "My income is 62018 and rent is 31217. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Compare AMZN and GOOGL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Create invoice: 458.02 for seo audit and 1297.19 for seo audit.", "expected_agent": "invoice_generator"}
+{"message": "Create invoice: 1500.68 for web design and 284.35 for web design.", "expected_agent": "invoice_generator"}
+{"message": "Need an invoice in EUR: 942.62 hosting, 84.49 content writing.", "expected_agent": "invoice_generator"}
+{"message": "Compare META and AMZN and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Should I buy MSFT now with 8435 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "I am medium risk. Is $META attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Compare GOOGL and NVDA and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Draft invoice line items: 736.11 hosting; 506.86 seo audit.", "expected_agent": "invoice_generator"}
+{"message": "I am medium risk. Is $NVDA attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Should I buy TSLA now with 32741 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "My income is 34207 and rent is 27673. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Create invoice: 1928.15 for consulting and 959.17 for content writing.", "expected_agent": "invoice_generator"}
+{"message": "Compare TSLA and GOOGL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Should I buy NVDA now with 20566 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "Create invoice: 1662.89 for web design and 246.48 for consulting.", "expected_agent": "invoice_generator"}
+{"message": "Draft invoice line items: 1580.94 seo audit; 1143.77 consulting.", "expected_agent": "invoice_generator"}
+{"message": "Create invoice: 1789.53 for consulting and 1028.13 for hosting.", "expected_agent": "invoice_generator"}
+{"message": "I am medium risk. Is $NVDA attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Draft invoice line items: 829.61 hosting; 37.45 consulting.", "expected_agent": "invoice_generator"}
+{"message": "I am medium risk. Is $AAPL attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Compare META and META and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Compare TSLA and GOOGL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Salary 44592, EMI 12314, groceries 12012. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "Need an invoice in INR: 1466.31 maintenance, 652.84 hosting.", "expected_agent": "invoice_generator"}
+{"message": "Draft invoice line items: 1935.42 content writing; 1301.40 web design.", "expected_agent": "invoice_generator"}
+{"message": "I am medium risk. Is $META attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "I am medium risk. Is $TSLA attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Create invoice: 930.16 for hosting and 110.39 for web design.", "expected_agent": "invoice_generator"}
+{"message": "My income is 87912 and rent is 35028. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "I am medium risk. Is $GOOGL attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Compare AAPL and AMZN and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Create invoice: 696.15 for content writing and 1122.97 for seo audit.", "expected_agent": "invoice_generator"}
+{"message": "Draft invoice line items: 1507.62 web design; 942.02 hosting.", "expected_agent": "invoice_generator"}
+{"message": "Need an invoice in INR: 1262.72 web design, 1382.03 content writing.", "expected_agent": "invoice_generator"}
+{"message": "I am medium risk. Is $GOOGL attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Compare TSLA and AAPL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Salary 85333, EMI 24526, groceries 15608. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "I spent 8072 on food and 5111 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "My income is 103579 and rent is 24219. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "I spent 4302 on food and 12147 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Need an invoice in EUR: 1498.19 content writing, 916.22 maintenance.", "expected_agent": "invoice_generator"}
+{"message": "I spent 11544 on food and 5346 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "I am medium risk. Is $AMZN attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Draft invoice line items: 632.60 hosting; 1005.56 seo audit.", "expected_agent": "invoice_generator"}
+{"message": "My income is 79823 and rent is 25217. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Draft invoice line items: 1584.19 seo audit; 509.20 consulting.", "expected_agent": "invoice_generator"}
+{"message": "My income is 74313 and rent is 8378. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "I am medium risk. Is $GOOGL attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Compare AAPL and GOOGL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Compare NVDA and TSLA and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "I spent 3376 on food and 13145 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Salary 71180, EMI 9288, groceries 11703. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "I spent 9278 on food and 5116 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Should I buy AAPL now with 40903 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "Should I buy AAPL now with 21159 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "My income is 104341 and rent is 27622. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "I am medium risk. Is $MSFT attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Need an invoice in INR: 415.74 web design, 568.04 maintenance.", "expected_agent": "invoice_generator"}
+{"message": "I spent 16848 on food and 7574 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Draft invoice line items: 979.34 seo audit; 652.32 web design.", "expected_agent": "invoice_generator"}
+{"message": "Compare MSFT and TSLA and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "My income is 58221 and rent is 29059. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Salary 119593, EMI 28892, groceries 8607. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "Need an invoice in EUR: 1185.16 content writing, 417.53 consulting.", "expected_agent": "invoice_generator"}
+{"message": "Should I buy TSLA now with 40280 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "Compare META and TSLA and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Need an invoice in EUR: 1088.39 hosting, 1390.52 consulting.", "expected_agent": "invoice_generator"}
+{"message": "I spent 3106 on food and 17627 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Compare GOOGL and TSLA and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "My income is 77576 and rent is 27153. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Should I buy MSFT now with 12391 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "Draft invoice line items: 963.20 hosting; 997.57 seo audit.", "expected_agent": "invoice_generator"}
+{"message": "Salary 40322, EMI 7267, groceries 18924. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "I am medium risk. Is $TSLA attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "My income is 30464 and rent is 28859. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Draft invoice line items: 1456.92 hosting; 1398.25 consulting.", "expected_agent": "invoice_generator"}
+{"message": "My income is 77052 and rent is 29541. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Need an invoice in INR: 1864.80 content writing, 1203.24 content writing.", "expected_agent": "invoice_generator"}
+{"message": "Draft invoice line items: 445.51 web design; 697.35 hosting.", "expected_agent": "invoice_generator"}
+{"message": "My income is 43434 and rent is 12697. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "My income is 39305 and rent is 10858. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "My income is 54356 and rent is 11490. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Should I buy GOOGL now with 21365 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "Need an invoice in USD: 1478.16 consulting, 1331.96 web design.", "expected_agent": "invoice_generator"}
+{"message": "Create invoice: 1825.59 for hosting and 397.06 for consulting.", "expected_agent": "invoice_generator"}
+{"message": "Need an invoice in EUR: 498.22 consulting, 1450.66 web design.", "expected_agent": "invoice_generator"}
+{"message": "Compare NVDA and AAPL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Need an invoice in USD: 509.83 content writing, 165.99 web design.", "expected_agent": "invoice_generator"}
+{"message": "I spent 16141 on food and 16785 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Need an invoice in INR: 255.24 hosting, 631.29 seo audit.", "expected_agent": "invoice_generator"}
+{"message": "My income is 37665 and rent is 10994. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Salary 46483, EMI 23015, groceries 18574. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "My income is 51417 and rent is 37294. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Compare TSLA and GOOGL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Create invoice: 1290.77 for seo audit and 1496.14 for hosting.", "expected_agent": "invoice_generator"}
+{"message": "Salary 92493, EMI 21640, groceries 8158. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "I am medium risk. Is $AAPL attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Create invoice: 1524.52 for seo audit and 1025.71 for content writing.", "expected_agent": "invoice_generator"}
+{"message": "Draft invoice line items: 284.72 content writing; 471.59 hosting.", "expected_agent": "invoice_generator"}
+{"message": "I am medium risk. Is $AAPL attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Salary 56365, EMI 26295, groceries 16074. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "Need an invoice in USD: 868.31 content writing, 327.83 web design.", "expected_agent": "invoice_generator"}
+{"message": "Salary 114607, EMI 29637, groceries 17982. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "Compare NVDA and AAPL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "I spent 6176 on food and 12796 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Draft invoice line items: 1672.83 web design; 336.63 seo audit.", "expected_agent": "invoice_generator"}
+{"message": "Compare AMZN and AMZN and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Compare GOOGL and NVDA and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "My income is 96307 and rent is 24380. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Compare GOOGL and AAPL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "My income is 118259 and rent is 13449. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Compare AMZN and AAPL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Create invoice: 1048.27 for hosting and 751.33 for hosting.", "expected_agent": "invoice_generator"}
+{"message": "My income is 58657 and rent is 22247. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Should I buy TSLA now with 5855 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "Need an invoice in INR: 710.31 consulting, 202.35 seo audit.", "expected_agent": "invoice_generator"}
+{"message": "Salary 49536, EMI 23105, groceries 15098. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "Draft invoice line items: 1299.85 web design; 801.43 consulting.", "expected_agent": "invoice_generator"}
+{"message": "My income is 47601 and rent is 24332. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Compare META and META and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Create invoice: 1562.61 for maintenance and 591.92 for maintenance.", "expected_agent": "invoice_generator"}
+{"message": "My income is 74942 and rent is 20342. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "I am medium risk. Is $META attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Should I buy NVDA now with 9586 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "Salary 31934, EMI 18317, groceries 10745. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "My income is 39880 and rent is 36041. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "My income is 79672 and rent is 7141. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Need an invoice in USD: 1759.10 content writing, 988.02 maintenance.", "expected_agent": "invoice_generator"}
+{"message": "Should I buy MSFT now with 37886 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "I spent 16879 on food and 15588 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "My income is 100678 and rent is 15671. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Draft invoice line items: 102.39 consulting; 1204.86 consulting.", "expected_agent": "invoice_generator"}
+{"message": "Draft invoice line items: 215.17 consulting; 333.29 content writing.", "expected_agent": "invoice_generator"}
+{"message": "Draft invoice line items: 1269.40 content writing; 931.78 maintenance.", "expected_agent": "invoice_generator"}
+{"message": "Need an invoice in INR: 1542.40 maintenance, 918.77 web design.", "expected_agent": "invoice_generator"}
+{"message": "Salary 103000, EMI 6832, groceries 13626. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "Need an invoice in INR: 1002.56 seo audit, 930.86 maintenance.", "expected_agent": "invoice_generator"}
+{"message": "My income is 78520 and rent is 30283. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Salary 90217, EMI 23089, groceries 15403. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "Draft invoice line items: 439.32 consulting; 115.90 web design.", "expected_agent": "invoice_generator"}
+{"message": "I spent 9012 on food and 6563 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Draft invoice line items: 927.84 maintenance; 783.08 content writing.", "expected_agent": "invoice_generator"}
+{"message": "Should I buy AMZN now with 41804 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "Compare NVDA and AMZN and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Create invoice: 205.75 for seo audit and 1439.80 for web design.", "expected_agent": "invoice_generator"}
+{"message": "My income is 119353 and rent is 24486. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Salary 69651, EMI 26737, groceries 12810. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "Draft invoice line items: 1093.51 hosting; 1416.68 web design.", "expected_agent": "invoice_generator"}
+{"message": "Compare AAPL and AAPL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Salary 102512, EMI 24819, groceries 11924. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "I spent 7681 on food and 6339 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Compare AMZN and AMZN and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "My income is 116673 and rent is 21935. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "I am medium risk. Is $META attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Draft invoice line items: 1137.44 maintenance; 896.95 hosting.", "expected_agent": "invoice_generator"}
+{"message": "Compare GOOGL and NVDA and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Draft invoice line items: 1898.22 hosting; 1285.72 consulting.", "expected_agent": "invoice_generator"}
+{"message": "Need an invoice in USD: 177.26 maintenance, 885.49 content writing.", "expected_agent": "invoice_generator"}
+{"message": "Compare AAPL and MSFT and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Should I buy TSLA now with 21612 over 6 months?", "expected_agent": "investment_analyser"}
+{"message": "I spent 18498 on food and 13554 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "My income is 36175 and rent is 14185. How should I budget monthly?", "expected_agent": "budget_planner"}
+{"message": "Compare MSFT and AMZN and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Need an invoice in USD: 1533.21 maintenance, 982.16 maintenance.", "expected_agent": "invoice_generator"}
+{"message": "Compare GOOGL and TSLA and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Compare AAPL and AMZN and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Create invoice: 100.05 for maintenance and 526.60 for web design.", "expected_agent": "invoice_generator"}
+{"message": "Create invoice: 1446.31 for hosting and 1390.13 for maintenance.", "expected_agent": "invoice_generator"}
+{"message": "Draft invoice line items: 1852.35 maintenance; 1163.01 seo audit.", "expected_agent": "invoice_generator"}
+{"message": "I spent 7532 on food and 10348 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "I spent 18303 on food and 16153 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "I am medium risk. Is $META attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Create invoice: 981.41 for consulting and 716.97 for hosting.", "expected_agent": "invoice_generator"}
+{"message": "I spent 12125 on food and 12960 on misc last month. Help me cut costs.", "expected_agent": "budget_planner"}
+{"message": "Compare AAPL and GOOGL and suggest a cautious entry.", "expected_agent": "investment_analyser"}
+{"message": "Salary 56062, EMI 24309, groceries 10223. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "Need an invoice in EUR: 1311.68 consulting, 1015.59 content writing.", "expected_agent": "invoice_generator"}
+{"message": "I am medium risk. Is $GOOGL attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "I am medium risk. Is $MSFT attractive at current trend?", "expected_agent": "investment_analyser"}
+{"message": "Need an invoice in INR: 1791.87 maintenance, 1254.15 web design.", "expected_agent": "invoice_generator"}
+{"message": "Salary 64522, EMI 8486, groceries 8854. How much should I save?", "expected_agent": "budget_planner"}
+{"message": "Draft invoice line items: 397.84 maintenance; 198.36 content writing.", "expected_agent": "invoice_generator"}
+{"message": "I am medium risk. Is $GOOGL attractive at current trend?", "expected_agent": "investment_analyser"}
