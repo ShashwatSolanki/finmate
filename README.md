@@ -47,6 +47,24 @@ cd backend
 
 Use `--format indian` for `Indian Personal Finance and Spending Habits.csv`. Add `--dry-run` first to preview rows without writing to the database.
 
+**Evaluate routing + response format (held-out prompts):**
+
+```bash
+cd backend
+.venv\\Scripts\\python scripts/evaluate_chat.py --token <JWT_TOKEN> --dataset ../training/data/eval_prompts_heldout.jsonl
+```
+
+This reports:
+- routing accuracy (`expected_agent` vs returned `agent`)
+- format compliance (tag + natural language + valid JSON final line)
+
+Generate a larger 200-prompt held-out set:
+
+```bash
+cd backend
+.venv\\Scripts\\python scripts/generate_eval_set.py --total 200 --out ../training/data/eval_prompts_heldout_200.jsonl
+```
+
 ## 3. Frontend
 
 ```bash
@@ -74,9 +92,14 @@ Point your report to: base model name, LoRA rank, epochs, learning rate, dataset
 |------|--------|
 | `backend/app/main.py` | FastAPI app, CORS, DB init |
 | `backend/app/db/models.py` | Users (password hash), transactions, budgets, `MemoryChunk` |
-| `backend/app/rag/memory_store.py` | RAG: retrieve recent chunks, rank by `all-MiniLM-L6-v2` cosine similarity |
+| `backend/app/rag/memory_store.py` | RAG: similarity-ranked retrieval with configurable threshold |
 | `backend/app/api/routes/auth.py` | Register / login → JWT |
+| `backend/app/api/routes/chat.py` | Chat endpoint with recent-turn + onboarding context injection + selective memory writes |
+| `backend/app/api/routes/users.py` | `/users/onboarding` profile capture stored for context |
+| `backend/app/api/routes/transactions.py` | CRUD + `/transactions/import/csv` bulk import from pasted CSV |
 | `backend/app/agents/orchestrator.py` | Routes to 3 agents; inject `rag_context` for your LLM |
+| `backend/scripts/evaluate_chat.py` | Held-out evaluation runner for routing and output format |
+| `backend/scripts/generate_eval_set.py` | Synthetic balanced held-out prompt generator |
 | `training/colab/finmate_qlora_sft.ipynb` | QLoRA SFT template (Mistral/Llama-class) |
 | `frontend/src/App.tsx` | Register / login, chat, sample PDF download |
 
