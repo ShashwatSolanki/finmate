@@ -64,7 +64,18 @@ def run(
         f"[User financial data]\n{data_summary}{rag_block}"
     )
 
-    reply = generate(enriched_message)
+    try:
+        reply = generate(enriched_message)
+    except Exception:
+        bullet = "\n".join(lines[:3]) if lines else "- No recent transactions yet."
+        reply = (
+            "[AGENT: BUDGET]\n\n"
+            "Based on your recent spending, prioritize fixed essentials first and cap variable categories weekly. "
+            "Track the top categories below and redirect at least 10-20% of avoidable spend to savings.\n\n"
+            '{"intent":"budget_plan","steps":["Review top spending categories","Set weekly category caps","Automate savings transfer"],'
+            '"tools_needed":["list_transactions","set_budget"],"notes":"fallback response"}\n'
+            f"\nRecent categories:\n{bullet}"
+        )
 
     return AgentResult(
         agent=AgentName.BUDGET_PLANNER,
