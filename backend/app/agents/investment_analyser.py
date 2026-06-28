@@ -4,11 +4,11 @@ import re
 from decimal import Decimal
 from uuid import UUID
 
-import yfinance as yf
 from sqlalchemy.orm import Session
 
 from app.agents.types import AgentName, AgentResult
 from app.ml.finmate import SYSTEM_EXTRA_INVESTMENT, ensure_investment_reply_shape, generate
+from app.services.market_data import fetch_history, get_ticker, has_price_series
 
 # Prefer `$AAPL`; bare caps must skip common English and validate via Yahoo.
 _TICKER_DOLLAR = re.compile(r"\$([A-Za-z]{1,5})\b")
@@ -181,12 +181,7 @@ def _plain_investment_plan(message: str, rag_context: str | None) -> str:
 
 
 def _yf_has_series(symbol: str) -> bool:
-    try:
-        t = yf.Ticker(symbol)
-        h = t.history(period="5d")
-        return h is not None and not h.empty
-    except Exception:
-        return False
+    return has_price_series(symbol, period="5d")
 
 
 def _pick_tickers(message: str) -> list[str]:
@@ -225,8 +220,8 @@ def _pick_tickers(message: str) -> list[str]:
 
 def _analyze_symbol(symbol: str) -> str:
     try:
-        t = yf.Ticker(symbol)
-        h = t.history(period="3mo")
+        t = get_ticker(symbol)
+        h = fetch_history(symbol, period="3mo")
         if h is None or h.empty:
             return f"{symbol}: no price history returned (check symbol or market hours)."
         close = h["Close"]
@@ -235,7 +230,11 @@ def _analyze_symbol(symbol: str) -> str:
         chg = last - prev
         pct = (chg / prev * 100) if prev != 0 else Decimal("0")
         sma20 = Decimal(str(float(close.tail(20).mean()))) if len(close) >= 5 else last
-        info = getattr(t, "info", None) or {}
+        info: dict = {}
+        try:
+            info = t.info or {}
+        except Exception:
+            info = {}
         name = info.get("shortName") or info.get("longName") or symbol
         cur = info.get("currency") or "USD"
         day_low = info.get("dayLow")
