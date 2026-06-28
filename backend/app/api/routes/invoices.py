@@ -91,6 +91,9 @@ async def parse_invoice_upload(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Could not extract text from this file. Try a clearer scan or a text-based PDF.",
         )
+    print("=== OCR TEXT ===")
+    print(repr(text))
+    print("=== END OCR TEXT ===")
 
     return parse_invoice_text(text, source_type=source_type, filename=filename, warnings=warnings)
 

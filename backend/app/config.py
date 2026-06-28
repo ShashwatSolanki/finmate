@@ -1,3 +1,4 @@
+import pytesseract
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -32,3 +33,8 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# pytesseract looks on system PATH by default; point it at tesseract_cmd
+# from .env if provided, so OCR works even when tesseract isn't on PATH.
+if settings.tesseract_cmd:
+    pytesseract.pytesseract.tesseract_cmd = settings.tesseract_cmd

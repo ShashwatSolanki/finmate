@@ -8,7 +8,7 @@ import os
 import shutil
 from pathlib import Path
 
-from PIL import Image, ImageEnhance, ImageOps
+from PIL import Image, ImageOps
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +69,21 @@ def _configure_tesseract() -> None:
 
 
 def _prepare_image_for_ocr(img: Image.Image) -> Image.Image:
+    """Convert to grayscale for OCR.
+
+    Note: a contrast-enhancement step (ImageEnhance.Contrast, ~1.6x) used to run here.
+    It was removed because it degrades already-clean, high-contrast source images
+    (e.g. screenshots, rendered PDF pages, exported invoices) — pushing antialiased
+    text edges to the point where Tesseract's character segmentation breaks down and
+    produces garbled output, even though the same image OCRs cleanly without it.
+    Grayscale conversion alone is safe and can still help on some scanned documents.
+    If contrast enhancement is reintroduced for genuinely low-contrast scans, make it
+    conditional (e.g. based on measured image contrast) rather than applied unconditionally.
+    """
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
     gray = ImageOps.grayscale(img)
-    enhanced = ImageEnhance.Contrast(gray).enhance(1.6)
-    return enhanced
+    return gray
 
 
 def _ocr_image(img: Image.Image) -> str:
