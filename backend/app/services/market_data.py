@@ -42,6 +42,7 @@ def fetch_history(symbol: str, period: str = "3mo"):
     return None
 
 
+@lru_cache(maxsize=256)
 def has_price_series(symbol: str, period: str = "5d") -> bool:
     hist = fetch_history(symbol, period=period)
     return hist is not None and not hist.empty

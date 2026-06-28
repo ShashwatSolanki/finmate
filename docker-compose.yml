@@ -6,7 +6,8 @@ services:
       POSTGRES_PASSWORD: finmate
       POSTGRES_DB: finmate
     ports:
-      - "5432:5432"
+      # 5433 avoids conflict with a local PostgreSQL install on Windows (default 5432)
+      - "5433:5432"
     volumes:
       - finmate_pg:/var/lib/postgresql/data
 

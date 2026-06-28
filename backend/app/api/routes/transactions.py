@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -149,3 +150,35 @@ def import_transactions_csv(
                 errors.append(f"line {idx}: {e}")
     db.commit()
     return CsvImportOut(imported_count=imported, skipped_count=skipped, sample_errors=errors)
+
+
+@router.get("/export/csv")
+def export_transactions_csv(
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> Response:
+    rows = db.scalars(
+        select(Transaction)
+        .where(Transaction.user_id == current.id)
+        .order_by(Transaction.occurred_on.desc())
+    ).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["occurred_on", "amount", "category", "description", "currency"])
+    for row in rows:
+        writer.writerow(
+            [
+                row.occurred_on.isoformat(),
+                str(row.amount),
+                row.category or "",
+                row.description or "",
+                row.currency,
+            ]
+        )
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="finmate-transactions.csv"'},
+    )

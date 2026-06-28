@@ -171,10 +171,11 @@ def _followup_agent_override(db: Session, user_id, message: str) -> AgentName | 
     if last_agent == AgentName.INVESTMENT_ANALYSER:
         investish = bool(
             re.search(
-                r"\b(invest|investment|stock|shares|portfolio|risk|horizon|apple|google|microsoft|aapl|msft|googl|how do i|where should i|ration)\b",
+                r"\b(invest|investment|stock|stocks|shares|portfolio|risk|horizon|"
+                r"apple|google|microsoft|aapl|msft|googl|nvda|tsla|ticker|market|sip|allocate)\b",
                 t,
             )
-        )
+        ) or bool(re.search(r"\$[A-Za-z]{1,5}\b", message))
         invoiceish = bool(re.search(r"\b(invoice|bill|receipt|line items|pdf)\b", t))
         if investish and not invoiceish:
             return AgentName.INVESTMENT_ANALYSER

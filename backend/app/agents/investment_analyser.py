@@ -1,4 +1,6 @@
-"""Investment Analyser — Yahoo Finance via yfinance (quotes, history, SMA) + FinMate NL."""
+"""Investment Analyser — live Yahoo Finance data + data-driven replies (no generic filler)."""
+
+from __future__ import annotations
 
 import re
 from decimal import Decimal
@@ -6,63 +8,11 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.agents.ticker_utils import extract_ticker_candidates, has_investment_signal, pick_validated_tickers
 from app.agents.types import AgentName, AgentResult
+from app.config import settings
 from app.ml.finmate import SYSTEM_EXTRA_INVESTMENT, ensure_investment_reply_shape, generate
-from app.services.market_data import fetch_history, get_ticker, has_price_series
-
-# Prefer `$AAPL`; bare caps must skip common English and validate via Yahoo.
-_TICKER_DOLLAR = re.compile(r"\$([A-Za-z]{1,5})\b")
-_TICKER_CAPS = re.compile(r"\b([A-Z]{2,5})\b")
-_STOP = frozenset(
-    {
-        "I", "A", "OK", "USD", "THE", "AND", "FOR", "ETF", "IPO", "YTD", "OTC",
-        "WHERE", "WHAT", "WHEN", "WHICH", "WHO", "WHOM", "WHOSE", "WHY", "HOW",
-        "DO", "DOES", "DID", "DONE", "ARE", "WAS", "WERE", "BEEN", "BEING",
-        "MY", "ME", "WE", "HE", "IT", "IS", "AM", "AS", "AT", "BY", "IF", "IN",
-        "NO", "OF", "ON", "OR", "SO", "TO", "UP", "GO", "AN", "US", "VS",
-        "CAN", "MAY", "NOT", "BUT", "ALL", "ANY", "OUT", "NEW", "NOW", "SEE", "BUY",
-        "SELL", "INTO", "PER", "GET", "USE", "PAY",
-        "WAY", "YES", "YET", "HAD", "HAS", "HER", "HIM", "HIS", "ITS",
-        "LET", "MAN", "MEN", "ONE", "OUR", "OWN", "SAY", "SHE", "TOO", "TWO",
-        "SPEND", "SAVE", "SPENT", "MAKE", "NEED", "WANT", "HELP", "CASH", "BANK",
-        "LOAN", "RENT", "FOOD", "YEAR", "WEEK", "DAYS", "TIME", "WORK", "HOME",
-        "LIFE", "PLAN", "GOAL", "MUCH", "MANY", "SOME", "LIKE", "JUST", "ONLY",
-        "ALSO", "VERY", "EVEN", "INTO", "FROM", "WITH", "HAVE", "THAN", "THEN",
-        "THAT", "THIS", "THEY", "THEM", "WILL", "WOULD", "COULD", "SHOULD",
-        "MIGHT", "MUST", "YOUR", "ABLE", "BACK", "CAME", "COME", "EACH", "ELSE",
-        "GIVE", "KEEP", "KNOW", "LAST", "LEFT", "LONG", "LOOK", "MADE",
-        "MOST", "MOVE", "OPEN", "OVER", "PART", "RISK", "SAFE",
-        "SAME", "SEEM", "SHOW", "SUCH", "SURE", "TAKE", "TELL", "LEVEL",
-        "TOLD", "TURN", "USED", "WAYS", "WELL",
-        "WENT", "BASE", "CASE", "DATA", "FACT", "FORM", "FULL",
-        "HALF", "HIGH", "HOLD", "INFO", "KIND", "LINE", "MEAN", "NEXT",
-        "REAL", "SIDE", "TRUE", "TYPE", "UNIT",
-        "AREA", "AWAY", "BEST", "CALL", "HERE", "IDEA", "LATE", "WORD",
-    }
-)
-
-_COMPANY_TO_TICKER = {
-    "microsoft": "MSFT",
-    "apple": "AAPL",
-    "tesla": "TSLA",
-    "amazon": "AMZN",
-    "google": "GOOGL",
-    "alphabet": "GOOGL",
-    "meta": "META",
-    "nvidia": "NVDA",
-}
-
-_KNOWN_TICKERS = frozenset(
-    {
-        "AAPL",
-        "MSFT",
-        "GOOGL",
-        "AMZN",
-        "TSLA",
-        "NVDA",
-        "META",
-    }
-)
+from app.services.market_data import fetch_history, get_ticker
 
 
 def _extract_risk_from_context(ctx: str | None) -> str | None:
@@ -109,153 +59,183 @@ def _extract_lump_sum(message: str) -> Decimal | None:
         return num * Decimal("1000000")
     if mult in {"lakh", "lakhs"}:
         return num * Decimal("100000")
-    if num < 100:  # likely duration or count, not money
+    if num < 100:
         return None
     return num
 
 
 def _allocation_for_risk(risk: str | None) -> tuple[int, int, int]:
     if risk == "aggressive":
-        return (75, 20, 5)  # equity, debt, cash
+        return (75, 20, 5)
     if risk == "conservative":
         return (40, 45, 15)
-    return (60, 30, 10)  # moderate default
+    return (60, 30, 10)
 
 
-def _plain_investment_plan(message: str, rag_context: str | None) -> str:
-    t = message.lower()
-    risk = _extract_risk_from_context(rag_context)
-    income = _extract_income_from_context(rag_context)
-    location = _extract_location_from_context(rag_context)
-    amount = _extract_lump_sum(message)
-    eq, debt, cash = _allocation_for_risk(risk)
-    india_hint = (
-        "Use broad index funds (Nifty 50/Sensex), short-duration debt funds or high-quality debt options, "
-        "and keep your cash buffer in savings/liquid instruments. "
-        if location and "india" in location.lower()
-        else ""
-    )
-
-    if "daily" in t or "ration" in t or "usage" in t:
-        base = amount if amount is not None else income
-        if base is None:
-            amount_text = (
-                "First separate spending money from investing money: keep 10-15% for short-term liquidity, "
-                "then invest the rest with your risk-based split."
-            )
-        else:
-            daily = (base / Decimal("30")).quantize(Decimal("1.00"))
-            invest = (base * Decimal("0.70")).quantize(Decimal("1.00"))
-            expenses = (base * Decimal("0.20")).quantize(Decimal("1.00"))
-            buffer = (base * Decimal("0.10")).quantize(Decimal("1.00"))
-            amount_text = (
-                f"From {base:,.2f}, keep ~{expenses:,.2f} for monthly spending "
-                f"(~{daily:,.2f}/day), invest ~{invest:,.2f}, and keep ~{buffer:,.2f} as emergency liquidity."
-            )
-        plan_suffix = "Review this split monthly as your expenses change."
-    elif amount is not None:
-        eq_amt = (amount * Decimal(eq) / Decimal("100")).quantize(Decimal("1.00"))
-        debt_amt = (amount * Decimal(debt) / Decimal("100")).quantize(Decimal("1.00"))
-        cash_amt = (amount * Decimal(cash) / Decimal("100")).quantize(Decimal("1.00"))
-        amount_text = (
-            f"For {amount:,.2f}, a practical split is ~{eq_amt:,.2f} to diversified equity funds, "
-            f"~{debt_amt:,.2f} to safer debt instruments, and ~{cash_amt:,.2f} as liquidity."
-        )
-        plan_suffix = "Build positions in 3-4 staggered buys over the month and rebalance quarterly."
-    else:
-        amount_text = (
-            f"Use a {eq}/{debt}/{cash} split: {eq}% diversified equity, {debt}% debt, {cash}% cash buffer."
-        )
-        if income is not None:
-            investable = (income * Decimal("0.30")).quantize(Decimal("1.00"))
-            amount_text += f" With monthly income {income:,.2f}, start by investing ~{investable:,.2f}/month via SIP."
-        plan_suffix = "Start with SIPs so you can stay consistent across market cycles."
-
-    risk_text = f"Using your {risk} risk profile, " if risk else ""
-    return (
-        "[AGENT: INVESTMENT]\n\n"
-        f"{risk_text}{amount_text} {india_hint}{plan_suffix}\n\n"
-        '{"intent":"portfolio_suggestion","steps":["Set allocation by risk profile","Invest in staggered tranches","Rebalance every quarter"],'
-        '"tools_needed":["yfinance_lookup"],"notes":"used onboarding-aware deterministic fallback"}'
-    )
+class _SymbolAnalysis:
+    def __init__(self, symbol: str, ok: bool, text: str, last: Decimal | None, sma20: Decimal | None, pct: Decimal | None):
+        self.symbol = symbol
+        self.ok = ok
+        self.text = text
+        self.last = last
+        self.sma20 = sma20
+        self.pct = pct
 
 
-def _yf_has_series(symbol: str) -> bool:
-    return has_price_series(symbol, period="5d")
-
-
-def _pick_tickers(message: str) -> list[str]:
-    raw = message.strip()
-    lower = raw.lower()
-    explicit = [m.group(1).upper() for m in _TICKER_DOLLAR.finditer(raw)]
-    name_hits: list[str] = []
-    company_words_upper: set[str] = set()
-    for name, symbol in _COMPANY_TO_TICKER.items():
-        if name in lower:
-            name_hits.append(symbol)
-            company_words_upper.add(name.upper())
-    dynamic_stop = _STOP | company_words_upper | {"TERM"}
-    caps = [t for t in _TICKER_CAPS.findall(raw.upper()) if t not in dynamic_stop]
-    ordered: list[str] = []
-    seen: set[str] = set()
-    for t in explicit + caps + name_hits:
-        if t not in seen:
-            seen.add(t)
-            ordered.append(t)
-    # Symbols written as $XYZ and known company-name mappings are trusted.
-    # Bare ALLCAPS words must match a real series (filters "WHERE", etc.).
-    tagged = frozenset(explicit)
-    mapped = frozenset(name_hits)
-    known = _KNOWN_TICKERS | mapped
-    out: list[str] = []
-    for t in ordered:
-        if len(out) >= 3:
-            break
-        if t in tagged or t in known:
-            out.append(t)
-        elif _yf_has_series(t):
-            out.append(t)
-    return out
-
-
-def _analyze_symbol(symbol: str) -> str:
+def _analyze_symbol(symbol: str) -> _SymbolAnalysis:
     try:
         t = get_ticker(symbol)
         h = fetch_history(symbol, period="3mo")
         if h is None or h.empty:
-            return f"{symbol}: no price history returned (check symbol or market hours)."
+            return _SymbolAnalysis(symbol, False, f"{symbol}: no live price history available.", None, None, None)
+
         close = h["Close"]
         last = Decimal(str(float(close.iloc[-1])))
         prev = Decimal(str(float(close.iloc[-2]))) if len(close) > 1 else last
         chg = last - prev
         pct = (chg / prev * 100) if prev != 0 else Decimal("0")
         sma20 = Decimal(str(float(close.tail(20).mean()))) if len(close) >= 5 else last
+
         info: dict = {}
         try:
             info = t.info or {}
         except Exception:
             info = {}
+
         name = info.get("shortName") or info.get("longName") or symbol
         cur = info.get("currency") or "USD"
-        day_low = info.get("dayLow")
-        day_high = info.get("dayHigh")
-        fifty_two = info.get("fiftyTwoWeekHigh")
-        fifty_two_l = info.get("fiftyTwoWeekLow")
-        extras = []
+        trend = "above" if last > sma20 else "below"
+        extras: list[str] = []
+        day_low, day_high = info.get("dayLow"), info.get("dayHigh")
         if day_low is not None and day_high is not None:
             extras.append(f"Session range: {day_low} – {day_high} {cur}")
+        fifty_two, fifty_two_l = info.get("fiftyTwoWeekHigh"), info.get("fiftyTwoWeekLow")
         if fifty_two is not None and fifty_two_l is not None:
-            extras.append(f"52w range: {fifty_two_l} – {fifty_two}")
-        extra_txt = "\n".join(extras) if extras else ""
-        trend = "above" if last > sma20 else "below"
-        return (
+            extras.append(f"52-week range: {fifty_two_l} – {fifty_two} {cur}")
+
+        text = (
             f"{name} ({symbol})\n"
-            f"Last close: ~{last:.2f} {cur} ({chg:+.2f}, {pct:+.2f}% vs prev)\n"
-            f"~20d SMA: {sma20:.2f} — price is {trend} short-term average.\n"
-            f"{extra_txt}"
+            f"Last close: {last:.2f} {cur} ({chg:+.2f}, {pct:+.2f}% vs previous session)\n"
+            f"20-day SMA: {sma20:.2f} — trading {trend} the short-term average."
         )
-    except Exception as e:
-        return f"{symbol}: could not fetch market data ({e!s})."
+        if extras:
+            text += "\n" + "\n".join(extras)
+        return _SymbolAnalysis(symbol, True, text, last, sma20, pct)
+    except Exception as exc:
+        return _SymbolAnalysis(symbol, False, f"{symbol}: could not fetch market data ({exc!s}).", None, None, None)
+
+
+def _portfolio_plan_reply(message: str, rag_context: str | None) -> str:
+    """Personalized allocation when no ticker — uses onboarding numbers, not boilerplate."""
+    risk = _extract_risk_from_context(rag_context) or "moderate"
+    income = _extract_income_from_context(rag_context)
+    location = _extract_location_from_context(rag_context)
+    amount = _extract_lump_sum(message)
+    eq, debt, cash = _allocation_for_risk(risk)
+
+    parts: list[str] = [f"Using your {risk} risk profile"]
+
+    if amount is not None:
+        eq_amt = (amount * Decimal(eq) / Decimal("100")).quantize(Decimal("1.00"))
+        debt_amt = (amount * Decimal(debt) / Decimal("100")).quantize(Decimal("1.00"))
+        cash_amt = (amount * Decimal(cash) / Decimal("100")).quantize(Decimal("1.00"))
+        parts.append(
+            f"for {amount:,.2f}: allocate ~{eq_amt:,.2f} to diversified equity, "
+            f"~{debt_amt:,.2f} to debt/stable assets, and ~{cash_amt:,.2f} as liquidity."
+        )
+    elif income is not None:
+        monthly_sip = (income * Decimal("0.25")).quantize(Decimal("1.00"))
+        parts.append(
+            f"with monthly income {income:,.2f}: target a {eq}/{debt}/{cash} equity/debt/cash split "
+            f"and automate ~{monthly_sip:,.2f}/month via SIP or recurring buys."
+        )
+    else:
+        parts.append(f"target a {eq}/{debt}/{cash} equity/debt/cash split.")
+
+    if location and "india" in location.lower():
+        parts.append(
+            "In India, use broad index exposure (Nifty 50 / Sensex), short-duration debt funds for the bond sleeve, "
+            "and keep the cash slice in savings or liquid funds."
+        )
+    else:
+        parts.append("Use low-cost index funds for the equity sleeve and high-quality bonds or T-bills for the debt sleeve.")
+
+    candidates = extract_ticker_candidates(message)
+    if candidates and has_investment_signal(message):
+        parts.append(
+            f"I could not confirm live quotes for {', '.join(candidates)} right now — "
+            "retry with `$TICKER` (e.g. `$MSFT`) or a company name like Microsoft."
+        )
+    elif has_investment_signal(message):
+        parts.append("Name a stock (`$AAPL`) or company (e.g. Apple, Microsoft) for a live quote and trend read.")
+
+    prose = " ".join(parts)
+    return (
+        "[AGENT: INVESTMENT]\n\n"
+        f"{prose}\n\n"
+        '{"intent":"portfolio_suggestion","steps":["Set allocation from risk profile","Use staggered entries","Rebalance quarterly"],'
+        '"tools_needed":["yfinance_lookup"],"notes":"personalized from onboarding; no ticker confirmed"}'
+    )
+
+
+def _data_driven_market_reply(analyses: list[_SymbolAnalysis], rag_context: str | None) -> str:
+    """Build prose strictly from fetched market fields — never generic investing advice."""
+    risk = _extract_risk_from_context(rag_context) or "moderate"
+    ok = [a for a in analyses if a.ok and a.last is not None]
+    if not ok:
+        failed = ", ".join(a.symbol for a in analyses)
+        return (
+            "[AGENT: INVESTMENT]\n\n"
+            f"Live quotes for {failed} are unavailable at the moment. "
+            "Check the symbol spelling or try again in a few minutes.\n\n"
+            '{"intent":"investment_info","steps":["Verify ticker symbol","Retry market data fetch","Decide entry size"],'
+            '"tools_needed":["yfinance_lookup"],"notes":"market data unavailable"}'
+        )
+
+    blocks: list[str] = []
+    actions: list[str] = []
+    for a in ok:
+        blocks.append(a.text)
+        assert a.last is not None and a.sma20 is not None
+        if a.last > a.sma20:
+            actions.append(
+                f"{a.symbol} is above its 20-day SMA ({a.sma20:.2f}); momentum is positive — "
+                f"if you buy, scale in rather than lump-sum at {a.last:.2f}."
+            )
+        else:
+            actions.append(
+                f"{a.symbol} is below its 20-day SMA ({a.sma20:.2f}); "
+                f"last close {a.last:.2f} — consider waiting for stabilization or smaller tranches."
+            )
+        if a.pct is not None and abs(a.pct) >= Decimal("3"):
+            direction = "up" if a.pct > 0 else "down"
+            actions.append(f"{a.symbol} moved {abs(a.pct):.2f}% {direction} vs the prior session — avoid chasing.")
+
+    risk_note = (
+        f"Given your {risk} risk tolerance, keep position sizes modest relative to your total portfolio "
+        "and maintain an emergency fund outside these names."
+    )
+
+    prose = (
+        "Live market snapshot:\n\n"
+        + "\n\n".join(blocks)
+        + "\n\n"
+        + " ".join(actions)
+        + " "
+        + risk_note
+    )
+    symbols = ",".join(a.symbol for a in ok)
+    json_tail = (
+        '{"intent":"investment_info","steps":["Review last close vs 20d SMA","Size position to risk profile",'
+        '"Use staggered entries"],"tools_needed":["yfinance_lookup"],"notes":"built from live yfinance data for '
+        + symbols
+        + '"}'
+    )
+    return (
+        "[AGENT: INVESTMENT]\n\n"
+        f"{prose}\n\n"
+        f"{json_tail}"
+    )
 
 
 def run(
@@ -265,56 +245,52 @@ def run(
     rag_context: str | None = None,
 ) -> AgentResult:
     _ = db
-    tickers = _pick_tickers(message)
+    tickers = pick_validated_tickers(message)
 
     rag_block = ""
     if rag_context and rag_context.strip():
         rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
     if not tickers:
-        reply = _plain_investment_plan(message, rag_context)
+        reply = _portfolio_plan_reply(message, rag_context)
         return AgentResult(
             agent=AgentName.INVESTMENT_ANALYSER,
             reply=reply,
-            planned_steps=["resolve_tickers", "finmate_generate"],
-            metadata={"tickers": "", "market_data": "none"},
+            planned_steps=["resolve_tickers", "personalized_allocation"],
+            metadata={"tickers": "", "market_data": "none", "source": "onboarding_data"},
         )
 
-    market_data = "\n\n---\n\n".join(_analyze_symbol(sym) for sym in tickers)
-    forcing_instructions = (
-        "[Response requirements]\n"
-        "- Reference at least two concrete numbers from the live data for each ticker discussed.\n"
-        "- Explicitly mention last close and 20d SMA relationship (above/below).\n"
-        "- If you suggest waiting or buying slowly, tie it to the observed price/trend values.\n"
-        "- Keep recommendations risk-aware, but do not ignore provided market data.\n"
-    )
+    analyses = [_analyze_symbol(sym) for sym in tickers]
+    market_data = "\n\n---\n\n".join(a.text for a in analyses)
 
-    enriched = (
-        f"{message}\n\n"
-        f"[Live market data]\n{market_data}"
-        f"\n\n{forcing_instructions}"
-        f"{rag_block}"
-    )
-
-    try:
-        model_reply = generate(
-            enriched,
-            system_extra=SYSTEM_EXTRA_INVESTMENT,
-            json_tools_fallback=["yfinance_lookup"],
+    if settings.finmate_use_llm:
+        enriched = (
+            f"{message}\n\n"
+            f"[Live market data]\n{market_data}\n\n"
+            "[Response requirements]\n"
+            "- Quote at least two numbers from the live data per ticker.\n"
+            "- State last close and whether price is above or below the 20-day SMA.\n"
+            "- Tie any buy/wait advice to those numbers.\n"
+            f"{rag_block}"
         )
-    except Exception:
-        model_reply = (
-            "[AGENT: INVESTMENT]\n\n"
-            "The current market snapshot suggests using staggered entries instead of lump-sum timing bets. "
-            "Use diversification and position sizing aligned to your risk tolerance.\n\n"
-            '{"intent":"portfolio_suggestion","steps":["Review live quote and SMA trend","Define allocation bands","Use staggered buys"],'
-            '"tools_needed":["yfinance_lookup"],"notes":"fallback response"}'
-        )
-    reply = ensure_investment_reply_shape(model_reply)
+        try:
+            model_reply = generate(
+                enriched,
+                system_extra=SYSTEM_EXTRA_INVESTMENT,
+                json_tools_fallback=["yfinance_lookup"],
+            )
+            reply = ensure_investment_reply_shape(model_reply)
+            source = "llm"
+        except Exception:
+            reply = _data_driven_market_reply(analyses, rag_context)
+            source = "live_data"
+    else:
+        reply = _data_driven_market_reply(analyses, rag_context)
+        source = "live_data"
 
     return AgentResult(
         agent=AgentName.INVESTMENT_ANALYSER,
         reply=reply,
-        planned_steps=["resolve_tickers", "fetch_market_data", "compute_signals", "finmate_generate"],
-        metadata={"tickers": ",".join(tickers)},
+        planned_steps=["resolve_tickers", "fetch_market_data", "compute_signals", "compose_reply"],
+        metadata={"tickers": ",".join(tickers), "market_data": "live", "source": source},
     )

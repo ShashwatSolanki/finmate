@@ -27,5 +27,8 @@ class Settings(BaseSettings):
     finmate_use_llm: bool = False
     finmate_max_new_tokens: int = 256
 
+    # Path to tesseract.exe when not on PATH (common on Windows after installer)
+    tesseract_cmd: str | None = None
+
 
 settings = Settings()
