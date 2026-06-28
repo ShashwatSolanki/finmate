@@ -1,13 +1,17 @@
+import json
+import re
+import uuid
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-import re
 
 from app.agents.orchestrator import run_turn
 from app.agents.types import AgentName
 from app.api.deps import get_current_user
-from app.db.models import MemoryChunk, User
+from app.db.models import ChatMessage, ChatSession, MemoryChunk, User
 from app.db.session import get_db
 from app.rag.memory_store import add_memory, search_memory
 
@@ -18,6 +22,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=8000)
     """Force a specialist, or leave null for hybrid auto-routing."""
     agent: AgentName | None = None
+    session_id: uuid.UUID | None = None
 
 
 class ChatResponse(BaseModel):
@@ -25,6 +30,7 @@ class ChatResponse(BaseModel):
     reply: str
     planned_steps: list[str]
     metadata: dict[str, str] = Field(default_factory=dict)
+    session_id: uuid.UUID | None = None
 
 
 def _normalized_tag(agent: AgentName) -> str:
@@ -188,6 +194,45 @@ def _should_store_assistant_reply(reply: str) -> bool:
     return not any(m in s for m in generic_markers)
 
 
+def _title_from_message(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", text.strip())
+    if not cleaned:
+        return "New chat"
+    return cleaned[:60] + ("…" if len(cleaned) > 60 else "")
+
+
+def _get_or_create_session(db: Session, user_id: uuid.UUID, session_id: uuid.UUID | None, message: str) -> ChatSession:
+    if session_id is not None:
+        row = db.scalar(
+            select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == user_id)
+        )
+        if row:
+            return row
+    row = ChatSession(user_id=user_id, title=_title_from_message(message))
+    db.add(row)
+    db.flush()
+    return row
+
+
+def _clean_assistant_display(reply: str) -> str:
+    lines = reply.replace("\r", "").split("\n")
+    out: list[str] = []
+    for line in lines:
+        t = line.strip()
+        if not t:
+            continue
+        if t.startswith("[AGENT:") and t.endswith("]"):
+            continue
+        if t.startswith("{") and t.endswith("}"):
+            try:
+                json.loads(t)
+                continue
+            except json.JSONDecodeError:
+                pass
+        out.append(t)
+    return "\n".join(out).strip() or reply.strip()
+
+
 @router.post("/message", response_model=ChatResponse)
 def chat_message(
     body: ChatRequest,
@@ -247,9 +292,26 @@ def chat_message(
     else:
         meta["memory_persisted"] = "true"
 
+    session = _get_or_create_session(db, current.id, body.session_id, body.message)
+    db.add(ChatMessage(session_id=session.id, role="user", content=body.message))
+    display_reply = _clean_assistant_display(result.reply)
+    db.add(
+        ChatMessage(
+            session_id=session.id,
+            role="assistant",
+            content=display_reply,
+            agent=result.agent.value,
+        )
+    )
+    if session.title == "New chat" or not session.title.strip():
+        session.title = _title_from_message(body.message)
+    session.updated_at = datetime.now(timezone.utc)
+    db.commit()
+
     return ChatResponse(
         agent=result.agent.value,
         reply=result.reply,
         planned_steps=result.planned_steps,
         metadata=meta,
+        session_id=session.id,
     )

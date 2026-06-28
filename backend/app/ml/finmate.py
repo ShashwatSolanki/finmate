@@ -112,7 +112,7 @@ def _load_model():
     base = AutoModelForCausalLM.from_pretrained(
         base_name,
         device_map="auto" if device == "cuda" else None,
-        torch_dtype=dtype,
+        dtype=dtype,
     )
     if device == "cpu":
         base = base.to(device)

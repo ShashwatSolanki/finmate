@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "FinMate API"
-    database_url: str = "postgresql+psycopg2://finmate:finmate@localhost:5432/finmate"
+    database_url: str = "postgresql+psycopg2://finmate:finmate@localhost:5433/finmate"
 
     jwt_secret: str = Field(
         default="change-me-in-production-use-openssl-rand-hex-32",

@@ -1,3 +1,4 @@
+import re
 import uuid
 
 from fastapi import APIRouter, Depends
@@ -31,6 +32,48 @@ class OnboardingBody(BaseModel):
 class OnboardingOut(BaseModel):
     saved: bool
     profile_summary: str
+
+
+class OnboardingProfileOut(BaseModel):
+    saved: bool
+    monthly_income: float | None = None
+    location: str | None = None
+    goals: list[str] = Field(default_factory=list)
+    risk_tolerance: str | None = None
+    currency: str | None = None
+    profile_summary: str = ""
+
+
+def _parse_onboarding_profile(text: str) -> OnboardingProfileOut:
+    if not text.strip():
+        return OnboardingProfileOut(saved=False)
+
+    income_m = re.search(r"Monthly income:\s*([\d,]+(?:\.\d+)?)\s*(\w+)?", text, re.I)
+    location_m = re.search(r"Location:\s*([^\n]+)", text, re.I)
+    risk_m = re.search(r"Risk tolerance:\s*([^\n]+)", text, re.I)
+    goals_m = re.search(r"Goals:\s*([^\n]+)", text, re.I)
+
+    monthly_income = None
+    currency = None
+    if income_m:
+        monthly_income = float(income_m.group(1).replace(",", ""))
+        currency = (income_m.group(2) or "").strip() or None
+
+    goals: list[str] = []
+    if goals_m:
+        raw = goals_m.group(1).strip()
+        if raw.lower() != "not provided":
+            goals = [g.strip() for g in raw.split(",") if g.strip()]
+
+    return OnboardingProfileOut(
+        saved=True,
+        monthly_income=monthly_income,
+        location=location_m.group(1).strip() if location_m else None,
+        goals=goals,
+        risk_tolerance=risk_m.group(1).strip().lower() if risk_m else None,
+        currency=currency,
+        profile_summary=text.strip(),
+    )
 
 
 @router.get("/me", response_model=UserOut)
@@ -74,3 +117,19 @@ def latest_onboarding(
     if not row:
         return OnboardingOut(saved=False, profile_summary="")
     return OnboardingOut(saved=True, profile_summary=row.content)
+
+
+@router.get("/onboarding/profile", response_model=OnboardingProfileOut)
+def onboarding_profile(
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> OnboardingProfileOut:
+    row = db.scalar(
+        select(MemoryChunk)
+        .where(MemoryChunk.user_id == current.id, MemoryChunk.source == "onboarding")
+        .order_by(MemoryChunk.created_at.desc())
+        .limit(1)
+    )
+    if not row:
+        return OnboardingProfileOut(saved=False)
+    return _parse_onboarding_profile(row.content)
