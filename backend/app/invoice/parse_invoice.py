@@ -22,6 +22,11 @@ _DATE = re.compile(
 _VENDOR = re.compile(r"(?:from|vendor|seller|supplier)[:\s]+(.{2,80})", re.I)
 _BILL_TO = re.compile(r"(?:bill\s*to|billed\s*to|customer)[:\s]+(.{2,120})", re.I)
 
+# Recognized currency markers that can prefix an amount, e.g. "Rs. 799.00", "$1,234.56", "INR 498.00".
+# "Rs[.,]?" tolerates OCR misreading the period in "Rs." as a comma ("Rs,"), which happens often
+# enough with small/antialiased screenshot text to be worth handling explicitly.
+_CURRENCY_PREFIX = r"(?:Rs[.,]?|INR|USD|EUR|GBP|[\$€£₹])"
+
 # description ... amount  OR  amount description  OR  qty x unit = total
 _LINE_DESC_AMT = re.compile(
     r"^(.{2,80}?)\s+([\d,]+\.\d{2})\s*$",
@@ -33,9 +38,27 @@ _LINE_QTY = re.compile(
     r"^(.{2,60}?)\s+(\d+(?:\.\d+)?)\s*x\s*([\d,]+\.\d{2})\s*=\s*([\d,]+\.\d{2})\s*$",
     re.I,
 )
-_TOTAL = re.compile(r"(?:grand\s*)?total[:\s]*[\$€£₹]?\s*([\d,]+\.\d{2})", re.I)
-_SUBTOTAL = re.compile(r"sub\s*total[:\s]*[\$€£₹]?\s*([\d,]+\.\d{2})", re.I)
-_TAX = re.compile(r"(?:tax|vat|gst)[:\s]*[\$€£₹]?\s*([\d,]+\.\d{2})", re.I)
+# description, optional qty, then one or more currency-prefixed amounts (e.g. unit price + line total).
+# Handles rows like: "Wireless Mouse 1 Rs. 799.00 Rs. 799.00"
+_LINE_GENERIC = re.compile(
+    rf"^(.{{2,80}}?)\s+(?:(\d+(?:\.\d+)?)\s+)?"
+    rf"((?:{_CURRENCY_PREFIX}?\s*[\d,]+\.\d{{2}}\s*){{1,3}})$",
+    re.I,
+)
+_AMOUNT_TOKEN = re.compile(rf"{_CURRENCY_PREFIX}?\s*[\d,]+\.\d{{2}}", re.I)
+
+_TOTAL = re.compile(
+    rf"(?:grand\s*)?total\s*(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+\.\d{{2}})",
+    re.I,
+)
+_SUBTOTAL = re.compile(
+    rf"sub\s*total\s*(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+\.\d{{2}})",
+    re.I,
+)
+_TAX = re.compile(
+    rf"(?:tax|vat|gst)\s*(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+\.\d{{2}})",
+    re.I,
+)
 
 _SKIP_LINE = re.compile(
     r"^(invoice|bill\s*to|ship\s*to|description|qty|quantity|amount|unit\s*price|subtotal|total|tax|vat|gst|notes?|payment)\b",
@@ -44,8 +67,14 @@ _SKIP_LINE = re.compile(
 
 
 def _to_decimal(raw: str) -> Decimal | None:
+    """Convert a numeric/currency string like 'Rs. 2,499.00' or '$1,234.56' to Decimal.
+
+    Strips known currency words/symbols and thousands separators first, since a naive
+    ``replace(",", "")`` leaves prefixes like "Rs." in place and breaks Decimal parsing.
+    """
+    cleaned = re.sub(r"(?i)rs[.,]?|inr|usd|eur|gbp|chf|cad|aud|sgd|[\$€£₹¥,]", "", raw).strip()
     try:
-        return Decimal(raw.replace(",", ""))
+        return Decimal(cleaned)
     except (InvalidOperation, ValueError):
         return None
 
@@ -68,11 +97,41 @@ def _first_match(pattern: re.Pattern[str], text: str) -> str | None:
 def _parse_line_items(lines: list[str]) -> list[ParsedLineItem]:
     items: list[ParsedLineItem] = []
     seen: set[str] = set()
+    # Currency-prefixed token, e.g. "Rs. 799.00" — requires the prefix (used only to *detect*
+    # whether a line has 2+ separately-tagged amounts, distinct from _AMOUNT_TOKEN which allows
+    # the prefix to be optional when actually extracting values).
+    currency_tagged_token = re.compile(rf"{_CURRENCY_PREFIX}\s*[\d,]+\.\d{{2}}", re.I)
 
     for raw in lines:
         line = raw.strip()
         if not line or _SKIP_LINE.match(line):
             continue
+
+        # Rows with 2+ currency-tagged amounts (e.g. "Item 1 Rs. 799.00 Rs. 799.00" — unit price
+        # and line total both tagged) are unambiguous; check this before the older patterns below,
+        # since those patterns can greedily swallow the whole row into the description group.
+        if len(currency_tagged_token.findall(line)) >= 2:
+            m = _LINE_GENERIC.match(line)
+            if m:
+                desc, qty_s, amounts_blob = m.groups()
+                tokens = [t.group(0) for t in _AMOUNT_TOKEN.finditer(amounts_blob)]
+                if tokens:
+                    amt = _to_decimal(tokens[-1])
+                    unit_price = _to_decimal(tokens[0]) if len(tokens) > 1 else None
+                    desc = desc.replace("|", "").strip()
+                    if amt and amt > 0 and desc:
+                        key = f"{desc}:{amt}"
+                        if key not in seen:
+                            seen.add(key)
+                            items.append(
+                                ParsedLineItem(
+                                    description=desc,
+                                    quantity=float(qty_s) if qty_s else None,
+                                    unit_price=unit_price,
+                                    amount=amt,
+                                )
+                            )
+                continue
 
         m = _LINE_QTY.match(line)
         if m:
@@ -112,6 +171,29 @@ def _parse_line_items(lines: list[str]) -> list[ParsedLineItem]:
                 if key not in seen:
                     seen.add(key)
                     items.append(ParsedLineItem(description=desc.strip(), amount=amt))
+            continue
+
+        # Single currency-prefixed amount with a quantity, e.g. "Item 1 Rs. 799.00"
+        m = _LINE_GENERIC.match(line)
+        if m:
+            desc, qty_s, amounts_blob = m.groups()
+            tokens = [t.group(0) for t in _AMOUNT_TOKEN.finditer(amounts_blob)]
+            if not tokens:
+                continue
+            amt = _to_decimal(tokens[-1])
+            unit_price = _to_decimal(tokens[0]) if len(tokens) > 1 else None
+            if amt and amt > 0:
+                key = f"{desc}:{amt}"
+                if key not in seen:
+                    seen.add(key)
+                    items.append(
+                        ParsedLineItem(
+                            description=desc.strip(),
+                            quantity=float(qty_s) if qty_s else None,
+                            unit_price=unit_price,
+                            amount=amt,
+                        )
+                    )
 
     return items[:30]
 
@@ -143,13 +225,14 @@ def parse_invoice_text(
 
     line_items = _parse_line_items(lines)
 
-    # Table rows from pdfplumber use " | "
+    # Table rows from pdfplumber use " | ". OCR table detection can be inconsistent and only
+    # insert "|" on some rows, but this still helps recover rows the line-by-line parser missed.
     for line in lines:
         if " | " in line and not _SKIP_LINE.match(line):
             cells = [c.strip() for c in line.split("|")]
             if len(cells) >= 2:
-                # last cell often amount
-                amt = _to_decimal(cells[-1].replace("$", "").replace("₹", "").strip())
+                # last cell often amount; strip currency words/symbols, not just $ and ₹
+                amt = _to_decimal(cells[-1])
                 if amt and amt > 0:
                     desc = " — ".join(cells[:-1])[:120]
                     if desc and not any(i.description == desc and i.amount == amt for i in line_items):
