@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.agents.types import AgentName, AgentResult
+from app.config import settings
 from app.db.models import Transaction
 from app.ml.finmate import generate
 from app.services.spending_insights import category_delta_vs_prior_month
@@ -58,24 +59,38 @@ def run(
     if rag_context and rag_context.strip():
         rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
-    # Build enriched prompt for FinMate
-    enriched_message = (
-        f"{message}\n\n"
-        f"[User financial data]\n{data_summary}{rag_block}"
-    )
-
-    try:
-        reply = generate(enriched_message)
-    except Exception:
-        bullet = "\n".join(lines[:3]) if lines else "- No recent transactions yet."
-        reply = (
+    def _db_reply() -> str:
+        if not lines:
+            return (
+                "[AGENT: BUDGET]\n\n"
+                "I don't see any transactions in the last 30 days yet. "
+                "Import CSV from Settings or add transactions so I can analyze real spending.\n\n"
+                '{"intent":"budget_plan","steps":["Import or add transactions","Review categories","Set weekly caps"],'
+                '"tools_needed":["list_transactions"],"notes":"no transaction data"}'
+            )
+        top_lines = "\n".join(lines[:5])
+        mom_block = f"\n\n{mom}" if mom else ""
+        return (
             "[AGENT: BUDGET]\n\n"
-            "Based on your recent spending, prioritize fixed essentials first and cap variable categories weekly. "
-            "Track the top categories below and redirect at least 10-20% of avoidable spend to savings.\n\n"
-            '{"intent":"budget_plan","steps":["Review top spending categories","Set weekly category caps","Automate savings transfer"],'
-            '"tools_needed":["list_transactions","set_budget"],"notes":"fallback response"}\n'
-            f"\nRecent categories:\n{bullet}"
+            f"Here is your actual spending picture for the last 30 days (net {total_flow} {currency}):\n"
+            f"{top_lines}{mom_block}\n\n"
+            "Focus cuts on the largest absolute categories first, then set a weekly cap on the top variable line "
+            "and move a fixed amount to savings on payday.\n\n"
+            '{"intent":"budget_plan","steps":["Review top categories above","Cap largest variable category","Automate savings"],'
+            '"tools_needed":["list_transactions","set_budget"],"notes":"built from DB aggregates"}'
         )
+
+    if settings.finmate_use_llm:
+        enriched_message = (
+            f"{message}\n\n"
+            f"[User financial data]\n{data_summary}{rag_block}"
+        )
+        try:
+            reply = generate(enriched_message)
+        except Exception:
+            reply = _db_reply()
+    else:
+        reply = _db_reply()
 
     return AgentResult(
         agent=AgentName.BUDGET_PLANNER,

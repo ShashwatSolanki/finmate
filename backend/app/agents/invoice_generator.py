@@ -1,5 +1,8 @@
-"""Invoice Generator agent — parse invoice lines, prompt concrete draft + PDF handoff."""
+"""Invoice Generator — parse text/PDF-style content, structured output, PDF handoff."""
 
+from __future__ import annotations
+
+import json
 import re
 import uuid
 from decimal import Decimal, InvalidOperation
@@ -8,9 +11,109 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.agents.types import AgentName, AgentResult
+from app.config import settings
+from app.invoice.parse_invoice import parse_invoice_text
+from app.invoice.schemas import ParsedLineItem, StructuredInvoice
 from app.ml.finmate import generate
 
 _AMOUNT_LINE = re.compile(r"^\s*([\d.,]+)\s+(.+?)\s*$", re.M)
+
+
+def _parse_simple_lines(message: str) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    total = Decimal("0")
+    for m in _AMOUNT_LINE.finditer(message):
+        amt, desc = m.group(1), m.group(2).strip()
+        try:
+            val = Decimal(amt.replace(",", ""))
+        except InvalidOperation:
+            continue
+        if val <= 0:
+            continue
+        items.append({"description": desc, "amount": f"{val:.2f}"})
+        total += val
+    return items
+
+
+def _structured_from_message(message: str) -> StructuredInvoice | None:
+    """Try full invoice parse on pasted OCR/PDF text; fall back to simple line format."""
+    simple = _parse_simple_lines(message)
+    if simple and len(message.strip()) < 80:
+        line_items = [ParsedLineItem(description=x["description"], amount=Decimal(x["amount"])) for x in simple]
+        total = sum((i.amount for i in line_items), start=Decimal("0"))
+        return StructuredInvoice(line_items=line_items, total=total, currency="USD")
+
+    result = parse_invoice_text(message, source_type="text", filename="chat-message.txt")
+    if result.invoice.line_items:
+        return result.invoice
+
+    if simple:
+        line_items = [ParsedLineItem(description=x["description"], amount=Decimal(x["amount"])) for x in simple]
+        total = sum((i.amount for i in line_items), start=Decimal("0"))
+        return StructuredInvoice(line_items=line_items, total=total, currency=result.invoice.currency)
+    return None
+
+
+def _format_reply(invoice: StructuredInvoice, inv_id: str, *, source_note: str) -> str:
+    lines = [
+        f"Invoice ref: #{inv_id}",
+    ]
+    if invoice.vendor_name:
+        lines.append(f"Vendor: {invoice.vendor_name}")
+    if invoice.bill_to:
+        lines.append(f"Bill to: {invoice.bill_to}")
+    if invoice.invoice_date:
+        lines.append(f"Date: {invoice.invoice_date}")
+    lines.append("")
+    lines.append("Line items:")
+    for li in invoice.line_items[:12]:
+        qty = f" ({li.quantity} x {li.unit_price})" if li.quantity and li.unit_price else ""
+        lines.append(f"  - {li.description}{qty}: {li.amount:.2f} {invoice.currency}")
+    if invoice.subtotal is not None:
+        lines.append(f"Subtotal: {invoice.subtotal:.2f} {invoice.currency}")
+    if invoice.tax is not None:
+        lines.append(f"Tax: {invoice.tax:.2f} {invoice.currency}")
+    if invoice.total is not None:
+        lines.append(f"Total: {invoice.total:.2f} {invoice.currency}")
+
+    payload = {
+        "invoice_number": invoice.invoice_number or inv_id,
+        "invoice_date": invoice.invoice_date,
+        "due_date": invoice.due_date,
+        "vendor_name": invoice.vendor_name,
+        "bill_to": invoice.bill_to,
+        "currency": invoice.currency,
+        "line_items": [
+            {
+                "description": li.description,
+                "amount": str(li.amount),
+                **({"quantity": li.quantity} if li.quantity else {}),
+                **({"unit_price": str(li.unit_price)} if li.unit_price else {}),
+            }
+            for li in invoice.line_items
+        ],
+        "subtotal": str(invoice.subtotal) if invoice.subtotal is not None else None,
+        "tax": str(invoice.tax) if invoice.tax is not None else None,
+    }
+
+    prose = (
+        "Structured invoice data extracted. Review the fields below, then generate a PDF from Settings "
+        "(Invoice import) or POST /api/invoices/pdf/structured with this payload.\n\n"
+        + "\n".join(lines)
+    )
+
+    json_tail = json.dumps(
+        {
+            "intent": "create_invoice",
+            "steps": ["Review parsed fields", "Edit in Settings if needed", "Download PDF"],
+            "tools_needed": ["parse_invoice_upload", "render_invoice_pdf"],
+            "notes": source_note,
+            "structured": payload,
+        },
+        ensure_ascii=False,
+    )
+
+    return f"[AGENT: INVOICE]\n\n{prose}\n\n{json_tail}"
 
 
 def run(
@@ -20,84 +123,55 @@ def run(
     rag_context: str | None = None,
 ) -> AgentResult:
     _ = db
-    lines = []
-    parsed_items: list[dict[str, str]] = []
-    total = Decimal("0")
-    for m in _AMOUNT_LINE.finditer(message):
-        amt, desc = m.group(1), m.group(2).strip()
-        normalized = amt.replace(",", "")
-        try:
-            val = Decimal(normalized)
-        except InvalidOperation:
-            continue
-        if val <= 0:
-            continue
-        lines.append(f"  - {desc}: {amt}")
-        parsed_items.append({"description": desc, "amount": f"{val:.2f}"})
-        total += val
-
     inv_id = str(uuid.uuid4())[:8].upper()
+    invoice = _structured_from_message(message)
 
     rag_block = ""
     if rag_context and rag_context.strip():
         rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
-    if lines:
-        line_items_text = (
-            "Line items parsed:\n"
-            + "\n".join(lines)
-            + f"\nComputed total: {total:.2f}\n"
-            + "When replying, include a ready-to-send JSON body for POST /api/invoices/pdf "
-            + "with line_items and currency."
-        )
-    else:
-        line_items_text = (
-            "No line items detected — user can add lines like `99.00 Web design`.\n"
-            "Ask for missing client name, line items, and currency before PDF generation."
-        )
-
-    enriched = (
-        f"{message}\n\n"
-        f"[Invoice context]\n"
-        f"Invoice ref: #{inv_id}\n"
-        f"Client user ID: {user_id}\n"
-        f"{line_items_text}"
-        f"{rag_block}"
-    )
-
-    try:
-        reply = generate(enriched)
-    except Exception:
-        if parsed_items:
-            items_json = ", ".join(
-                f'{{"description":"{x["description"]}","amount":"{x["amount"]}"}}' for x in parsed_items[:8]
+    if invoice and invoice.line_items:
+        if settings.finmate_use_llm:
+            enriched = (
+                f"{message}\n\n[Parsed invoice]\n{invoice.model_dump_json()}{rag_block}"
             )
-            notes = (
-                "I parsed your line items and prepared a ready body for invoice PDF generation. "
-                "Use this payload with POST /api/invoices/pdf."
-            )
-            reply = (
-                "[AGENT: INVOICE]\n\n"
-                f"{notes}\n\n"
-                '{"intent":"create_invoice","steps":["Confirm line items","Post payload to /api/invoices/pdf","Download generated PDF"],'
-                '"tools_needed":["render_invoice_pdf"],"notes":"fallback response"}\n'
-                f'\nExample payload: {{"line_items":[{items_json}],"currency":"USD"}}'
-            )
+            try:
+                reply = generate(enriched)
+                source = "llm"
+            except Exception:
+                reply = _format_reply(invoice, inv_id, source_note="parsed from message text")
+                source = "structured_parse"
         else:
-            reply = (
-                "[AGENT: INVOICE]\n\n"
-                "Share line items in this format: `1200 Website design` on separate lines, then I will prepare a PDF-ready payload.\n\n"
-                '{"intent":"create_invoice","steps":["Collect line items","Compute totals","Generate invoice PDF"],'
-                '"tools_needed":["render_invoice_pdf"],"notes":"fallback response"}'
-            )
+            reply = _format_reply(invoice, inv_id, source_note="parsed from message text")
+            source = "structured_parse"
 
+        total = invoice.total or sum((i.amount for i in invoice.line_items), start=Decimal("0"))
+        return AgentResult(
+            agent=AgentName.INVOICE_GENERATOR,
+            reply=reply,
+            planned_steps=["parse_invoice", "structure_fields", "pdf_endpoint"],
+            metadata={
+                "invoice_ref": inv_id,
+                "parsed_items_count": str(len(invoice.line_items)),
+                "parsed_total": f"{total:.2f}",
+                "source": source,
+                "currency": invoice.currency,
+            },
+        )
+
+    upload_hint = (
+        "Upload a PDF or image invoice in Settings → Invoice import, or paste line items like:\n"
+        "  1200 Website design\n  400 SEO audit"
+    )
+    reply = (
+        "[AGENT: INVOICE]\n\n"
+        f"I could not detect invoice line items in your message. {upload_hint}\n\n"
+        '{"intent":"create_invoice","steps":["Upload PDF/image or paste line items","Review structured output","Generate PDF"],'
+        '"tools_needed":["parse_invoice_upload","render_invoice_pdf"],"notes":"no line items detected"}'
+    )
     return AgentResult(
         agent=AgentName.INVOICE_GENERATOR,
         reply=reply,
-        planned_steps=["parse_line_items", "finmate_generate", "pdf_endpoint"],
-        metadata={
-            "invoice_ref": inv_id,
-            "parsed_items_count": str(len(parsed_items)),
-            "parsed_total": f"{total:.2f}",
-        },
+        planned_steps=["collect_line_items", "parse_upload", "pdf_endpoint"],
+        metadata={"invoice_ref": inv_id, "parsed_items_count": "0", "source": "prompt"},
     )
