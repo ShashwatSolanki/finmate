@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.agents.finance_context import extract_monthly_income
 from app.agents.types import AgentName, AgentResult
 from app.config import settings
 from app.db.models import Transaction
@@ -59,12 +60,34 @@ def run(
     if rag_context and rag_context.strip():
         rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
+    income, income_currency = extract_monthly_income(message, rag_context)
+    budget_currency = income_currency or currency
+
+    def _income_budget_reply() -> str:
+        assert income is not None
+        needs = (income * Decimal("0.5")).quantize(Decimal("0.01"))
+        wants = (income * Decimal("0.3")).quantize(Decimal("0.01"))
+        savings = (income * Decimal("0.2")).quantize(Decimal("0.01"))
+        return (
+            "[AGENT: BUDGET]\n\n"
+            f"Using your stated monthly income of {income:,.2f} {budget_currency}, "
+            f"a simple 50/30/20 split gives roughly {needs:,.2f} for essentials, "
+            f"{wants:,.2f} for flexible spending, and {savings:,.2f} for savings or debt payoff.\n\n"
+            "I don't have transaction history yet, so import CSV from Settings or add expenses "
+            "when you can — then I can compare actual spending to these caps category by category.\n\n"
+            '{"intent":"budget_plan","steps":["Set caps from income split","Import transactions","Review categories weekly"],'
+            '"tools_needed":["list_transactions","set_budget"],"notes":"income-based plan; no transaction data"}'
+        )
+
     def _db_reply() -> str:
         if not lines:
+            if income is not None:
+                return _income_budget_reply()
             return (
                 "[AGENT: BUDGET]\n\n"
                 "I don't see any transactions in the last 30 days yet. "
-                "Import CSV from Settings or add transactions so I can analyze real spending.\n\n"
+                "Share your monthly income or complete onboarding, and import CSV from Settings "
+                "so I can analyze real spending.\n\n"
                 '{"intent":"budget_plan","steps":["Import or add transactions","Review categories","Set weekly caps"],'
                 '"tools_needed":["list_transactions"],"notes":"no transaction data"}'
             )
@@ -92,9 +115,16 @@ def run(
     else:
         reply = _db_reply()
 
+    agent_meta: dict[str, str] = {
+        "window_days": "30",
+        "categories_found": str(len(by_cat)),
+    }
+    if income is not None:
+        agent_meta["income_detected"] = f"{income:,.2f} {budget_currency}"
+
     return AgentResult(
         agent=AgentName.BUDGET_PLANNER,
         reply=reply,
         planned_steps=["load_transactions_30d", "aggregate_by_category", "mom_insights", "retrieve_rag", "finmate_generate"],
-        metadata={"window_days": "30", "categories_found": str(len(by_cat))},
+        metadata=agent_meta,
     )

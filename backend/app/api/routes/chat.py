@@ -302,6 +302,7 @@ def chat_message(
             role="assistant",
             content=display_reply,
             agent=result.agent.value,
+            metadata_=meta,
         )
     )
     if session.title == "New chat" or not session.title.strip():

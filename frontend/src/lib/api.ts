@@ -21,6 +21,7 @@ export type ChatMessage = {
   role: "user" | "assistant";
   content: string;
   agent: string | null;
+  metadata?: Record<string, string> | null;
   created_at: string;
 };
 

@@ -19,12 +19,12 @@ For a full file-by-file reference, see [PROJECT_DOCUMENTATION.md](./PROJECT_DOCU
 
 ## Frontend pages
 
-| Route | Purpose |
-|-------|---------|
-| `/login` | Sign in (redirects to `/chat` when authenticated) |
-| `/register` | Create account |
-| `/chat` | Main chat UI — scrollable message thread, agent selector, sidebar, **+ import** (invoice/CSV) and **↓ export** menus |
-| `/settings` | Financial onboarding profile, CSV transaction import, **PDF/image invoice import** |
+| Route       | Purpose                                                                                                              |
+| ----------- | -------------------------------------------------------------------------------------------------------------------- |
+| `/login`    | Sign in (redirects to `/chat` when authenticated)                                                                    |
+| `/register` | Create account                                                                                                       |
+| `/chat`     | Main chat UI — scrollable message thread, agent selector, sidebar, **+ import** (invoice/CSV) and **↓ export** menus |
+| `/settings` | Financial onboarding profile, CSV transaction import, **PDF/image invoice import**                                   |
 
 Conversations are stored in PostgreSQL (`chat_sessions`, `chat_messages`) and exposed via `/api/conversations`. Each chat message optionally links to a session via `session_id` on `POST /api/chat/message`.
 
@@ -42,6 +42,7 @@ React UI  →  FastAPI  →  Orchestrator
 Reply contract for every assistant turn: `[AGENT: BUDGET|INVESTMENT|INVOICE]` tag, natural-language prose, then a valid JSON line.
 
 **Default agent behavior (without `FINMATE_USE_LLM`):**
+
 - **Investment** — live Yahoo Finance quotes (last close, 20-day SMA, ranges); personalized allocation from onboarding when no ticker is confirmed. Ticker detection is case-sensitive (`MSFT` yes, lowercase “right” no).
 - **Budget** — real transaction aggregates and month-over-month deltas from PostgreSQL.
 - **Invoice** — parsed line items from your message.
@@ -97,7 +98,7 @@ python -m venv .venv
 # Windows:
 .venv\Scripts\pip install -r requirements.txt
 copy .env.example .env
-.venv\Scripts\uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+.venv/Scripts/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Set **`JWT_SECRET`** in `backend/.env` to a long random string for production.
@@ -158,10 +159,10 @@ Open [http://127.0.0.1:5173](http://127.0.0.1:5173). You will land on `/login` i
 
 In the chat composer:
 
-| Control | Action |
-|---------|--------|
-| **+** | Upload an **invoice PDF or image** (OCR + structured parse, then sent to the Invoice agent) or pick a **transactions CSV** file to import |
-| **↓** | **Download transactions (CSV)** from your account, or **download the current conversation** as a `.txt` file |
+| Control | Action                                                                                                                                    |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **+**   | Upload an **invoice PDF or image** (OCR + structured parse, then sent to the Invoice agent) or pick a **transactions CSV** file to import |
+| **↓**   | **Download transactions (CSV)** from your account, or **download the current conversation** as a `.txt` file                              |
 
 You can also use **Settings** for onboarding, CSV paste import, and full invoice editing with PDF regeneration.
 
@@ -176,12 +177,12 @@ In **Settings → Invoice import**:
 
 API (Bearer token required):
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /api/invoices/parse` | Multipart file upload → `ParseInvoiceResult` JSON |
-| `POST /api/invoices/pdf` | JSON line items (+ optional header fields) → PDF bytes |
-| `POST /api/invoices/pdf/structured` | Full `StructuredInvoice` body → PDF bytes |
-| `GET /api/transactions/export/csv` | Download all transactions as CSV |
+| Endpoint                            | Purpose                                                |
+| ----------------------------------- | ------------------------------------------------------ |
+| `POST /api/invoices/parse`          | Multipart file upload → `ParseInvoiceResult` JSON      |
+| `POST /api/invoices/pdf`            | JSON line items (+ optional header fields) → PDF bytes |
+| `POST /api/invoices/pdf/structured` | Full `StructuredInvoice` body → PDF bytes              |
+| `GET /api/transactions/export/csv`  | Download all transactions as CSV                       |
 
 **Image OCR** uses [Tesseract](https://github.com/tesseract-ocr/tesseract) via `pytesseract`. Install Tesseract on your system. FinMate auto-detects common Windows install paths (`C:\Program Files\Tesseract-OCR\tesseract.exe`). If OCR still fails, set in `backend/.env`:
 
@@ -203,28 +204,28 @@ In chat, paste invoice text or line items (`1200 Web design`) — the invoice ag
 
 ## Project layout
 
-| Path | Purpose |
-|------|--------|
-| `backend/app/main.py` | FastAPI app, CORS, DB init |
-| `backend/app/agents/orchestrator.py` | Hybrid routing + optional LLM |
-| `backend/app/agents/intent.py` | Keyword + embedding intent classifier |
-| `backend/app/agents/budget_planner.py` | Spending aggregates and insights |
-| `backend/app/agents/investment_analyser.py` | Tickers, yfinance, allocation |
-| `backend/app/agents/invoice_generator.py` | Line items and invoice guidance |
-| `backend/app/ml/finmate.py` | Local LoRA load/generate/postprocess |
-| `backend/app/rag/memory_store.py` | Embedding similarity over `MemoryChunk` |
-| `backend/app/api/routes/chat.py` | Chat, context injection, reply contract, session persistence |
-| `backend/app/api/routes/conversations.py` | List/create/delete conversations and messages |
-| `backend/app/services/market_data.py` | Yahoo Finance client (`curl_cffi` session) |
-| `backend/scripts/evaluate_chat.py` | Held-out routing/format evaluation |
-| `frontend/src/pages/ChatPage.tsx` | Chat thread + sidebar + import/export menus |
-| `frontend/src/components/ChatComposerMenu.tsx` | **+** import and **↓** export menus in chat |
-| `frontend/src/pages/SettingsPage.tsx` | Onboarding, CSV import, PDF |
-| `frontend/src/pages/LoginPage.tsx` | Login |
-| `frontend/src/pages/RegisterPage.tsx` | Registration |
-| `frontend/src/App.tsx` | React Router routes |
-| `PROJECT_DOCUMENTATION.md` | Detailed backend/frontend reference |
-| `work_division.md` | Capstone report section outline |
+| Path                                           | Purpose                                                      |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| `backend/app/main.py`                          | FastAPI app, CORS, DB init                                   |
+| `backend/app/agents/orchestrator.py`           | Hybrid routing + optional LLM                                |
+| `backend/app/agents/intent.py`                 | Keyword + embedding intent classifier                        |
+| `backend/app/agents/budget_planner.py`         | Spending aggregates and insights                             |
+| `backend/app/agents/investment_analyser.py`    | Tickers, yfinance, allocation                                |
+| `backend/app/agents/invoice_generator.py`      | Line items and invoice guidance                              |
+| `backend/app/ml/finmate.py`                    | Local LoRA load/generate/postprocess                         |
+| `backend/app/rag/memory_store.py`              | Embedding similarity over `MemoryChunk`                      |
+| `backend/app/api/routes/chat.py`               | Chat, context injection, reply contract, session persistence |
+| `backend/app/api/routes/conversations.py`      | List/create/delete conversations and messages                |
+| `backend/app/services/market_data.py`          | Yahoo Finance client (`curl_cffi` session)                   |
+| `backend/scripts/evaluate_chat.py`             | Held-out routing/format evaluation                           |
+| `frontend/src/pages/ChatPage.tsx`              | Chat thread + sidebar + import/export menus                  |
+| `frontend/src/components/ChatComposerMenu.tsx` | **+** import and **↓** export menus in chat                  |
+| `frontend/src/pages/SettingsPage.tsx`          | Onboarding, CSV import, PDF                                  |
+| `frontend/src/pages/LoginPage.tsx`             | Login                                                        |
+| `frontend/src/pages/RegisterPage.tsx`          | Registration                                                 |
+| `frontend/src/App.tsx`                         | React Router routes                                          |
+| `PROJECT_DOCUMENTATION.md`                     | Detailed backend/frontend reference                          |
+| `work_division.md`                             | Capstone report section outline                              |
 
 ## Troubleshooting
 
