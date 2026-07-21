@@ -421,6 +421,60 @@ button:disabled {
   margin-bottom: 0.35rem;
 }
 
+.message-metadata {
+  margin-top: 0.65rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.5rem;
+  font-size: 0.78rem;
+}
+
+.message-metadata summary {
+  cursor: pointer;
+  color: var(--teal);
+  font-weight: 600;
+  user-select: none;
+  list-style: none;
+}
+
+.message-metadata summary::-webkit-details-marker {
+  display: none;
+}
+
+.message-metadata summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.message-metadata[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.message-metadata dl {
+  margin: 0.5rem 0 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.message-metadata-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 40%) 1fr;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.message-metadata dt {
+  margin: 0;
+  color: #64748b;
+  font-weight: 500;
+}
+
+.message-metadata dd {
+  margin: 0;
+  color: #334155;
+  word-break: break-word;
+}
+
 .bubble.typing {
   display: flex;
   gap: 0.35rem;
