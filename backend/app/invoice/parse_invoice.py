@@ -65,6 +65,27 @@ _SKIP_LINE = re.compile(
     re.I,
 )
 
+_DEDUP_STRIP_AMOUNT = re.compile(rf"{_CURRENCY_PREFIX}\s*[\d,]+\.\d{{2}}", re.I)
+_DEDUP_STRIP_BARE_AMOUNT = re.compile(r"\b[\d,]+\.\d{2}\b")
+_DEDUP_SEPARATORS = re.compile(r"[\u2014\u2013|]")  # em dash, en dash, pipe
+_DEDUP_TRAILING_QTY = re.compile(r"\s+\d+(?:\.\d+)?$")
+
+
+def _normalize_desc_for_dedup(desc: str) -> str:
+    """Collapse different renderings of the same line item to one dedup key.
+
+    The same row can show up as "Wireless Mouse" (clean match), "Wireless Mouse 1 Rs. 799.00"
+    (qty/price still embedded by a looser pattern), or "Wireless Mouse — 1 — Rs. 799.00" (the
+    pdfplumber table-cell fallback, dash-joined) — all for the identical item. Without
+    normalizing first, each rendering gets its own dedup key and the same item is added 2-3 times.
+    """
+    s = _DEDUP_STRIP_AMOUNT.sub("", desc)
+    s = _DEDUP_STRIP_BARE_AMOUNT.sub("", s)
+    s = _DEDUP_SEPARATORS.sub(" ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    s = _DEDUP_TRAILING_QTY.sub("", s).strip()
+    return s.lower()
+
 
 def _to_decimal(raw: str) -> Decimal | None:
     """Convert a numeric/currency string like 'Rs. 2,499.00' or '$1,234.56' to Decimal.
@@ -120,7 +141,7 @@ def _parse_line_items(lines: list[str]) -> list[ParsedLineItem]:
                     unit_price = _to_decimal(tokens[0]) if len(tokens) > 1 else None
                     desc = desc.replace("|", "").strip()
                     if amt and amt > 0 and desc:
-                        key = f"{desc}:{amt}"
+                        key = f"{_normalize_desc_for_dedup(desc)}:{amt}"
                         if key not in seen:
                             seen.add(key)
                             items.append(
@@ -138,7 +159,7 @@ def _parse_line_items(lines: list[str]) -> list[ParsedLineItem]:
             desc, qty_s, unit_s, amt_s = m.groups()
             amt = _to_decimal(amt_s)
             if amt and amt > 0:
-                key = f"{desc}:{amt}"
+                key = f"{_normalize_desc_for_dedup(desc)}:{amt}"
                 if key not in seen:
                     seen.add(key)
                     items.append(
@@ -156,7 +177,7 @@ def _parse_line_items(lines: list[str]) -> list[ParsedLineItem]:
             desc, amt_s = m.groups()
             amt = _to_decimal(amt_s)
             if amt and amt > 0 and not _TOTAL.match(line):
-                key = f"{desc}:{amt}"
+                key = f"{_normalize_desc_for_dedup(desc)}:{amt}"
                 if key not in seen:
                     seen.add(key)
                     items.append(ParsedLineItem(description=desc.strip(), amount=amt))
@@ -167,7 +188,7 @@ def _parse_line_items(lines: list[str]) -> list[ParsedLineItem]:
             amt_s, desc = m.groups()
             amt = _to_decimal(amt_s)
             if amt and amt > 0:
-                key = f"{desc}:{amt}"
+                key = f"{_normalize_desc_for_dedup(desc)}:{amt}"
                 if key not in seen:
                     seen.add(key)
                     items.append(ParsedLineItem(description=desc.strip(), amount=amt))
@@ -183,7 +204,7 @@ def _parse_line_items(lines: list[str]) -> list[ParsedLineItem]:
             amt = _to_decimal(tokens[-1])
             unit_price = _to_decimal(tokens[0]) if len(tokens) > 1 else None
             if amt and amt > 0:
-                key = f"{desc}:{amt}"
+                key = f"{_normalize_desc_for_dedup(desc)}:{amt}"
                 if key not in seen:
                     seen.add(key)
                     items.append(
@@ -227,6 +248,7 @@ def parse_invoice_text(
 
     # Table rows from pdfplumber use " | ". OCR table detection can be inconsistent and only
     # insert "|" on some rows, but this still helps recover rows the line-by-line parser missed.
+    existing_keys = {f"{_normalize_desc_for_dedup(i.description)}:{i.amount}" for i in line_items}
     for line in lines:
         if " | " in line and not _SKIP_LINE.match(line):
             cells = [c.strip() for c in line.split("|")]
@@ -235,7 +257,9 @@ def parse_invoice_text(
                 amt = _to_decimal(cells[-1])
                 if amt and amt > 0:
                     desc = " — ".join(cells[:-1])[:120]
-                    if desc and not any(i.description == desc and i.amount == amt for i in line_items):
+                    key = f"{_normalize_desc_for_dedup(desc)}:{amt}"
+                    if desc and key not in existing_keys:
+                        existing_keys.add(key)
                         line_items.append(ParsedLineItem(description=desc, amount=amt))
 
     subtotal = _to_decimal(_first_match(_SUBTOTAL, normalized) or "")

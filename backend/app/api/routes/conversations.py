@@ -37,9 +37,21 @@ class MessageOut(BaseModel):
     role: str
     content: str
     agent: str | None
+    metadata: dict[str, str] | None = None
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    @classmethod
+    def from_row(cls, row: ChatMessage) -> "MessageOut":
+        raw = row.metadata_
+        metadata = {str(k): str(v) for k, v in raw.items()} if isinstance(raw, dict) else None
+        return cls(
+            id=row.id,
+            role=row.role,
+            content=row.content,
+            agent=row.agent,
+            metadata=metadata,
+            created_at=row.created_at,
+        )
 
 
 def _session_for_user(db: Session, user_id: uuid.UUID, session_id: uuid.UUID) -> ChatSession:
@@ -150,4 +162,4 @@ def list_messages(
         .where(ChatMessage.session_id == session_id)
         .order_by(ChatMessage.created_at.asc())
     ).all()
-    return list(rows)
+    return [MessageOut.from_row(row) for row in rows]
