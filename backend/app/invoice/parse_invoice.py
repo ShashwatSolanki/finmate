@@ -61,7 +61,7 @@ _TAX = re.compile(
 )
 
 _SKIP_LINE = re.compile(
-    r"^(invoice|bill\s*to|ship\s*to|description|qty|quantity|amount|unit\s*price|subtotal|total|tax|vat|gst|notes?|payment)\b",
+    r"^(invoice|bill\s*to|ship\s*to|description|qty|quantity|amount|unit\s*price|subtotal|total|tax|vat|(?:c|s|i)?gst|notes?|payment)\b",
     re.I,
 )
 
@@ -236,6 +236,10 @@ def parse_invoice_text(
 ) -> ParseInvoiceResult:
     warnings = list(warnings or [])
     normalized = text.replace("\r", "\n")
+    # Tesseract commonly turns a small ₹ glyph into a lowercase "n" (as in
+    # "n1,499.00"). Only replace it when it directly prefixes a money value,
+    # never in ordinary prose such as vendor names or descriptions.
+    normalized = re.sub(r"(?<![A-Za-z])n\s*(?=\d[\d,]*\.\d{2}\b)", "₹", normalized)
     lines = [ln.strip() for ln in normalized.split("\n") if ln.strip()]
 
     currency = _detect_currency(normalized)
@@ -263,7 +267,10 @@ def parse_invoice_text(
                         line_items.append(ParsedLineItem(description=desc, amount=amt))
 
     subtotal = _to_decimal(_first_match(_SUBTOTAL, normalized) or "")
-    tax = _to_decimal(_first_match(_TAX, normalized) or "")
+    # Indian invoices frequently split GST into CGST and SGST. They belong in
+    # one tax total, never as invoice line items.
+    tax_values = [_to_decimal(m.group(1)) for m in _TAX.finditer(normalized)]
+    tax = sum((value for value in tax_values if value is not None), start=Decimal("0")) or None
     total_matches = [_to_decimal(m.group(1)) for m in _TOTAL.finditer(normalized)]
     total_matches = [t for t in total_matches if t is not None]
     total = total_matches[-1] if total_matches else None

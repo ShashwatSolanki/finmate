@@ -130,6 +130,19 @@ def _pdf_text_pdfplumber(data: bytes) -> str:
     return "\n".join(parts).strip()
 
 
+def _pdf_text_pypdf(data: bytes) -> str:
+    """A lightweight second extractor for PDFs pdfplumber cannot open cleanly."""
+    from pypdf import PdfReader
+
+    reader = PdfReader(io.BytesIO(data), strict=False)
+    if reader.is_encrypted:
+        # Some invoice portals encrypt with an empty password. Try it before reporting
+        # a useful, actionable error instead of returning an empty OCR result.
+        if reader.decrypt("") == 0:
+            raise ValueError("This PDF is password protected. Export an unlocked copy and try again.")
+    return "\n".join((page.extract_text() or "") for page in reader.pages[:10]).strip()
+
+
 def _pdf_ocr_fallback(data: bytes) -> str:
     try:
         import fitz  # pymupdf
@@ -139,11 +152,14 @@ def _pdf_ocr_fallback(data: bytes) -> str:
     parts: list[str] = []
     try:
         doc = fitz.open(stream=data, filetype="pdf")
-        for page in doc[:5]:
+        for page in list(doc)[:5]:
             pix = page.get_pixmap(dpi=250)
-            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+            mode = "RGBA" if pix.alpha else "RGB"
+            img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
             parts.append(_ocr_image(img))
         doc.close()
+    except RuntimeError:
+        raise
     except Exception as exc:
         logger.debug("PDF OCR fallback failed: %s", exc)
     return "\n".join(parts).strip()
@@ -151,6 +167,8 @@ def _pdf_ocr_fallback(data: bytes) -> str:
 
 def extract_text_from_pdf(data: bytes) -> tuple[str, list[str]]:
     warnings: list[str] = []
+    if not data.startswith(b"%PDF-"):
+        raise ValueError("The uploaded file is not a valid PDF.")
     text = ""
     try:
         text = _pdf_text_pdfplumber(data)
@@ -158,8 +176,24 @@ def extract_text_from_pdf(data: bytes) -> tuple[str, list[str]]:
         warnings.append(f"pdfplumber extraction failed: {exc!s}")
 
     if len(text) < 40:
+        try:
+            pypdf_text = _pdf_text_pypdf(data)
+            if len(pypdf_text) > len(text):
+                text = pypdf_text
+                warnings.append("Used compatibility PDF text extraction.")
+        except ValueError:
+            raise
+        except Exception as exc:
+            warnings.append(f"compatibility PDF extraction failed: {exc!s}")
+
+    if len(text) < 40:
         warnings.append("Little or no embedded text — trying OCR on PDF pages.")
-        ocr_text = _pdf_ocr_fallback(data)
+        try:
+            ocr_text = _pdf_ocr_fallback(data)
+        except RuntimeError:
+            # OCR installation errors must reach the API rather than becoming a
+            # misleading "no text" result.
+            raise
         if ocr_text:
             text = ocr_text
         elif not text:

@@ -11,7 +11,7 @@ from app.agents.finance_context import extract_monthly_income
 from app.agents.types import AgentName, AgentResult
 from app.config import settings
 from app.db.models import Transaction
-from app.ml.finmate import generate
+from app.ml.finmate import finalize_llm_reply, generate, llm_available
 from app.services.spending_insights import category_delta_vs_prior_month
 
 
@@ -103,13 +103,19 @@ def run(
             '"tools_needed":["list_transactions","set_budget"],"notes":"built from DB aggregates"}'
         )
 
-    if settings.finmate_use_llm:
+    if settings.finmate_use_llm and llm_available():
         enriched_message = (
             f"{message}\n\n"
             f"[User financial data]\n{data_summary}{rag_block}"
         )
         try:
-            reply = generate(enriched_message)
+            reply = finalize_llm_reply(
+                generate(
+                    enriched_message
+                    + "\n\nThis is the BUDGET specialist flow. Start with exactly [AGENT: BUDGET] and use the financial data above.",
+                    json_tools_fallback=["list_transactions", "set_budget"],
+                )
+            )
         except Exception:
             reply = _db_reply()
     else:
