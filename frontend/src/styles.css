@@ -803,3 +803,153 @@ button:disabled {
     display: none;
   }
 }
+
+/* Visual refresh: richer financial workspace, deliberately layered but calm. */
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #182038;
+  background: #eef2ff;
+  --teal: #5b4bdb;
+  --teal-dark: #4535c7;
+  --border: #e4e7f1;
+  --muted: #6c7489;
+  --sidebar-bg: #171a35;
+  --sidebar-text: #f5f5ff;
+}
+
+body {
+  background:
+    radial-gradient(circle at 87% 8%, rgba(123, 97, 255, .16), transparent 22rem),
+    radial-gradient(circle at 15% 88%, rgba(41, 201, 168, .12), transparent 24rem),
+    #f7f8fc;
+}
+
+input, textarea, select {
+  border-color: #dce0ed;
+  border-radius: 12px;
+  padding: .68rem .8rem;
+  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+input:focus, textarea:focus, select:focus {
+  outline: 0;
+  border-color: #7869ed;
+  box-shadow: 0 0 0 4px rgba(91, 75, 219, .12);
+}
+
+.btn-primary, .btn-secondary, .btn-ghost, .btn-new-chat {
+  border-radius: 12px;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #6958e7, #4d3bc5);
+  box-shadow: 0 6px 15px rgba(77, 59, 197, .22);
+}
+
+.btn-primary:hover:not(:disabled), .btn-secondary:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  color: #312d53;
+  border-color: #dfe2ef;
+  background: #fff;
+  box-shadow: 0 2px 7px rgba(29, 35, 74, .04);
+}
+
+.brand-mark {
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #8b7cff, #5540d5);
+  box-shadow: 0 7px 18px rgba(105, 88, 231, .32);
+}
+
+.sidebar {
+  background: linear-gradient(180deg, #1b1e40 0%, #12152c 100%);
+  border-right: 0;
+  box-shadow: 12px 0 38px rgba(20, 23, 54, .08);
+}
+
+.sidebar-header { padding: 1.35rem 1rem 1.1rem; border-color: rgba(255,255,255,.08); }
+.sidebar-brand { gap: .72rem; font-weight: 750; letter-spacing: -.02em; }
+.btn-new-chat { border: 1px solid rgba(173, 164, 255, .4); background: rgba(117, 99, 238, .2); padding: .68rem .75rem; }
+.btn-new-chat:hover { background: #6653dc; }
+.sidebar-section-label { padding-top: 1.1rem; color: #aaaed1; }
+.conversation-item { margin-bottom: .25rem; border-radius: 11px; }
+.conversation-item.active, .conversation-item:hover { background: rgba(255,255,255,.1); }
+.conversation-btn { padding: .64rem .68rem; }
+.sidebar-footer { border-color: rgba(255,255,255,.08); padding: .9rem; }
+.sidebar-link { border-radius: 10px; padding: .62rem .68rem; }
+
+.chat-main { background: transparent; }
+.chat-header { padding: 1.15rem 1.7rem; border: 0; background: rgba(255,255,255,.76); backdrop-filter: blur(18px); }
+.chat-header h2 { font-size: 1.25rem; letter-spacing: -.03em; }
+.agent-select { border-radius: 10px; background: #f7f7fc; }
+.chat-thread { padding: 1.8rem clamp(1rem, 5vw, 5.5rem); gap: 1rem; }
+.chat-empty { background: rgba(255,255,255,.76); border: 1px solid rgba(223,226,239,.9); border-radius: 24px; padding: 2rem; box-shadow: 0 14px 36px rgba(37,44,92,.06); }
+.chat-empty h3 { font-size: 1.45rem; letter-spacing: -.04em; }
+.bubble { padding: .9rem 1.1rem; border-radius: 18px; box-shadow: 0 5px 17px rgba(40,48,93,.05); }
+.bubble.user { background: linear-gradient(135deg, #6e5de9, #5140cb); border-bottom-right-radius: 5px; }
+.bubble.assistant { border-color: rgba(226,229,240,.9); background: rgba(255,255,255,.92); border-bottom-left-radius: 5px; }
+.agent-badge { color: #6554dc; }
+.chat-composer { margin: 0 clamp(.65rem, 3vw, 2.5rem) 1.2rem; padding: .7rem; border: 1px solid rgba(223,226,239,.95); border-radius: 18px; background: rgba(255,255,255,.9); box-shadow: 0 12px 36px rgba(37,44,92,.1); }
+.chat-composer textarea { border: 0; box-shadow: none; padding: .65rem .35rem; }
+.chat-composer textarea:focus { box-shadow: none; }
+.composer-icon-btn { border-radius: 11px; border: 0; background: #f2f1fb; color: #5140cb; }
+.composer-icon-btn:hover:not(:disabled) { background: #e8e5fb; border: 0; }
+.composer-menu { border-radius: 14px; padding: .45rem; box-shadow: 0 15px 36px rgba(24,32,56,.16); }
+
+/* Settings is its own scroll container because the application root is intentionally fixed for chat. */
+.settings-page {
+  height: 100dvh;
+  overflow-y: auto;
+  max-width: none;
+  padding: 2rem clamp(1rem, 5vw, 5rem) 3.5rem;
+  background: radial-gradient(circle at 85% 5%, rgba(118,99,238,.14), transparent 25rem), #f8f9fe;
+  scrollbar-gutter: stable;
+}
+.settings-page::-webkit-scrollbar, .chat-thread::-webkit-scrollbar, .conversation-list::-webkit-scrollbar { width: 10px; }
+.settings-page::-webkit-scrollbar-thumb, .chat-thread::-webkit-scrollbar-thumb, .conversation-list::-webkit-scrollbar-thumb { background: #c9cce0; border: 3px solid transparent; background-clip: padding-box; border-radius: 20px; }
+.settings-header { max-width: 1120px; margin: 0 auto; }
+.settings-header h1 { font-size: clamp(2rem, 4vw, 2.8rem); letter-spacing: -.06em; margin-top: .8rem; }
+.back-link { display: inline-flex; align-items: center; color: #5b4bdb; font-weight: 650; }
+.settings-grid { max-width: 1120px; margin: 2rem auto 0; gap: 1.15rem; }
+.settings-card { border: 1px solid rgba(225,228,240,.9); border-radius: 20px; padding: 1.45rem; box-shadow: 0 10px 28px rgba(37,44,92,.055); }
+.settings-card h2 { font-size: 1.15rem; letter-spacing: -.025em; }
+.invoice-card { background: linear-gradient(135deg, #fff 0%, #faf9ff 100%); }
+.invoice-structured { border-color: #e6e4f4; }
+.invoice-create-form { margin-top: 1.25rem; padding: 1.15rem 0 0; }
+.invoice-line-editor { display: grid; gap: .5rem; margin-top: .75rem; }
+.invoice-line-row { display: grid; grid-template-columns: minmax(0, 1fr) 10rem 2.3rem; gap: .5rem; align-items: center; }
+.invoice-table-wrap { overflow-x: auto; margin-top: 1.1rem; border: 1px solid #e6e4f4; border-radius: 14px; }
+.invoice-editor-table { width: 100%; min-width: 670px; border-collapse: collapse; }
+.invoice-editor-table th { padding: .6rem .7rem; text-align: left; color: #6b668d; background: #f7f6fd; font-size: .76rem; letter-spacing: .04em; text-transform: uppercase; }
+.invoice-editor-table td { padding: .4rem; border-top: 1px solid #ebeaf4; }
+.invoice-editor-table input { border-color: transparent; background: transparent; box-shadow: none; }
+.invoice-editor-table input:focus { border-color: #b7aff6; background: #fff; box-shadow: 0 0 0 3px rgba(91,75,219,.1); }
+.invoice-totals-editor { display: flex; justify-content: flex-end; gap: 2rem; align-items: end; margin-top: 1rem; }
+.invoice-totals-editor > label { width: min(15rem, 42%); margin: 0; }
+.invoice-totals-editor dl { width: min(19rem, 52%); margin: 0; }
+.invoice-totals-editor dl div { display: flex; justify-content: space-between; padding: .35rem 0; color: #596078; }
+.invoice-totals-editor dt, .invoice-totals-editor dd { margin: 0; }
+.invoice-totals-editor .grand-total { margin-top: .3rem; padding-top: .6rem; border-top: 1px solid #dcd9ee; color: #282148; font-size: 1.05rem; font-weight: 750; }
+.btn-icon { width: 2.3rem; height: 2.3rem; border: 0; border-radius: 10px; background: #fff0f1; color: #b52a46; cursor: pointer; font-size: 1.3rem; }
+.parsed-invoice-details { border: 1px dashed #cfc9fa; border-radius: 14px; padding: .9rem; }
+.parsed-invoice-details summary { cursor: pointer; color: #5646cf; font-weight: 700; }
+.invoice-export-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .9rem; padding-top: .75rem; border-top: 1px solid var(--border); }
+.invoice-export-actions span { margin-right: .15rem; color: var(--muted); font-size: .84rem; font-weight: 650; }
+.invoice-export-actions .sm { padding: .42rem .65rem; font-size: .8rem; }
+
+@media (max-width: 620px) {
+  .chat-header { padding: 1rem; }
+  .chat-header-actions .agent-select { max-width: 8rem; }
+  .chat-thread { padding: 1rem; }
+  .chat-composer { margin: 0 .65rem .65rem; border-radius: 15px; }
+  .chat-composer .btn-primary { min-width: 3rem; padding: .65rem; font-size: 0; }
+  .chat-composer .btn-primary::after { content: "↑"; font-size: 1rem; }
+  .invoice-line-row { grid-template-columns: minmax(0, 1fr) 5.6rem 2.3rem; }
+  .invoice-totals-editor { align-items: stretch; flex-direction: column; gap: .8rem; }
+  .invoice-totals-editor > label, .invoice-totals-editor dl { width: 100%; }
+}

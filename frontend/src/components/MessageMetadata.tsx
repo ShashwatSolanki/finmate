@@ -18,7 +18,7 @@ type Props = {
 };
 
 export default function MessageMetadata({ metadata }: Props) {
-  const entries = Object.entries(metadata).filter(([, value]) => value !== "");
+  const entries = Object.entries(metadata).filter(([key, value]) => value !== "" && key !== "invoice_payload" && key !== "invoice_actions");
 
   if (entries.length === 0) return null;
 
