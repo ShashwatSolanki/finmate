@@ -42,21 +42,32 @@ def run_turn(
     """
     If `settings.finmate_use_llm` and LoRA weights exist, run the local model once
     (same format as training: tag + prose + JSON tail). Otherwise route to rule-based agents.
-    Forced `agent` skips the LLM and uses the matching specialist (DB/tools/yfinance).
+    A forced Budget selection still uses the trained model; other forced specialists
+    retain their deterministic/tool-backed flows.
     """
     chosen: AgentName | None = agent
+    # Invoice creation is structured work with deterministic exports. Route it
+    # before the general chat model so the UI receives a usable invoice payload.
+    if chosen is None and classify_agent(user_message) == AgentName.INVOICE_GENERATOR:
+        chosen = AgentName.INVOICE_GENERATOR
     # Skip embedding-based intent when we may handle the turn with the local LLM (saves loading MiniLM).
     if chosen is None and not (settings.finmate_use_llm and agent is None):
         chosen = classify_agent(user_message)
 
-    if settings.finmate_use_llm and agent is None:
+    if settings.finmate_use_llm and chosen in (None, AgentName.BUDGET_PLANNER):
         try:
             from app.ml import finmate
 
             if not finmate.llm_available():
                 logger.warning("FINMATE_USE_LLM is on but no adapter weights found; using rule-based agents.")
             else:
-                prompt = _compose_llm_user_message(user_message, rag_context)
+                budget_instruction = (
+                    "\n\nThis is the BUDGET specialist flow. Start with exactly [AGENT: BUDGET] "
+                    "and give a concrete, personalized budget response."
+                    if agent == AgentName.BUDGET_PLANNER
+                    else ""
+                )
+                prompt = _compose_llm_user_message(user_message, rag_context) + budget_instruction
                 reply = finmate.finalize_llm_reply(finmate.generate(prompt))
                 route = finmate.route_key_from_reply(reply)
                 agent_enum = _ROUTE_TO_AGENT.get(route, AgentName.BUDGET_PLANNER)

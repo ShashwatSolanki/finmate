@@ -1,4 +1,6 @@
 import uuid
+import csv
+import io
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -36,6 +38,60 @@ class InvoicePdfBody(BaseModel):
     tax: Decimal | None = None
 
 
+def _csv_decimal(value: str | None) -> Decimal | None:
+    raw = (value or "").strip().replace(",", "").replace("₹", "")
+    if not raw:
+        return None
+    try:
+        return Decimal(raw)
+    except Exception:
+        return None
+
+
+def _csv_invoice(data: bytes, filename: str) -> ParseInvoiceResult:
+    """Convert the common one-row-per-item invoice CSV format into one invoice."""
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = data.decode("latin-1")
+    reader = csv.DictReader(io.StringIO(text))
+    headers = {str(h or "").strip().lower() for h in (reader.fieldnames or [])}
+    if not {"item", "amount"}.issubset(headers):
+        raise ValueError("This CSV is not an invoice format. Expected at least item and amount columns.")
+    rows = list(reader)
+    if not rows:
+        raise ValueError("The invoice CSV has no data rows.")
+    first = {str(k or "").strip().lower(): v for k, v in rows[0].items()}
+    items: list[ParsedLineItem] = []
+    for index, row in enumerate(rows, start=2):
+        record = {str(k or "").strip().lower(): v for k, v in row.items()}
+        description = (record.get("item") or "").strip()
+        amount = _csv_decimal(record.get("amount"))
+        if not description or amount is None:
+            raise ValueError(f"Invoice CSV row {index} needs both item and amount.")
+        quantity_raw = _csv_decimal(record.get("quantity"))
+        unit_price = _csv_decimal(record.get("unit_price"))
+        items.append(ParsedLineItem(description=description, amount=amount, quantity=float(quantity_raw) if quantity_raw is not None else None, unit_price=unit_price))
+    cgst = _csv_decimal(first.get("cgst")) or Decimal("0")
+    sgst = _csv_decimal(first.get("sgst")) or Decimal("0")
+    tax = cgst + sgst
+    subtotal = _csv_decimal(first.get("subtotal")) or sum((item.amount for item in items), start=Decimal("0"))
+    total = _csv_decimal(first.get("total")) or subtotal + tax
+    invoice = StructuredInvoice(
+        invoice_number=(first.get("invoice_no") or first.get("invoice_number") or None),
+        invoice_date=first.get("invoice_date") or None,
+        vendor_name=first.get("seller") or first.get("vendor") or None,
+        bill_to=first.get("buyer") or first.get("bill_to") or None,
+        currency=(first.get("currency") or "USD").upper(),
+        line_items=items,
+        subtotal=subtotal,
+        tax=tax or None,
+        total=total,
+        notes="Imported from invoice CSV",
+    )
+    return ParseInvoiceResult(source_type="csv", filename=filename, confidence="high", extracted_text_preview=text[:2000], invoice=invoice)
+
+
 def _structured_from_body(body: InvoicePdfBody) -> StructuredInvoice:
     items = [
         ParsedLineItem(
@@ -46,7 +102,8 @@ def _structured_from_body(body: InvoicePdfBody) -> StructuredInvoice:
         )
         for li in body.line_items
     ]
-    total = sum((i.amount for i in items), start=Decimal("0"))
+    subtotal = body.subtotal if body.subtotal is not None else sum((i.amount for i in items), start=Decimal("0"))
+    total = subtotal + (body.tax or Decimal("0"))
     return StructuredInvoice(
         invoice_number=body.invoice_number,
         invoice_date=body.invoice_date,
@@ -55,7 +112,7 @@ def _structured_from_body(body: InvoicePdfBody) -> StructuredInvoice:
         bill_to=body.bill_to,
         currency=body.currency,
         line_items=items,
-        subtotal=body.subtotal,
+        subtotal=subtotal,
         tax=body.tax,
         total=total,
     )
@@ -91,11 +148,24 @@ async def parse_invoice_upload(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Could not extract text from this file. Try a clearer scan or a text-based PDF.",
         )
-    print("=== OCR TEXT ===")
-    print(repr(text))
-    print("=== END OCR TEXT ===")
-
     return parse_invoice_text(text, source_type=source_type, filename=filename, warnings=warnings)
+
+
+@router.post("/parse/csv", response_model=ParseInvoiceResult)
+async def parse_invoice_csv_upload(
+    file: UploadFile = File(...),
+    current: User = Depends(get_current_user),
+) -> ParseInvoiceResult:
+    _ = current
+    data = await file.read()
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 12 MB).")
+    if not data:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
+    try:
+        return _csv_invoice(data, file.filename or "invoice.csv")
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
 
 @router.post("/pdf")

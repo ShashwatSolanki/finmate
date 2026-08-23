@@ -24,8 +24,9 @@ class Settings(BaseSettings):
 
     # FinMate QLoRA: folder containing adapter_config.json + adapter_model.safetensors (or a checkpoint-* subfolder with weights)
     finmate_lora_path: str = "app/ml/finmate-lora"
-    # If true, chat uses the local LLM in app/ml/finmate.py; otherwise rule-based agents only
-    finmate_use_llm: bool = False
+    # Use the bundled trained adapter by default. If weights or runtime dependencies are
+    # unavailable, the orchestrator safely falls back to the specialist rules.
+    finmate_use_llm: bool = True
     finmate_max_new_tokens: int = 256
 
     # Path to tesseract.exe when not on PATH (common on Windows after installer)

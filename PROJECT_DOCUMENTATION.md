@@ -81,8 +81,8 @@ Routing happens in this order:
 
 1. If the frontend sends a forced agent, that agent is used.
 2. If the message looks like a follow-up to a previous investment conversation, the chat route can force investment again.
-3. If local LLM mode is enabled and no forced agent is provided, the system tries one LLM call and reads the `[AGENT: ...]` tag from the generated reply.
-4. If local LLM mode is disabled or fails, the system uses hybrid intent classification.
+3. Clear invoice-creation intent is routed to the deterministic invoice specialist first, so the UI receives an exact structured payload and export actions.
+4. Other unforced turns use the local LLM when enabled; failures fall back to hybrid intent classification.
 
 Hybrid intent classification uses:
 
@@ -152,11 +152,11 @@ Important config values in `backend/app/config.py`:
 
 ```python
 finmate_lora_path = "app/ml/finmate-lora"
-finmate_use_llm = False
+finmate_use_llm = True
 finmate_max_new_tokens = 256
 ```
 
-Because `finmate_use_llm` defaults to `False`, the backend normally uses rule-based specialists unless `.env` enables local LLM inference.
+`finmate_use_llm` defaults to `True`. If the adapter or runtime is unavailable, the orchestrator safely uses the rule-based specialist instead.
 
 If LLM mode is enabled:
 
@@ -549,11 +549,11 @@ Imports pasted CSV text.
 Workflow:
 
 1. Parse CSV with `csv.DictReader`.
-2. Use configured column names.
-3. Convert amount to `Decimal`.
-4. Convert date with `date.fromisoformat`.
+2. Recognize common bank/export header aliases and comma, semicolon, tab, or pipe delimiters.
+3. Convert currency-formatted amounts and debit/credit columns to `Decimal`.
+4. Accept ISO, slash, dash, and month-name date formats.
 5. Insert rows up to `max_rows`.
-6. Return imported/skipped counts and sample errors.
+6. Return imported/skipped counts, sample errors, and a short imported-row preview for the chat UI.
 
 ### `backend/app/api/routes/invoices.py`
 
@@ -565,6 +565,10 @@ Models:
 - `InvoicePdfBody`
 
 Endpoint:
+
+#### `POST /api/invoices/parse` and `POST /api/invoices/parse/csv`
+
+Parse a PDF/image invoice or a one-row-per-item invoice CSV into `StructuredInvoice`. The PDF extractor tries embedded text first, then a compatibility extractor and OCR fallback for scans. OCR currency-glyph variants are normalized before field parsing. CSV imports recognize `invoice_no`, `item`, `quantity`, `unit_price`, `amount`, `subtotal`, `cgst`, `sgst`, and `total`; CGST/SGST are combined into the invoice tax total rather than line items.
 
 #### `POST /api/invoices/pdf`
 

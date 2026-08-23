@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import ChatComposerMenu from "../components/ChatComposerMenu";
 import ChatSidebar from "../components/ChatSidebar";
 import MessageMetadata from "../components/MessageMetadata";
+import InvoiceExportActions from "../components/InvoiceExportActions";
 import { useAuth } from "../lib/auth";
 import {
   authHeaders,
@@ -10,6 +11,7 @@ import {
   type ChatMessage,
   type ChatResponse,
   type Conversation,
+  type StructuredInvoice,
 } from "../lib/api";
 
 const AGENTS = [
@@ -180,13 +182,46 @@ export default function ChatPage() {
     }
   }
 
-  async function onInvoiceParsed(summary: string) {
-    setInput("");
-    try {
-      await sendMessage(summary, "invoice_generator");
-    } catch {
-      setInput(summary);
-    }
+  function onInvoiceImported(invoice: StructuredInvoice, source: string) {
+    const linePreview = invoice.line_items.map((item) => `• ${item.description} — ${item.amount} ${invoice.currency}`).join("\n");
+    const content = [
+      `Imported invoice ${invoice.invoice_number || "draft"} from ${source}.`,
+      invoice.vendor_name ? `From: ${invoice.vendor_name}` : null,
+      invoice.bill_to ? `Bill to: ${invoice.bill_to}` : null,
+      "",
+      linePreview,
+      "",
+      `Subtotal: ${invoice.subtotal ?? "—"} ${invoice.currency}`,
+      `GST / tax: ${invoice.tax ?? "0.00"} ${invoice.currency}`,
+      `Total: ${invoice.total ?? "—"} ${invoice.currency}`,
+    ].filter((line): line is string => line !== null).join("\n");
+    setMessages((previous) => [...previous, {
+      id: `invoice-${Date.now()}`,
+      role: "assistant",
+      content,
+      agent: "invoice_generator",
+      metadata: { source: "invoice_csv_import", invoice_payload: JSON.stringify(invoice), invoice_actions: "pdf,csv" },
+      created_at: new Date().toISOString(),
+    }]);
+    shouldAutoScrollRef.current = true;
+  }
+
+  function onTransactionsImported(
+    rows: Array<{ amount: string; currency: string; category: string | null; description: string | null; occurred_on: string }>,
+    source: string,
+    importedCount: number,
+  ) {
+    const preview = rows.map((row) => `• ${row.occurred_on} — ${row.description || row.category || "Transaction"}: ${row.amount} ${row.currency}`).join("\n");
+    const more = importedCount > rows.length ? `\n…plus ${importedCount - rows.length} more transaction${importedCount - rows.length === 1 ? "" : "s"}.` : "";
+    setMessages((previous) => [...previous, {
+      id: `transactions-${Date.now()}`,
+      role: "assistant",
+      content: `Imported ${importedCount} transaction${importedCount === 1 ? "" : "s"} from ${source}.\n\n${preview}${more}`,
+      agent: "budget_planner",
+      metadata: { source: "transaction_csv_import" },
+      created_at: new Date().toISOString(),
+    }]);
+    shouldAutoScrollRef.current = true;
   }
 
   return (
@@ -258,6 +293,7 @@ export default function ChatPage() {
                   <span className="agent-badge">{m.agent.replace(/_/g, " ")}</span>
                 )}
                 <p>{m.content}</p>
+                {m.role === "assistant" && m.metadata && <InvoiceExportActions metadata={m.metadata} />}
                 {m.role === "assistant" && m.metadata && (
                   <MessageMetadata metadata={m.metadata} />
                 )}
@@ -291,7 +327,8 @@ export default function ChatPage() {
             messages={messages}
             onImportStatus={setStatus}
             onImportError={setError}
-            onInvoiceParsed={onInvoiceParsed}
+            onInvoiceImported={onInvoiceImported}
+            onTransactionsImported={onTransactionsImported}
           />
           <textarea
             value={input}

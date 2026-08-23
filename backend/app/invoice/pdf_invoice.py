@@ -22,6 +22,7 @@ def build_invoice_pdf(
     due_date: str | None = None,
     subtotal: Decimal | None = None,
     tax: Decimal | None = None,
+    total: Decimal | None = None,
 ) -> bytes:
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=letter)
@@ -54,9 +55,9 @@ def build_invoice_pdf(
     y -= 16
     c.setFont("Helvetica", 10)
 
-    total = Decimal("0")
+    line_total = Decimal("0")
     for desc, amt in line_items:
-        total += amt
+        line_total += amt
         c.drawString(72, y, desc[:80])
         c.drawRightString(540, y, f"{amt:.2f}")
         y -= 14
@@ -78,7 +79,8 @@ def build_invoice_pdf(
     y -= 6
     c.setFont("Helvetica-Bold", 11)
     c.drawString(72, y, "Total")
-    c.drawRightString(540, y, f"{total:.2f}")
+    final_total = total if total is not None else line_total + (tax or Decimal("0"))
+    c.drawRightString(540, y, f"{final_total:.2f}")
     c.save()
     return buf.getvalue()
 
@@ -102,4 +104,5 @@ def build_invoice_pdf_from_structured(
         due_date=invoice.due_date,
         subtotal=invoice.subtotal,
         tax=invoice.tax,
+        total=invoice.total,
     )

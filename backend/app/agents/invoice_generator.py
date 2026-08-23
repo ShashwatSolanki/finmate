@@ -16,14 +16,16 @@ from app.invoice.parse_invoice import parse_invoice_text
 from app.invoice.schemas import ParsedLineItem, StructuredInvoice
 from app.ml.finmate import generate
 
-_AMOUNT_LINE = re.compile(r"^\s*([\d.,]+)\s+(.+?)\s*$", re.M)
+_AMOUNT_LINE = re.compile(r"^\s*(?:[-*]\s*)?([\d.,]+)\s+(.+?)\s*$|^\s*(?:[-*]\s*)?(.+?)\s+(?:₹|Rs\.?|INR|\$)?\s*([\d,]+(?:\.\d{1,2})?)\s*$", re.M | re.I)
 
 
 def _parse_simple_lines(message: str) -> list[dict[str, str]]:
     items: list[dict[str, str]] = []
     total = Decimal("0")
     for m in _AMOUNT_LINE.finditer(message):
-        amt, desc = m.group(1), m.group(2).strip()
+        amount_first = m.group(1) is not None
+        amt = m.group(1) if amount_first else m.group(4)
+        desc = (m.group(2) if amount_first else m.group(3)).strip()
         try:
             val = Decimal(amt.replace(",", ""))
         except InvalidOperation:
@@ -156,6 +158,8 @@ def run(
                 "parsed_total": f"{total:.2f}",
                 "source": source,
                 "currency": invoice.currency,
+                "invoice_payload": invoice.model_dump_json(),
+                "invoice_actions": "pdf,csv",
             },
         )
 

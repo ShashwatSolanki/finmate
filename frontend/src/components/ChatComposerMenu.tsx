@@ -6,6 +6,7 @@ import {
   downloadBlob,
   type ChatMessage,
   type ParseInvoiceResult,
+  type StructuredInvoice,
 } from "../lib/api";
 
 type Props = {
@@ -14,7 +15,16 @@ type Props = {
   messages: ChatMessage[];
   onImportStatus: (msg: string) => void;
   onImportError: (msg: string | null) => void;
-  onInvoiceParsed: (summary: string) => void;
+  onInvoiceImported: (invoice: StructuredInvoice, source: string) => void;
+  onTransactionsImported: (rows: ImportedTransactionPreview[], source: string, importedCount: number) => void;
+};
+
+type ImportedTransactionPreview = {
+  amount: string;
+  currency: string;
+  category: string | null;
+  description: string | null;
+  occurred_on: string;
 };
 
 export default function ChatComposerMenu({
@@ -23,7 +33,8 @@ export default function ChatComposerMenu({
   messages,
   onImportStatus,
   onImportError,
-  onInvoiceParsed,
+  onInvoiceImported,
+  onTransactionsImported,
 }: Props) {
   const { token } = useAuth();
   const [importOpen, setImportOpen] = useState(false);
@@ -59,24 +70,13 @@ export default function ChatComposerMenu({
       });
       if (!res.ok) throw new Error(await res.text());
       const data = (await res.json()) as ParseInvoiceResult;
+      // Keep the structured result available to Invoice Studio without turning a
+      // file import into a second, slow chat/LLM request.
+      sessionStorage.setItem("finmate_pending_invoice", JSON.stringify(data.invoice));
+      onInvoiceImported(data.invoice, file.name);
 
-      const lines = data.invoice.line_items.map(
-        (li) => `${li.description} ${li.amount}`,
-      );
-      const summary = [
-        `Uploaded invoice: ${data.filename}`,
-        data.invoice.vendor_name ? `Vendor: ${data.invoice.vendor_name}` : null,
-        data.invoice.invoice_date ? `Date: ${data.invoice.invoice_date}` : null,
-        data.invoice.total ? `Total: ${data.invoice.total} ${data.invoice.currency}` : null,
-        lines.length ? `Line items:\n${lines.join("\n")}` : null,
-        data.warnings.length ? `Notes: ${data.warnings.join("; ")}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      onInvoiceParsed(summary);
       onImportStatus(
-        `Parsed ${data.source_type.toUpperCase()} invoice — ${data.invoice.line_items.length} line items (${data.confidence} confidence).`,
+        `Parsed ${data.source_type.toUpperCase()} invoice — ${data.invoice.line_items.length} line items (${data.confidence} confidence). Open Settings → Invoice Studio to review, edit, or download it.`,
       );
     } catch (err) {
       onImportError(err instanceof Error ? err.message : "Invoice parse failed");
@@ -92,6 +92,22 @@ export default function ChatComposerMenu({
     onImportError(null);
     try {
       const csvText = await file.text();
+      const header = csvText.split(/\r?\n/, 1)[0].toLowerCase();
+      if (header.includes("invoice_no") && header.includes("item") && header.includes("amount")) {
+        const form = new FormData();
+        form.append("file", file);
+        const invoiceResponse = await fetch("/api/invoices/parse/csv", {
+          method: "POST",
+          headers: authHeadersMultipart(token),
+          body: form,
+        });
+        if (!invoiceResponse.ok) throw new Error(await invoiceResponse.text());
+        const invoiceData = (await invoiceResponse.json()) as ParseInvoiceResult;
+        sessionStorage.setItem("finmate_pending_invoice", JSON.stringify(invoiceData.invoice));
+        onInvoiceImported(invoiceData.invoice, file.name);
+        onImportStatus(`Imported invoice CSV — ${invoiceData.invoice.line_items.length} line items. Ready to export or edit in Invoice Studio.`);
+        return;
+      }
       const res = await fetch("/api/transactions/import/csv", {
         method: "POST",
         headers: authHeaders(token),
@@ -102,7 +118,11 @@ export default function ChatComposerMenu({
         imported_count: number;
         skipped_count: number;
         sample_errors?: string[];
+        imported_preview?: ImportedTransactionPreview[];
       };
+      if (data.imported_count) {
+        onTransactionsImported(data.imported_preview ?? [], file.name, data.imported_count);
+      }
       onImportStatus(
         `Imported ${data.imported_count} transactions from ${file.name}, skipped ${data.skipped_count}.` +
           (data.sample_errors?.length ? ` ${data.sample_errors.slice(0, 2).join("; ")}` : ""),
@@ -201,7 +221,7 @@ export default function ChatComposerMenu({
               Invoice PDF or image
             </button>
             <button type="button" role="menuitem" onClick={() => csvInputRef.current?.click()}>
-              Import transactions CSV
+              Import CSV (transactions or invoice)
             </button>
           </div>
         )}
