@@ -8,11 +8,11 @@ For a full file-by-file reference, see [PROJECT_DOCUMENTATION.md](./PROJECT_DOCU
 
 - **Auth** — register/login with bcrypt + JWT
 - **Onboarding** — income, goals, risk, location stored as retrievable memory
-- **Transactions** — CRUD, monthly summaries, CSV import
+- **Transactions** — CRUD, monthly summaries, flexible bank/export CSV import with an in-chat preview
 - **Chat** — routes to Budget Planner, Investment Analyser, or Invoice Generator
 - **Budget** — 30-day aggregates, month-over-month spending insights
 - **Investment** — ticker/company detection, Yahoo Finance data, risk-based allocation
-- **Invoice** — line-item parsing in chat; **PDF/image upload** → structured JSON; regenerate PDF
+- **Invoice** — chat-created drafts with PDF/CSV exports; PDF/image/invoice-CSV parsing; editable table-based Invoice Studio
 - **Memory (RAG)** — Postgres + sentence-transformer similarity search (not Chroma/pgvector)
 - **UI** — separate login/register pages, chat layout with conversation sidebar, settings for profile and CSV import
 - **Chat import/export** — **+** menu in chat for invoice PDF/image upload and CSV import; **↓** menu to export transactions or download the conversation
@@ -24,7 +24,7 @@ For a full file-by-file reference, see [PROJECT_DOCUMENTATION.md](./PROJECT_DOCU
 | `/login`    | Sign in (redirects to `/chat` when authenticated)                                                                    |
 | `/register` | Create account                                                                                                       |
 | `/chat`     | Main chat UI — scrollable message thread, agent selector, sidebar, **+ import** (invoice/CSV) and **↓ export** menus |
-| `/settings` | Financial onboarding profile, CSV transaction import, **PDF/image invoice import**                                   |
+| `/settings` | Financial onboarding profile, CSV transaction import, and the editable **Invoice Studio**                              |
 
 Conversations are stored in PostgreSQL (`chat_sessions`, `chat_messages`) and exposed via `/api/conversations`. Each chat message optionally links to a session via `session_id` on `POST /api/chat/message`.
 
@@ -41,11 +41,11 @@ React UI  →  FastAPI  →  Orchestrator
 
 Reply contract for every assistant turn: `[AGENT: BUDGET|INVESTMENT|INVOICE]` tag, natural-language prose, then a valid JSON line.
 
-**Default agent behavior (without `FINMATE_USE_LLM`):**
+**Default agent behavior:**
 
 - **Investment** — live Yahoo Finance quotes (last close, 20-day SMA, ranges); personalized allocation from onboarding when no ticker is confirmed. Ticker detection is case-sensitive (`MSFT` yes, lowercase “right” no).
 - **Budget** — real transaction aggregates and month-over-month deltas from PostgreSQL.
-- **Invoice** — parsed line items from your message.
+- **Invoice** — structured drafts and export actions. Invoice-intent messages are routed to the deterministic invoice workflow so totals are not reinterpreted by the general chat model.
 
 ## Prerequisites
 
@@ -133,9 +133,9 @@ Generate a larger held-out set:
 .venv\Scripts\python scripts/generate_eval_set.py --total 200 --out ../training/data/eval_prompts_heldout_200.jsonl
 ```
 
-### Optional: local LLM
+### Local LLM
 
-A fine-tuned LoRA adapter lives in `backend/app/ml/finmate-lora/` (base: **Qwen/Qwen2.5-1.5B-Instruct**). By default the backend uses **rule-based agents** only.
+A fine-tuned LoRA adapter lives in `backend/app/ml/finmate-lora/` (base: **Qwen/Qwen2.5-1.5B-Instruct**) and is enabled by default. Budget turns use it for personalized replies; FinMate falls back safely to specialist rules if weights or runtime dependencies are unavailable.
 
 To enable local inference, in `backend/.env`:
 
@@ -161,25 +161,26 @@ In the chat composer:
 
 | Control | Action                                                                                                                                    |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| **+**   | Upload an **invoice PDF or image** (OCR + structured parse, then sent to the Invoice agent) or pick a **transactions CSV** file to import |
+| **+**   | Upload a PDF/image invoice or a CSV. Invoice PDFs/images/CSVs are parsed once and shown in chat with export actions; transaction CSVs are imported and previewed in chat. |
 | **↓**   | **Download transactions (CSV)** from your account, or **download the current conversation** as a `.txt` file                              |
 
-You can also use **Settings** for onboarding, CSV paste import, and full invoice editing with PDF regeneration.
+Importing does not send the extracted document back through the LLM or store it as chat memory. The parsed invoice is also made available in **Settings → Invoice Studio**.
 
-### Invoice import (PDF / image)
+### Invoice Studio and imports
 
-In **Settings → Invoice import**:
+In **Settings → Invoice Studio**:
 
 1. Upload a PDF or image (PNG/JPEG/WebP).
 2. Click **Extract structured data** — returns vendor, dates, line items, subtotal/tax/total.
-3. Edit fields in the UI if needed.
-4. Click **Download PDF** to regenerate a clean invoice.
+3. Create or edit invoices in the line-item table (item, quantity, rate, amount). GST/tax is a separate total, not a line item.
+4. Download a clean PDF. Chat-created and imported invoice drafts also offer PDF and CSV exports in the chat thread.
 
 API (Bearer token required):
 
 | Endpoint                            | Purpose                                                |
 | ----------------------------------- | ------------------------------------------------------ |
 | `POST /api/invoices/parse`          | Multipart file upload → `ParseInvoiceResult` JSON      |
+| `POST /api/invoices/parse/csv`      | Multipart invoice CSV → `ParseInvoiceResult` JSON      |
 | `POST /api/invoices/pdf`            | JSON line items (+ optional header fields) → PDF bytes |
 | `POST /api/invoices/pdf/structured` | Full `StructuredInvoice` body → PDF bytes              |
 | `GET /api/transactions/export/csv`  | Download all transactions as CSV                       |
@@ -192,7 +193,7 @@ TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
 
 Restart the backend after changing `.env`. Text-based PDFs work without Tesseract (`pdfplumber`). Scanned PDFs fall back to OCR via `pymupdf` + Tesseract.
 
-In chat, paste invoice text or line items (`1200 Web design`) — the invoice agent returns structured JSON in the reply tail.
+In chat, ask for an invoice with line items (for example, `Create an invoice for Acme: Website design 1200, hosting 300`). FinMate returns a structured draft with **Download PDF** and **Download CSV** actions.
 
 ## 4. Training (Google Colab)
 
