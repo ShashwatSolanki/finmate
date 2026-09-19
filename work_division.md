@@ -111,6 +111,9 @@ The work is divided to ensure:
 - JWT authentication
 - password hashing
 - protected endpoints
+- Google OAuth / Google Sign-In integration
+- Google identity verification and account linking
+- Secure handling of OAuth credentials and tokens
 
 **Reliability**
 - fallback system:
@@ -131,6 +134,7 @@ The work is divided to ensure:
 - Data pipeline
 - Model training basics
 - System stability and safety
+- Authentication and OAuth security flow
 
 ---
 
@@ -200,6 +204,7 @@ Show:
 #### Backend:
 - FastAPI framework
 - JWT authentication
+- Google OAuth authentication
 - API endpoints
 
 #### Agents:
@@ -211,6 +216,8 @@ Show:
 - CSV import
 - PDF invoice generation
 - RAG memory system
+- Google Sign-In
+- Account creation/login through Google
 
 ---
 
@@ -218,6 +225,7 @@ Show:
 
 #### 6.3 UI Diagrams
 - login screen
+- Google Sign-In button
 - dashboard
 - chat interface
 
@@ -231,6 +239,7 @@ Show:
 
 #### 6.5 External Interfaces
 - yfinance API
+- Google OAuth / Google Identity Services
 - LLM inference
 - database communication
 
@@ -240,6 +249,7 @@ Show:
 - frontend (Vite)
 - backend (FastAPI)
 - database (Postgres)
+- Google authentication service
 
 ---
 
@@ -254,6 +264,7 @@ Include:
 ## Expected Understanding
 - Full system execution
 - frontend-backend interaction
+- authentication flow
 - real-world usage
 
 ---
@@ -263,9 +274,9 @@ Include:
 | Person | Focus Area |
 |--------|------------|
 | Person 1 | Introduction + Design Concepts |
-| Person 2 | Data + ML + System Quality |
+| Person 2 | Data + ML + System Quality + OAuth Security |
 | Person 3 | Architecture + Diagrams |
-| Person 4 | Implementation + UI |
+| Person 4 | Implementation + UI + Google Sign-In |
 
 ---
 
