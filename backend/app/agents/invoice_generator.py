@@ -22,6 +22,14 @@ from app.ml.finmate import generate
 _AMOUNT_LINE = re.compile(r"^\s*(?:[-*]\s*)?([\d.,]+)\s+(.+?)\s*$|^\s*(?:[-*]\s*)?(.+?)\s+(?:₹|Rs\.?|INR|\$)?\s*([\d,]+(?:\.\d{1,2})?)\s*$", re.M | re.I)
 
 
+def _extract_original_request(message: str) -> str:
+    """Remove verified specialist observations before parsing invoice input."""
+    marker = "\n\n[Verified specialist observations]"
+    if marker in message:
+        return message.split(marker, 1)[0].strip()
+    return message.strip()
+
+
 def _parse_simple_lines(message: str) -> list[dict[str, str]]:
     items: list[dict[str, str]] = []
     total = Decimal("0")
@@ -166,8 +174,9 @@ def run(
 ) -> AgentResult:
     _ = db
     inv_id = str(uuid.uuid4())[:8].upper()
-    invoice = _structured_from_message(message)
-    request = message.strip().lower()
+    request_text = _extract_original_request(message)
+    invoice = _structured_from_message(request_text)
+    request = request_text.lower()
     wants_expense_invoice = bool(
         re.search(r"\b(invoice|bill|receipt)\b", request)
         and re.search(r"\b(my|our|these|recent|monthly|last 30 days?)\b.*\b(expenses?|spending|transactions?)\b", request)
