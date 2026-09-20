@@ -47,6 +47,17 @@ def _extract_location_from_context(ctx: str | None) -> str | None:
     return m.group(1).strip() if m else None
 
 
+def _extract_original_request(message: str) -> str:
+    """Return the user's request without agentic observation metadata."""
+    marker = "\n\n[Verified specialist observations]"
+    if marker in message:
+        return message.split(marker, 1)[0].strip()
+    marker = "\n\nPrior verified specialist observations."
+    if marker in message:
+        return message.split(marker, 1)[0].strip()
+    return message.strip()
+
+
 def _extract_lump_sum(message: str) -> Decimal | None:
     m = re.search(r"\b(\d+(?:\.\d+)?)\s*([kKmM]|lakh|lakhs)?\b", message)
     if not m:
@@ -130,7 +141,8 @@ def _portfolio_plan_reply(message: str, rag_context: str | None) -> str:
     risk = _extract_risk_from_context(rag_context) or "moderate"
     income = _extract_income_from_context(rag_context)
     location = _extract_location_from_context(rag_context)
-    amount = _extract_lump_sum(message)
+    request = _extract_original_request(message)
+    amount = _extract_lump_sum(request)
     eq, debt, cash = _allocation_for_risk(risk)
 
     parts: list[str] = [f"Using your {risk} risk profile"]
@@ -160,13 +172,14 @@ def _portfolio_plan_reply(message: str, rag_context: str | None) -> str:
     else:
         parts.append("Use low-cost index funds for the equity sleeve and high-quality bonds or T-bills for the debt sleeve.")
 
-    candidates = extract_ticker_candidates(message)
-    if candidates and has_investment_signal(message):
+    request = _extract_original_request(message)
+    candidates = extract_ticker_candidates(request)
+    if candidates and has_investment_signal(request):
         parts.append(
             f"I could not confirm live quotes for {', '.join(candidates)} right now — "
             "retry with `$TICKER` (e.g. `$MSFT`) or a company name like Microsoft."
         )
-    elif has_investment_signal(message):
+    elif has_investment_signal(request):
         parts.append("Name a stock (`$AAPL`) or company (e.g. Apple, Microsoft) for a live quote and trend read.")
 
     prose = " ".join(parts)
@@ -245,7 +258,8 @@ def run(
     rag_context: str | None = None,
 ) -> AgentResult:
     _ = db
-    tickers = pick_validated_tickers(message)
+    request = _extract_original_request(message)
+    tickers = pick_validated_tickers(request)
 
     rag_block = ""
     if rag_context and rag_context.strip():
