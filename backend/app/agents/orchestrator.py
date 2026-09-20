@@ -59,11 +59,13 @@ def run_turn(
         )
         if agentic_result is not None:
             return agentic_result
-    # Invoice creation is structured work with deterministic exports. Route it
-    # before the general chat model so the UI receives a usable invoice payload.
-    if chosen is None and classify_agent(user_message) == AgentName.INVOICE_GENERATOR:
-        chosen = AgentName.INVOICE_GENERATOR
-    # Skip embedding-based intent when we may handle the turn with the local LLM (saves loading MiniLM).
+    # Structured specialist flows should run before the general model so
+    # tool-backed data is authoritative and exportable artifacts survive.
+    if chosen is None:
+        classified = classify_agent(user_message)
+        if classified in (AgentName.INVOICE_GENERATOR, AgentName.INVESTMENT_ANALYSER):
+            chosen = classified
+    # Skip embedding-based intent for the remaining budget/general-chat path.
     if chosen is None and not (settings.finmate_use_llm and agent is None):
         chosen = classify_agent(user_message)
 
