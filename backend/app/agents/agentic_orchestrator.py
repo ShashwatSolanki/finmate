@@ -206,6 +206,7 @@ def run_agentic_turn(
         return None
 
     observations: list[AgentResult] = []
+    failed_agents: list[str] = []
     for index, step in enumerate(plan.steps):
         observation = _observation_context(observations)
         step_message = user_message
@@ -218,31 +219,40 @@ def run_agentic_turn(
                 f"{observation}"
             )
 
-        if step.agent == AgentName.BUDGET_PLANNER:
-            result = budget_planner.run(user_id, step_message, db, rag_context=rag_context)
-        elif step.agent == AgentName.INVESTMENT_ANALYSER:
-            result = investment_analyser.run(user_id, step_message, db, rag_context=rag_context)
-        else:
-            result = invoice_generator.run(user_id, step_message, db, rag_context=rag_context)
+        try:
+            if step.agent == AgentName.BUDGET_PLANNER:
+                result = budget_planner.run(user_id, step_message, db, rag_context=rag_context)
+            elif step.agent == AgentName.INVESTMENT_ANALYSER:
+                result = investment_analyser.run(user_id, step_message, db, rag_context=rag_context)
+            else:
+                result = invoice_generator.run(user_id, step_message, db, rag_context=rag_context)
+        except Exception:
+            failed_agents.append(step.agent.value)
+            continue
 
         observations.append(result)
 
     if not observations:
         return None
 
-    primary = plan.steps[0].agent
+    primary = observations[0].agent
     reply = _synthesize(user_message, observations, primary)
     executed = [result.agent.value for result in observations]
     planned = [f"{step.agent.value}: {step.reason}" for step in plan.steps]
+
+    metadata = {
+        "source": "agentic",
+        "plan_steps": str(len(observations)),
+        "planned_agents": ",".join(step.agent.value for step in plan.steps),
+        "agents_executed": ",".join(executed),
+        "plan_goal": plan.goal[:200],
+    }
+    if failed_agents:
+        metadata["agents_failed"] = ",".join(failed_agents)
 
     return AgentResult(
         agent=primary,
         reply=reply,
         planned_steps=planned + ["synthesize_verified_observations"],
-        metadata={
-            "source": "agentic",
-            "plan_steps": str(len(observations)),
-            "agents_executed": ",".join(executed),
-            "plan_goal": plan.goal[:200],
-        },
+        metadata=metadata,
     )
