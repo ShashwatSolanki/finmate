@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     finmate_use_llm: bool = True
     finmate_max_new_tokens: int = 256
 
+    # Bounded agentic execution for requests spanning multiple specialists.
+    finmate_agentic_mode: bool = True
+    agentic_max_steps: int = 3
+
     # Path to tesseract.exe when not on PATH (common on Windows after installer)
     tesseract_cmd: str | None = None
 
