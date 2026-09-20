@@ -1,6 +1,7 @@
 """Regression tests for data-backed investment and invoice behavior."""
 
 import unittest
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -26,9 +27,22 @@ class DataBackedAgentTests(unittest.TestCase):
 
     def test_expense_invoice_uses_recent_transactions(self):
         invoice = MagicMock()
-        invoice.line_items = [MagicMock()]
+        item = MagicMock()
+        item.description = "Food"
+        item.amount = Decimal("1887")
+        item.quantity = None
+        item.unit_price = None
+        invoice.line_items = [item]
         invoice.currency = "INR"
-        invoice.total = 1887
+        invoice.total = Decimal("1887")
+        invoice.subtotal = Decimal("1887")
+        invoice.tax = None
+        invoice.vendor_name = None
+        invoice.bill_to = None
+        invoice.invoice_date = None
+        invoice.invoice_number = "EXP-20260920"
+        invoice.due_date = None
+        invoice.notes = "test"
         invoice.model_dump_json.return_value = '{"line_items":[{"description":"Food","amount":"1887"}]}'
 
         with (
