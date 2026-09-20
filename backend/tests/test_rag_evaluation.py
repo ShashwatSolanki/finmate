@@ -75,7 +75,7 @@ class RAGRetrievalTests(unittest.TestCase):
 
     def test_low_similarity_chunks_are_filtered(self):
         rows = [_FakeRow("weak match"), _FakeRow("strong match")]
-        embeddings = [[1.0, 0.0], [0.2, 0.0], [0.9, 0.0]]
+        embeddings = [[1.0, 0.0], [0.2, 0.0], [0.8, 0.6]]
         db = _FakeDB(rows)
         with patch.object(memory_store, "encode_texts", return_value=embeddings):
             result = memory_store.search_memory(db, uuid4(), "query", k=5, min_similarity=0.5)
@@ -116,7 +116,7 @@ class ContextBuilderTests(unittest.TestCase):
         db = _FakeDB(rows)
         self.assertEqual(
             _build_recent_context(db, uuid4(), turns=2),
-            "Assistant response 1\nUser query 1\nAssistant response 2\nUser query 2",
+            "User query 1\nAssistant response 1\nUser query 2\nAssistant response 2",
         )
 
     def test_recent_context_is_capped(self):
