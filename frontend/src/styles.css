@@ -316,8 +316,8 @@ button:disabled {
 
 /* Chat main */
 .chat-main {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   min-height: 0;
   height: 100%;
   overflow: hidden;
@@ -332,6 +332,9 @@ button:disabled {
   padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--border);
   background: #fff;
+  min-height: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .chat-header h2 {
@@ -531,11 +534,14 @@ button:disabled {
 .chat-composer {
   display: flex;
   gap: 0.65rem;
-  padding: 1rem 1.25rem 1.25rem;
+  padding: 0.75rem 1.25rem 1rem;
   border-top: 1px solid var(--border);
   background: #fff;
   align-items: flex-end;
-  flex-shrink: 0;
+  min-height: 72px;
+  position: relative;
+  z-index: 20;
+  box-shadow: 0 -6px 18px rgba(15, 23, 42, 0.04);
 }
 
 .composer-toolbar {
@@ -615,6 +621,62 @@ button:disabled {
 .chat-composer .btn-primary {
   margin: 0;
   min-width: 88px;
+}
+
+.portfolio-list {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.portfolio-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.portfolio-row > div:first-child {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.portfolio-row > div:first-child span,
+.portfolio-values {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.portfolio-values {
+  display: grid;
+  gap: 0.15rem;
+  text-align: right;
+}
+
+.portfolio-remove {
+  width: auto;
+  color: #b91c1c;
+  padding: 0.35rem 0.5rem;
+}
+
+@media (max-width: 720px) {
+  .portfolio-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .portfolio-values {
+    grid-column: 1;
+    text-align: left;
+  }
+
+  .portfolio-remove {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
 }
 
 /* Settings */
