@@ -24,7 +24,6 @@ const AGENTS = [
 export default function ChatPage() {
   const { token } = useAuth();
   const threadRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -70,7 +69,11 @@ export default function ChatPage() {
 
   useEffect(() => {
     if (!shouldAutoScrollRef.current) return;
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = threadRef.current;
+    if (!el) return;
+    // Scroll only the message pane. scrollIntoView() can bubble scrolling to
+    // the page/root and make the fixed chat header appear to disappear.
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
   function handleThreadScroll() {
@@ -310,7 +313,6 @@ export default function ChatPage() {
               </div>
             </div>
           )}
-          <div ref={bottomRef} />
         </div>
 
         {(error || status) && (
