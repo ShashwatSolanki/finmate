@@ -1,6 +1,7 @@
 import unittest
 
 from app.agents.agentic_orchestrator import build_plan
+from app.agents.investment_analyser import _extract_original_request
 from app.agents.types import AgentName
 
 
@@ -17,6 +18,21 @@ class AgenticPlannerTests(unittest.TestCase):
         self.assertEqual(
             [step.agent for step in plan.steps],
             [AgentName.BUDGET_PLANNER, AgentName.INVESTMENT_ANALYSER],
+        )
+
+    def test_planner_does_not_match_investigate_as_investment(self):
+        self.assertIsNone(build_plan("Investigate my recent transactions."))
+
+    def test_investment_agent_strips_agentic_observations_from_request(self):
+        message = (
+            "Analyze my spending and tell me how much I can invest this month."
+            "\n\n[Verified specialist observations]\n"
+            "[budget_planner observation]\n"
+            "[AGENT: BUDGET] total: 50000"
+        )
+        self.assertEqual(
+            _extract_original_request(message),
+            "Analyze my spending and tell me how much I can invest this month.",
         )
 
     def test_budget_investment_invoice_plan_is_bounded(self):
