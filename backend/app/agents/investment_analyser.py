@@ -6,10 +6,12 @@ import re
 from decimal import Decimal
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.ticker_utils import extract_ticker_candidates, has_investment_signal, pick_validated_tickers
 from app.agents.types import AgentName, AgentResult
+from app.db.models import InvestmentHolding
 from app.config import settings
 from app.ml.finmate import SYSTEM_EXTRA_INVESTMENT, ensure_investment_reply_shape, generate
 from app.services.market_data import fetch_history, get_ticker
@@ -83,6 +85,83 @@ def _is_portfolio_history_request(message: str) -> bool:
             re.I,
         )
         or re.search(r"\b(investments?|portfolio|holdings?|positions?)\b.*\b(profit|profits|return|returns|gain|gains|loss|losses)\b", message, re.I)
+    )
+
+
+def _portfolio_history_reply(db: Session, user_id: UUID) -> AgentResult:
+    holdings = db.scalars(
+        select(InvestmentHolding)
+        .where(InvestmentHolding.user_id == user_id)
+        .order_by(InvestmentHolding.symbol.asc())
+    ).all()
+    if not holdings:
+        return AgentResult(
+            agent=AgentName.INVESTMENT_ANALYSER,
+            reply=_no_portfolio_data_reply(),
+            planned_steps=["check_portfolio_data", "report_data_unavailable"],
+            metadata={"tickers": "", "market_data": "none", "source": "no_investment_data"},
+        )
+
+    lines: list[str] = []
+    total_cost = Decimal("0")
+    total_value = Decimal("0")
+    valued_count = 0
+
+    for holding in holdings:
+        cost = holding.quantity * holding.average_cost
+        total_cost += cost
+        try:
+            info = get_ticker(holding.symbol).info or {}
+            raw = info.get("currentPrice") or info.get("regularMarketPrice")
+            if raw is None:
+                raise ValueError("current price unavailable")
+            price = Decimal(str(raw))
+            value = holding.quantity * price
+            profit = value - cost
+            total_value += value
+            valued_count += 1
+            pct = (profit / cost * 100) if cost else Decimal("0")
+            lines.append(
+                f"{holding.symbol}: {holding.quantity:g} units, average cost {holding.average_cost:.2f} "
+                f"{holding.currency}, current price {price:.2f}, unrealized P/L {profit:+.2f} ({pct:+.2f}%)."
+            )
+        except Exception:
+            lines.append(
+                f"{holding.symbol}: {holding.quantity:g} units, average cost {holding.average_cost:.2f} "
+                f"{holding.currency}; current market price unavailable."
+            )
+
+    if valued_count:
+        total_profit = total_value - total_cost
+        total_pct = (total_profit / total_cost * 100) if total_cost else Decimal("0")
+        summary = (
+            f"Portfolio cost basis: {total_cost:.2f}. Current value for {valued_count}/{len(holdings)} "
+            f"holding(s): {total_value:.2f}. Unrealized P/L: {total_profit:+.2f} ({total_pct:+.2f}%)."
+        )
+    else:
+        summary = f"Portfolio cost basis: {total_cost:.2f}. Current market prices are unavailable, so P/L cannot be calculated."
+
+    reply = (
+        "[AGENT: INVESTMENT]\n\n"
+        "Portfolio snapshot from your stored holdings:\n"
+        + "\n".join(lines)
+        + "\n\n"
+        + summary
+        + "\n\n"
+        + '{"intent":"portfolio_history","steps":["Read stored holdings","Fetch current prices","Calculate unrealized profit/loss"],'
+        + '"tools_needed":["portfolio_holdings","yfinance_lookup"],"notes":"returns are unrealized unless transaction history is added"}'
+    )
+    return AgentResult(
+        agent=AgentName.INVESTMENT_ANALYSER,
+        reply=reply,
+        planned_steps=["check_portfolio_data", "fetch_current_prices", "calculate_unrealized_returns"],
+        metadata={
+            "tickers": ",".join(h.symbol for h in holdings),
+            "market_data": "live" if valued_count else "unavailable",
+            "source": "portfolio_holdings",
+            "holdings_count": str(len(holdings)),
+            "valued_holdings": str(valued_count),
+        },
     )
 
 
@@ -290,13 +369,7 @@ def run(
 
     if not tickers:
         if _is_portfolio_history_request(request):
-            reply = _no_portfolio_data_reply()
-            return AgentResult(
-                agent=AgentName.INVESTMENT_ANALYSER,
-                reply=reply,
-                planned_steps=["check_portfolio_data", "report_data_unavailable"],
-                metadata={"tickers": "", "market_data": "none", "source": "no_investment_data"},
-            )
+            return _portfolio_history_reply(db, user_id)
         reply = _portfolio_plan_reply(message, rag_context)
         return AgentResult(
             agent=AgentName.INVESTMENT_ANALYSER,
