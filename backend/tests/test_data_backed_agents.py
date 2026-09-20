@@ -31,9 +31,12 @@ class DataBackedAgentTests(unittest.TestCase):
         invoice.total = 1887
         invoice.model_dump_json.return_value = '{"line_items":[{"description":"Food","amount":"1887"}]}'
 
-        with patch(
-            "app.agents.invoice_generator._expense_invoice_from_transactions",
-            return_value=invoice,
+        with (
+            patch(
+                "app.agents.invoice_generator._expense_invoice_from_transactions",
+                return_value=invoice,
+            ),
+            patch("app.agents.invoice_generator.settings.finmate_use_llm", False),
         ):
             result = run_invoice(
                 self.user_id,
@@ -42,7 +45,7 @@ class DataBackedAgentTests(unittest.TestCase):
             )
 
         self.assertEqual(result.metadata["invoice_actions"], "pdf,csv")
-        self.assertEqual(result.metadata["source"], "llm" if result.metadata["source"] == "llm" else "transaction_summary")
+        self.assertEqual(result.metadata["source"], "transaction_summary")
 
     def test_agentic_pipeline_preserves_invoice_export_payload(self):
         invoice = AgentResult(
