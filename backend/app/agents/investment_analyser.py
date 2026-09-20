@@ -75,6 +75,29 @@ def _extract_lump_sum(message: str) -> Decimal | None:
     return num
 
 
+def _is_portfolio_history_request(message: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(last|previous|past|current|existing|my)\b.*\b(investments?|portfolio|holdings?|positions?|returns?|profits?|gains?|losses?)\b",
+            message,
+            re.I,
+        )
+        or re.search(r"\b(investments?|portfolio|holdings?|positions?)\b.*\b(profit|profits|return|returns|gain|gains|loss|losses)\b", message, re.I)
+    )
+
+
+def _no_portfolio_data_reply() -> str:
+    return (
+        "[AGENT: INVESTMENT]\n\n"
+        "I don't have any stored investment holdings or investment transactions for your account yet, "
+        "so I can't calculate your past investment profits or returns. "
+        "You can add investment data when portfolio tracking is available, or ask me about a stock using "
+        "a ticker such as AAPL for live market data.\n\n"
+        '{"intent":"investment_history_unavailable","steps":["Check stored investment data","Add portfolio holdings or transactions","Analyze returns"],'
+        '"tools_needed":[],"notes":"no investment holdings data is currently stored"}'
+    )
+
+
 def _allocation_for_risk(risk: str | None) -> tuple[int, int, int]:
     if risk == "aggressive":
         return (75, 20, 5)
@@ -266,6 +289,14 @@ def run(
         rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
     if not tickers:
+        if _is_portfolio_history_request(request):
+            reply = _no_portfolio_data_reply()
+            return AgentResult(
+                agent=AgentName.INVESTMENT_ANALYSER,
+                reply=reply,
+                planned_steps=["check_portfolio_data", "report_data_unavailable"],
+                metadata={"tickers": "", "market_data": "none", "source": "no_investment_data"},
+            )
         reply = _portfolio_plan_reply(message, rag_context)
         return AgentResult(
             agent=AgentName.INVESTMENT_ANALYSER,
