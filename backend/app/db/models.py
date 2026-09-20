@@ -49,6 +49,20 @@ class Budget(Base):
     period_end: Mapped[date] = mapped_column(Date)
 
 
+class InvestmentHolding(Base):
+    """Current portfolio position; cost basis is the user's average entry price."""
+    __tablename__ = "investment_holdings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
+    symbol: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
+    quantity: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    average_cost: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    currency: Mapped[str] = mapped_column(String(8), default="USD")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class MemoryChunk(Base):
     """Short text segments for RAG (embeddings stored later in FAISS/Chroma or a vector column)."""
 
