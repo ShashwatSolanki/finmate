@@ -152,7 +152,25 @@ def _synthesize(
                     f"Original request:\n{message}\n\n"
                     f"Verified observations:\n{observation_text}"
                 )
-                return finmate.finalize_llm_reply(finmate.generate(prompt))
+                synthesized = finmate.finalize_llm_reply(finmate.generate(prompt))
+                # A weak local model may collapse a multi-agent request into only
+                # the primary agent's answer. Reject that synthesis and preserve
+                # every specialist observation instead.
+                expected_agents = {result.agent.value for result in observations}
+                normalized = synthesized.upper()
+                if all(
+                    f"[AGENT: {agent_name.split('_')[0].upper()}" in normalized
+                    or (
+                        agent_name == "investment_analyser"
+                        and "[AGENT: INVESTMENT]" in normalized
+                    )
+                    or (
+                        agent_name == "invoice_generator"
+                        and "[AGENT: INVOICE]" in normalized
+                    )
+                    for agent_name in expected_agents
+                ):
+                    return synthesized
         except Exception:
             # A synthesis failure must never discard successful specialist work.
             pass
