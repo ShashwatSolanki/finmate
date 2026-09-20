@@ -247,6 +247,13 @@ def run_agentic_turn(
         "agents_executed": ",".join(executed),
         "plan_goal": plan.goal[:200],
     }
+    # Preserve exportable artifacts produced by specialist agents so the UI can
+    # render actions even after the final response is synthesized.
+    for result in observations:
+        if result.agent == AgentName.INVOICE_GENERATOR:
+            for key in ("invoice_ref", "invoice_payload", "invoice_actions", "parsed_items_count", "parsed_total", "currency"):
+                if key in result.metadata:
+                    metadata[key] = result.metadata[key]
     if failed_agents:
         metadata["agents_failed"] = ",".join(failed_agents)
 
