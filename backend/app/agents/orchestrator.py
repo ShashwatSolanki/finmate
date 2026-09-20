@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.agents import budget_planner, invoice_generator, investment_analyser
+from app.agents.agentic_orchestrator import run_agentic_turn
 from app.agents.intent import classify_agent
 from app.agents.types import AgentName, AgentResult
 from app.config import settings
@@ -46,6 +47,18 @@ def run_turn(
     retain their deterministic/tool-backed flows.
     """
     chosen: AgentName | None = agent
+
+    # Use the bounded planner only for requests that clearly span multiple
+    # specialists. Single-domain requests keep the existing routing path.
+    if chosen is None and settings.finmate_agentic_mode:
+        agentic_result = run_agentic_turn(
+            user_id,
+            user_message,
+            db,
+            rag_context=rag_context,
+        )
+        if agentic_result is not None:
+            return agentic_result
     # Invoice creation is structured work with deterministic exports. Route it
     # before the general chat model so the UI receives a usable invoice payload.
     if chosen is None and classify_agent(user_message) == AgentName.INVOICE_GENERATOR:

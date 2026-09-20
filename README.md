@@ -41,6 +41,13 @@ React UI  →  FastAPI  →  Orchestrator
 
 Reply contract for every assistant turn: `[AGENT: BUDGET|INVESTMENT|INVOICE]` tag, natural-language prose, then a valid JSON line.
 
+**Agentic behavior:**
+
+- Cross-domain requests that clearly require multiple specialists use a bounded plan/execution loop.
+- The planner can execute up to `agentic_max_steps` specialists (default: 3), preserving the existing specialist implementations.
+- Each step receives prior verified observations, and the final answer is synthesized by the local model when available.
+- Single-domain requests continue through the existing routing path, so the agentic layer does not replace normal specialist routing.
+
 **Default agent behavior:**
 
 - **Investment** — live Yahoo Finance quotes (last close, 20-day SMA, ranges); personalized allocation from onboarding when no ticker is confirmed. Ticker detection is case-sensitive (`MSFT` yes, lowercase “right” no).
