@@ -197,11 +197,11 @@ def run(
                 reply = generate(enriched)
                 source = "llm"
             except Exception:
-                reply = _format_reply(invoice, inv_id, source_note="parsed from message text")
+                reply = _format_reply(invoice, inv_id, source_note="generated from recent user transactions" if wants_expense_invoice else "parsed from message text")
                 source = "structured_parse"
         else:
-            reply = _format_reply(invoice, inv_id, source_note="parsed from message text")
-            source = "structured_parse"
+            reply = _format_reply(invoice, inv_id, source_note="generated from recent user transactions" if wants_expense_invoice else "parsed from message text")
+            source = "transaction_summary" if wants_expense_invoice else "structured_parse"
 
         total = invoice.total or sum((i.amount for i in invoice.line_items), start=Decimal("0"))
         return AgentResult(
