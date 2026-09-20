@@ -83,7 +83,8 @@ def run_fixture_evaluation() -> dict[str, float]:
         from uuid import uuid4
 
         for case in CASES:
-            retrieved = memory_store.search_memory(DB(rows), uuid4(), case.query, k=2, min_similarity=0.2)
+            ranked = memory_store.rank_memory(DB(rows), uuid4(), case.query, limit=2, min_similarity=0.2)
+            retrieved = [item for item, _score in ranked]
             rank = next((i + 1 for i, item in enumerate(retrieved) if item in case.relevant), None)
             if rank is not None:
                 passed += 1
