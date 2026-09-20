@@ -288,3 +288,8 @@ Resolved in `backend/app/ml/finmate.py` (`dtype=` instead of `torch_dtype=`). Re
 1. Enable `FINMATE_USE_LLM=true` and compare rule-based vs LoRA replies with `evaluate_chat.py`.
 2. Add spending charts (e.g. Recharts) on the frontend.
 3. Scale memory with **pgvector** or **FAISS** for larger histories.
+
+
+## RAG Evaluation
+
+FinMate includes deterministic regression tests for retrieval and context construction in `backend/tests/test_rag_evaluation.py`. A small reproducible fixture evaluator is available at `backend/scripts/evaluate_rag.py` and reports Hit@2 and mean reciprocal rank (MRR). These fixture metrics validate the retrieval logic itself; they are not claims about live production retrieval quality.
