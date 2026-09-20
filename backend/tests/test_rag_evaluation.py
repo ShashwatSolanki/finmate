@@ -75,7 +75,7 @@ class RAGRetrievalTests(unittest.TestCase):
 
     def test_low_similarity_chunks_are_filtered(self):
         rows = [_FakeRow("weak match"), _FakeRow("strong match")]
-        embeddings = [[1.0, 0.0], [0.2, 0.0], [0.8, 0.6]]
+        embeddings = [[1.0, 0.0], [0.0, 1.0], [0.9, 0.0]]
         db = _FakeDB(rows)
         with patch.object(memory_store, "encode_texts", return_value=embeddings):
             result = memory_store.search_memory(db, uuid4(), "query", k=5, min_similarity=0.5)
