@@ -17,6 +17,7 @@ class DataBackedAgentTests(unittest.TestCase):
         self.user_id = uuid4()
 
     def test_investment_history_does_not_invent_portfolio(self):
+        self.db.scalars.return_value.all.return_value = []
         result = run_investment(
             self.user_id,
             "What are my last investments profits?",
