@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.types import AgentName, AgentResult
+from app.db.models import Transaction
 from app.config import settings
 from app.invoice.parse_invoice import parse_invoice_text
 from app.invoice.schemas import ParsedLineItem, StructuredInvoice
@@ -54,6 +57,43 @@ def _structured_from_message(message: str) -> StructuredInvoice | None:
         total = sum((i.amount for i in line_items), start=Decimal("0"))
         return StructuredInvoice(line_items=line_items, total=total, currency=result.invoice.currency)
     return None
+
+
+def _expense_invoice_from_transactions(db: Session, user_id: UUID) -> StructuredInvoice | None:
+    """Build an exportable invoice-style expense summary from recent transactions."""
+    cutoff = date.today() - timedelta(days=30)
+    rows = db.scalars(
+        select(Transaction)
+        .where(Transaction.user_id == user_id, Transaction.occurred_on >= cutoff)
+        .order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc())
+        .limit(50)
+    ).all()
+    if not rows:
+        return None
+
+    currency = (rows[0].currency or "USD").upper()
+    items = [
+        ParsedLineItem(
+            description=(row.description or row.category or "Expense")[:500],
+            amount=row.amount,
+        )
+        for row in rows
+        if row.amount > 0
+    ]
+    if not items:
+        return None
+
+    subtotal = sum((item.amount for item in items), start=Decimal("0"))
+    return StructuredInvoice(
+        invoice_number=f"EXP-{date.today().strftime('%Y%m%d')}",
+        invoice_date=date.today().isoformat(),
+        vendor_name="FinMate Expense Summary",
+        currency=currency,
+        line_items=items,
+        subtotal=subtotal,
+        total=subtotal,
+        notes="Generated from the user's transactions from the last 30 days.",
+    )
 
 
 def _format_reply(invoice: StructuredInvoice, inv_id: str, *, source_note: str) -> str:
@@ -127,6 +167,13 @@ def run(
     _ = db
     inv_id = str(uuid.uuid4())[:8].upper()
     invoice = _structured_from_message(message)
+    request = message.strip().lower()
+    wants_expense_invoice = bool(
+        re.search(r"\b(invoice|bill|receipt)\b", request)
+        and re.search(r"\b(my|our|these|recent|monthly|last 30 days?)\b.*\b(expenses?|spending|transactions?)\b", request)
+    )
+    if invoice is None and wants_expense_invoice:
+        invoice = _expense_invoice_from_transactions(db, user_id)
 
     rag_block = ""
     if rag_context and rag_context.strip():
@@ -164,8 +211,8 @@ def run(
         )
 
     upload_hint = (
-        "Upload a PDF or image invoice in Settings → Invoice import, or paste line items like:\n"
-        "  1200 Website design\n  400 SEO audit"
+        "Upload a PDF or image invoice in Settings → Invoice import, paste line items like:\n"
+        "  1200 Website design\n  400 SEO audit, or import transactions first if you want an expense summary."
     )
     reply = (
         "[AGENT: INVOICE]\n\n"
