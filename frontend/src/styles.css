@@ -883,11 +883,29 @@ input:focus, textarea:focus, select:focus {
 .sidebar-footer { border-color: rgba(255,255,255,.08); padding: .9rem; }
 .sidebar-link { border-radius: 10px; padding: .62rem .68rem; }
 
-.chat-main { background: transparent; }
-.chat-header { padding: 1.15rem 1.7rem; border: 0; background: rgba(255,255,255,.76); backdrop-filter: blur(18px); }
+.chat-main {
+  background: transparent;
+  min-width: 0;
+  min-height: 0;
+}
+.chat-header {
+  padding: 1.15rem 1.7rem;
+  border: 0;
+  background: rgba(255,255,255,.92);
+  backdrop-filter: blur(18px);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+}
 .chat-header h2 { font-size: 1.25rem; letter-spacing: -.03em; }
 .agent-select { border-radius: 10px; background: #f7f7fc; }
-.chat-thread { padding: 1.8rem clamp(1rem, 5vw, 5.5rem); gap: 1rem; }
+.chat-thread {
+  padding: 1.8rem clamp(1rem, 5vw, 5.5rem);
+  gap: 1rem;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
 .chat-empty { background: rgba(255,255,255,.76); border: 1px solid rgba(223,226,239,.9); border-radius: 24px; padding: 2rem; box-shadow: 0 14px 36px rgba(37,44,92,.06); }
 .chat-empty h3 { font-size: 1.45rem; letter-spacing: -.04em; }
 .bubble { padding: .9rem 1.1rem; border-radius: 18px; box-shadow: 0 5px 17px rgba(40,48,93,.05); }
