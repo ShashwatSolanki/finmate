@@ -8,6 +8,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.agents import budget_planner, invoice_generator, investment_analyser
+from app.agents.confidence import calculate_confidence
 from app.agents.agentic_orchestrator import run_agentic_turn
 from app.agents.intent import classify_agent
 from app.agents.types import AgentName, AgentResult
@@ -47,6 +48,10 @@ def run_turn(
     retain their deterministic/tool-backed flows.
     """
     chosen: AgentName | None = agent
+
+    def _finalize(result: AgentResult) -> AgentResult:
+        result.metadata.update(calculate_confidence([result], rag_context=rag_context))
+        return result
 
     # Use the bounded planner only for requests that clearly span multiple
     # specialists. Single-domain requests keep the existing routing path.
@@ -90,12 +95,12 @@ def run_turn(
                 meta = {"source": "llm", "route_key": route}
                 if rag_context and rag_context.strip():
                     meta["rag_injected"] = "true"
-                return AgentResult(
+                return _finalize(AgentResult(
                     agent=agent_enum,
                     reply=reply,
                     planned_steps=steps or ["parse_intent", "respond"],
                     metadata=meta,
-                )
+                ))
         except Exception as e:
             logger.exception("FinMate LLM failed; falling back to rule-based agents: %s", e)
 
@@ -105,16 +110,16 @@ def run_turn(
     if chosen == AgentName.BUDGET_PLANNER:
         res = budget_planner.run(user_id, user_message, db, rag_context=rag_context)
         res.metadata = {**res.metadata, "source": "rules"}
-        return res
+        return _finalize(res)
     if chosen == AgentName.INVOICE_GENERATOR:
         res = invoice_generator.run(user_id, user_message, db, rag_context=rag_context)
         res.metadata = {**res.metadata, "source": "rules"}
-        return res
+        return _finalize(res)
     if chosen == AgentName.INVESTMENT_ANALYSER:
         res = investment_analyser.run(user_id, user_message, db, rag_context=rag_context)
         res.metadata = {**res.metadata, "source": "rules"}
-        return res
+        return _finalize(res)
 
     res = budget_planner.run(user_id, user_message, db, rag_context=rag_context)
     res.metadata = {**res.metadata, "source": "rules"}
-    return res
+    return _finalize(res)
