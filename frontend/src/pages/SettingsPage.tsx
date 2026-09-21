@@ -61,6 +61,11 @@ export default function SettingsPage() {
     void loadPortfolio();
   }, [token]);
 
+  async function refreshPortfolio() {
+    await loadPortfolio();
+    setStatus("Portfolio prices refreshed.");
+  }
+
   async function addHolding(e: FormEvent) {
     e.preventDefault();
     if (!token) return;
@@ -249,6 +254,12 @@ export default function SettingsPage() {
           <p className="muted">
             Store your holdings here. FinMate uses quantity and average cost to calculate unrealized P/L from live prices.
           </p>
+          <div className="portfolio-toolbar">
+            <p className="muted">Add a holding or refresh live prices.</p>
+            <button type="button" className="btn-secondary" onClick={() => void refreshPortfolio()} disabled={loading}>
+              Refresh prices
+            </button>
+          </div>
           <form onSubmit={addHolding} className="settings-form">
             <label htmlFor="holding-symbol">Ticker</label>
             <input
@@ -294,6 +305,9 @@ export default function SettingsPage() {
           </form>
 
           {holdings.length > 0 && (() => {
+            const currencies = [...new Set(holdings.map((h) => h.currency.toUpperCase()))];
+            const sameCurrency = currencies.length === 1;
+            const currency = currencies[0] ?? "";
             const invested = holdings.reduce((sum, h) => sum + Number(h.average_cost) * Number(h.quantity), 0);
             const current = holdings.reduce((sum, h) => sum + (h.market_value != null ? Number(h.market_value) : 0), 0);
             const profit = holdings.reduce((sum, h) => sum + (h.unrealized_profit != null ? Number(h.unrealized_profit) : 0), 0);
@@ -301,9 +315,9 @@ export default function SettingsPage() {
             return (
               <>
                 <div className="portfolio-summary">
-                  <div><span>Invested</span><strong>{invested.toFixed(2)} {holdings[0].currency}</strong></div>
-                  <div><span>Current value</span><strong>{valued ? current.toFixed(2) + " " + holdings[0].currency : "—"}</strong></div>
-                  <div><span>Unrealized P/L</span><strong>{valued ? (profit >= 0 ? "+" : "") + profit.toFixed(2) + " " + holdings[0].currency : "—"}</strong></div>
+                  <div><span>Invested</span><strong>{sameCurrency ? invested.toFixed(2) + " " + currency : "Mixed currencies"}</strong></div>
+                  <div><span>Current value</span><strong>{sameCurrency && valued ? current.toFixed(2) + " " + currency : sameCurrency ? "—" : "Mixed currencies"}</strong></div>
+                  <div><span>Unrealized P/L</span><strong>{sameCurrency && valued ? (profit >= 0 ? "+" : "") + profit.toFixed(2) + " " + currency : sameCurrency ? "—" : "Mixed currencies"}</strong></div>
                   <div><span>Holdings valued</span><strong>{valued}/{holdings.length}</strong></div>
                 </div>
                 <div className="portfolio-list">
