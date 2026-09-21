@@ -106,6 +106,7 @@ def _portfolio_history_reply(db: Session, user_id: UUID) -> AgentResult:
     total_cost = Decimal("0")
     total_value = Decimal("0")
     valued_count = 0
+    currency = holdings[0].currency
 
     for holding in holdings:
         cost = holding.quantity * holding.average_cost
@@ -122,34 +123,39 @@ def _portfolio_history_reply(db: Session, user_id: UUID) -> AgentResult:
             valued_count += 1
             pct = (profit / cost * 100) if cost else Decimal("0")
             lines.append(
-                f"{holding.symbol}: {holding.quantity:g} units, average cost {holding.average_cost:.2f} "
-                f"{holding.currency}, current price {price:.2f}, unrealized P/L {profit:+.2f} ({pct:+.2f}%)."
+                f"{holding.symbol} | {holding.quantity:g} units | "
+                f"Avg cost: {holding.average_cost:,.2f} {holding.currency} | "
+                f"Current: {price:,.2f} {holding.currency} | "
+                f"P/L: {profit:+,.2f} {holding.currency} ({pct:+.2f}%)"
             )
         except Exception:
             lines.append(
-                f"{holding.symbol}: {holding.quantity:g} units, average cost {holding.average_cost:.2f} "
-                f"{holding.currency}; current market price unavailable."
+                f"{holding.symbol} | {holding.quantity:g} units | "
+                f"Avg cost: {holding.average_cost:,.2f} {holding.currency} | "
+                "Current market price unavailable"
             )
 
     if valued_count:
         total_profit = total_value - total_cost
         total_pct = (total_profit / total_cost * 100) if total_cost else Decimal("0")
         summary = (
-            f"Portfolio cost basis: {total_cost:.2f}. Current value for {valued_count}/{len(holdings)} "
-            f"holding(s): {total_value:.2f}. Unrealized P/L: {total_profit:+.2f} ({total_pct:+.2f}%)."
+            f"Total invested: {total_cost:,.2f} {currency}\n"
+            f"Current value: {total_value:,.2f} {currency}\n"
+            f"Unrealized P/L: {total_profit:+,.2f} {currency} ({total_pct:+.2f}%)\n"
+            f"Holdings valued: {valued_count}/{len(holdings)}"
         )
     else:
         summary = f"Portfolio cost basis: {total_cost:.2f}. Current market prices are unavailable, so P/L cannot be calculated."
 
     reply = (
         "[AGENT: INVESTMENT]\n\n"
-        "Portfolio snapshot from your stored holdings:\n"
+        "Portfolio Snapshot\n\n"
         + "\n".join(lines)
         + "\n\n"
         + summary
-        + "\n\n"
-        + '{"intent":"portfolio_history","steps":["Read stored holdings","Fetch current prices","Calculate unrealized profit/loss"],'
-        + '"tools_needed":["portfolio_holdings","yfinance_lookup"],"notes":"returns are unrealized unless transaction history is added"}'
+        + "\n"
+        + "Note: P/L shown here is unrealized because FinMate currently tracks holdings, "
+        "not completed buy/sell transactions."
     )
     return AgentResult(
         agent=AgentName.INVESTMENT_ANALYSER,
