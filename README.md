@@ -308,3 +308,15 @@ The score combines:
 - **Response completeness** — whether successful specialist responses contain non-empty output.
 
 Metadata includes `confidence`, `confidence_level`, `confidence_method`, and `confidence_factors`. The implementation lives in `backend/app/agents/confidence.py` and is covered by `backend/tests/test_confidence.py`.
+
+
+## Final AI evaluation
+
+Run the end-to-end evaluator against a running backend using a real user token:
+
+```bash
+cd backend
+python scripts/evaluate_ai.py --token <JWT_TOKEN>
+```
+
+The evaluator reports routing accuracy, reply-format compliance, confidence metadata coverage, observed RAG usage, bounded agentic-plan execution, and invoice artifact preservation. The dataset is a small held-out regression suite for this implementation; its percentages should not be interpreted as general model-quality or production-performance claims.
