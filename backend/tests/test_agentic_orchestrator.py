@@ -1,4 +1,6 @@
 import unittest
+from unittest.mock import MagicMock
+from uuid import uuid4
 
 from app.agents.agentic_orchestrator import build_plan
 from app.agents.investment_analyser import _extract_original_request
