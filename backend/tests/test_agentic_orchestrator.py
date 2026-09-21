@@ -35,6 +35,22 @@ class AgenticPlannerTests(unittest.TestCase):
             "Analyze my spending and tell me how much I can invest this month.",
         )
 
+
+    def test_explicit_multi_domain_request_is_not_hijacked_by_followup_agent(self):
+        from app.api.routes.chat import _followup_agent_override
+
+        db = MagicMock()
+        row = MagicMock()
+        row.content = "Assistant (investment_analyser): previous investment answer"
+        db.scalars.return_value.all.return_value = [row]
+
+        result = _followup_agent_override(
+            db,
+            uuid4(),
+            "I earn 90000, spend 50000 monthly, and want to invest the remainder.",
+        )
+        self.assertIsNone(result)
+
     def test_budget_investment_invoice_plan_is_bounded(self):
         plan = build_plan(
             "Review my budget, suggest an investment, and create an invoice."
