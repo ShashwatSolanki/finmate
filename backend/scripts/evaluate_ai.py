@@ -145,7 +145,7 @@ def main() -> None:
                 if all(str(meta.get(k, "")).strip() for k in required):
                     metrics["invoice_artifacts_present"] += 1
                 else:
-                    case_issues.append("invoice artifacts missing")
+                    case_issues.append("invoice artifacts missing; metadata keys=" + ",".join(sorted(str(k) for k in meta.keys())))
 
             if case_issues:
                 failures.append(f"{idx}: " + "; ".join(case_issues))
