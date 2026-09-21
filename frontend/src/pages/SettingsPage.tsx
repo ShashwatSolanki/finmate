@@ -26,6 +26,7 @@ export default function SettingsPage() {
     last_price?: string | null;
     market_value?: string | null;
     unrealized_profit?: string | null;
+    unrealized_profit_pct?: string | null;
   }>>([]);
   const [holdingSymbol, setHoldingSymbol] = useState("");
   const [holdingQuantity, setHoldingQuantity] = useState("");
@@ -292,8 +293,43 @@ export default function SettingsPage() {
             </button>
           </form>
 
-          {holdings.length > 0 && (
-            <div className="portfolio-list">
+          {holdings.length > 0 && (() => {
+            const invested = holdings.reduce((sum, h) => sum + Number(h.average_cost) * Number(h.quantity), 0);
+            const current = holdings.reduce((sum, h) => sum + (h.market_value != null ? Number(h.market_value) : 0), 0);
+            const profit = holdings.reduce((sum, h) => sum + (h.unrealized_profit != null ? Number(h.unrealized_profit) : 0), 0);
+            const valued = holdings.filter((h) => h.market_value != null).length;
+            return (
+              <>
+                <div className="portfolio-summary">
+                  <div><span>Invested</span><strong>{invested.toFixed(2)} {holdings[0].currency}</strong></div>
+                  <div><span>Current value</span><strong>{valued ? current.toFixed(2) + " " + holdings[0].currency : "—"}</strong></div>
+                  <div><span>Unrealized P/L</span><strong>{valued ? (profit >= 0 ? "+" : "") + profit.toFixed(2) + " " + holdings[0].currency : "—"}</strong></div>
+                  <div><span>Holdings valued</span><strong>{valued}/{holdings.length}</strong></div>
+                </div>
+                <div className="portfolio-list">
+                  {holdings.map((holding) => (
+                    <div className="portfolio-row" key={holding.id}>
+                      <div>
+                        <strong>{holding.symbol}</strong>
+                        <span>{holding.quantity} × {holding.average_cost} {holding.currency}</span>
+                      </div>
+                      <div className="portfolio-values">
+                        <span>Price: {holding.last_price ?? "—"}</span>
+                        <span>Value: {holding.market_value ?? "—"}</span>
+                        <span>
+                          P/L: {holding.unrealized_profit ?? "—"}
+                          {holding.unrealized_profit_pct != null ? " (" + Number(holding.unrealized_profit_pct).toFixed(2) + "%)" : ""}
+                        </span>
+                      </div>
+                      <button type="button" className="btn-ghost portfolio-remove" onClick={() => void deleteHolding(holding.symbol)}>
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
               {holdings.map((holding) => (
                 <div className="portfolio-row" key={holding.id}>
                   <div>
