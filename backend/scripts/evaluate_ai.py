@@ -74,7 +74,7 @@ def main() -> None:
     }
     failures: list[str] = []
 
-    with httpx.Client(base_url=args.base_url.rstrip("/"), headers=headers) as client:
+    with httpx.Client(base_url=args.base_url.rstrip("/"), headers=headers, timeout=None) as client:
         for idx, row in enumerate(rows, 1):
             message = str(row.get("message", "")).strip()
             expected_agent = str(row.get("expected_agent", "")).strip()
