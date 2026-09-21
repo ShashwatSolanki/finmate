@@ -1106,3 +1106,70 @@ input:focus, textarea:focus, select:focus {
     bottom: 6.5rem;
   }
 }
+
+
+/* Final mobile chat rules: the drawer must sit above the chat/composer. */
+@media (max-width: 768px) {
+  .app-shell {
+    grid-template-columns: 1fr !important;
+  }
+
+  .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: min(82vw, 300px) !important;
+    max-width: 300px;
+    z-index: 300 !important;
+    transform: translateX(-100%);
+    overflow: hidden;
+  }
+
+  .app-shell.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 250 !important;
+  }
+
+  .chat-main {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .chat-header {
+    padding: .85rem 1rem;
+  }
+
+  .chat-header-actions {
+    gap: .4rem;
+  }
+
+  .chat-header-actions .agent-select {
+    max-width: 6.5rem;
+  }
+
+  .chat-thread {
+    padding: .8rem .7rem 5.5rem;
+  }
+
+  .chat-composer {
+    left: .6rem !important;
+    right: .6rem !important;
+    bottom: .6rem !important;
+    z-index: 100 !important;
+    width: auto;
+  }
+
+  .chat-composer textarea {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .chat-composer .btn-primary {
+    flex: 0 0 auto;
+  }
+}
