@@ -634,6 +634,43 @@ button:disabled {
   min-width: 88px;
 }
 
+.portfolio-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin: 1rem 0 .25rem;
+}
+
+.portfolio-toolbar p {
+  margin: 0;
+}
+
+.portfolio-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .65rem;
+  margin-top: 1rem;
+}
+
+.portfolio-summary > div {
+  padding: .8rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.portfolio-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: .76rem;
+  margin-bottom: .25rem;
+}
+
+.portfolio-summary strong {
+  font-size: .92rem;
+}
+
 .portfolio-list {
   margin-top: 1rem;
   display: grid;
@@ -1171,5 +1208,16 @@ input:focus, textarea:focus, select:focus {
 
   .chat-composer .btn-primary {
     flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .portfolio-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portfolio-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
