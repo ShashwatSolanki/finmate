@@ -138,21 +138,20 @@ def _is_high_signal_user_message(text: str) -> bool:
 
 
 def _latest_assistant_agent(db: Session, user_id) -> AgentName | None:
-    row = db.scalar(
+    rows = db.scalars(
         select(MemoryChunk)
         .where(MemoryChunk.user_id == user_id, MemoryChunk.source == "chat")
         .order_by(MemoryChunk.created_at.desc())
         .limit(12)
-    )
-    if not row or not row.content:
-        return None
-    text = row.content
-    if "Assistant (investment_analyser):" in text:
-        return AgentName.INVESTMENT_ANALYSER
-    if "Assistant (invoice_generator):" in text:
-        return AgentName.INVOICE_GENERATOR
-    if "Assistant (budget_planner):" in text:
-        return AgentName.BUDGET_PLANNER
+    ).all()
+    for row in rows:
+        text = row.content or ""
+        if "Assistant (investment_analyser):" in text:
+            return AgentName.INVESTMENT_ANALYSER
+        if "Assistant (invoice_generator):" in text:
+            return AgentName.INVOICE_GENERATOR
+        if "Assistant (budget_planner):" in text:
+            return AgentName.BUDGET_PLANNER
     return None
 
 
@@ -275,7 +274,16 @@ def chat_message(
     )
     result.reply = _enforce_reply_contract(result.reply, result.agent)
 
-    meta = dict(result.metadata)
+    meta = {str(key): str(value) for key, value in result.metadata.items()}
+
+    # Preserve structured invoice export artifacts explicitly at the API
+    # boundary. These are consumed by the UI for PDF/CSV export.
+    if result.agent == AgentName.INVOICE_GENERATOR:
+        for key in ("invoice_ref", "invoice_payload", "invoice_actions"):
+            value = result.metadata.get(key)
+            if value is not None and str(value).strip():
+                meta[key] = str(value)
+
     meta["rag_chunks_used"] = str(len(ctx_docs))
     meta["recent_turns_injected"] = "3" if recent_context else "0"
     meta["onboarding_injected"] = "true" if onboarding_context else "false"
@@ -326,6 +334,6 @@ def chat_message(
         agent=result.agent.value,
         reply=result.reply,
         planned_steps=result.planned_steps,
-        metadata=meta,
+        metadata=dict(meta),
         session_id=session.id,
     )
