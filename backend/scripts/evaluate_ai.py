@@ -64,6 +64,7 @@ def main() -> None:
         "total": 0,
         "http_ok": 0,
         "route_correct": 0,
+        "routing_cases": 0,
         "format_ok": 0,
         "confidence_present": 0,
         "rag_observed": 0,
@@ -113,10 +114,12 @@ def main() -> None:
             meta = data.get("metadata") or {}
 
             case_issues: list[str] = []
-            if expected_agent and agent != expected_agent:
-                case_issues.append(f"agent expected={expected_agent}, got={agent}")
-            elif expected_agent:
-                metrics["route_correct"] += 1
+            if expected_agent:
+                metrics["routing_cases"] += 1
+                if agent != expected_agent:
+                    case_issues.append(f"agent expected={expected_agent}, got={agent}")
+                else:
+                    metrics["route_correct"] += 1
 
             if format_ok(reply):
                 metrics["format_ok"] += 1
@@ -161,7 +164,11 @@ def main() -> None:
     print("===================")
     print(f"Dataset cases:             {metrics['total']}")
     print(f"HTTP-successful cases:     {metrics['http_ok']}")
-    print(f"Routing accuracy:          {metrics['route_correct']}/{evaluated} ({pct(metrics['route_correct'])})")
+    routing_cases = metrics["routing_cases"]
+    print(
+        f"Routing accuracy:          {metrics['route_correct']}/{routing_cases} "
+        f"({pct(metrics['route_correct'], routing_cases)})"
+    )
     print(f"Format compliance:         {metrics['format_ok']}/{evaluated} ({pct(metrics['format_ok'])})")
     print(f"Confidence metadata:       {metrics['confidence_present']}/{evaluated} ({pct(metrics['confidence_present'])})")
     print(f"Cases with RAG observed:   {metrics['rag_observed']}/{evaluated} ({pct(metrics['rag_observed'])})")
