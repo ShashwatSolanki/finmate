@@ -170,6 +170,12 @@ def _followup_agent_override(db: Session, user_id, message: str) -> AgentName | 
     if build_plan(message) is not None:
         return None
 
+    # Do not let an earlier conversation route a new, high-signal finance
+    # request to the previous specialist. Explicit requests should be freshly
+    # classified; the override is reserved for short/ambiguous follow-ups.
+    if _is_high_signal_user_message(message):
+        return None
+
     t = message.strip().lower()
     if not t:
         return None
