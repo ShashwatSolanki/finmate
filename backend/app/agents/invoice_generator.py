@@ -19,32 +19,38 @@ from app.invoice.parse_invoice import parse_invoice_text
 from app.invoice.schemas import ParsedLineItem, StructuredInvoice
 from app.ml.finmate import generate
 
-_AMOUNT_LINE = re.compile(r"^\s*(?:[-*]\s*)?([\d.,]+)\s+(.+?)\s*$|^\s*(?:[-*]\s*)?(.+?)\s+(?:₹|Rs\.?|INR|\$)?\s*([\d,]+(?:\.\d{1,2})?)\s*$", re.M | re.I)
-
-
-def _extract_original_request(message: str) -> str:
-    """Remove verified specialist observations before parsing invoice input."""
-    marker = "\n\n[Verified specialist observations]"
-    if marker in message:
-        return message.split(marker, 1)[0].strip()
-    return message.strip()
+_AMOUNT_LINE = re.compile(
+    r"^\s*(?:[-*]\s*)?(.+?)\s+(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£)?\s*"
+    r"([\d,]+(?:\.\d{1,2})?)\s*[.!]?\s*$",
+    re.I,
+)
 
 
 def _parse_simple_lines(message: str) -> list[dict[str, str]]:
+    """Parse compact natural-language invoice requests into line items."""
+    cleaned = re.sub(
+        r"^\s*(?:create|generate|make)\s+(?:an?\s+)?invoice\s*(?:for|from)?\s*",
+        "", message, flags=re.I,
+    )
+    parts = re.split(r"\s+and\s+|[,;]", cleaned, flags=re.I)
     items: list[dict[str, str]] = []
-    total = Decimal("0")
-    for m in _AMOUNT_LINE.finditer(message):
-        amount_first = m.group(1) is not None
-        amt = m.group(1) if amount_first else m.group(4)
-        desc = (m.group(2) if amount_first else m.group(3)).strip()
+    for part in parts:
+        text = part.strip().rstrip(".!?")
+        if not text:
+            continue
+        m = _AMOUNT_LINE.match(text)
+        if not m:
+            continue
+        desc, amt = m.groups()
         try:
             val = Decimal(amt.replace(",", ""))
         except InvalidOperation:
             continue
         if val <= 0:
             continue
-        items.append({"description": desc, "amount": f"{val:.2f}"})
-        total += val
+        desc = re.sub(r"^(?:for|of)\s+", "", desc.strip(), flags=re.I)
+        if desc:
+            items.append({"description": desc, "amount": f"{val:.2f}"})
     return items
 
 
@@ -83,10 +89,10 @@ def _expense_invoice_from_transactions(db: Session, user_id: UUID) -> Structured
     items = [
         ParsedLineItem(
             description=(row.description or row.category or "Expense")[:500],
-            amount=row.amount,
+            amount=abs(row.amount),
         )
         for row in rows
-        if row.amount > 0
+        if row.amount != 0
     ]
     if not items:
         return None
