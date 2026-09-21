@@ -330,23 +330,6 @@ export default function SettingsPage() {
               </>
             );
           })()}
-              {holdings.map((holding) => (
-                <div className="portfolio-row" key={holding.id}>
-                  <div>
-                    <strong>{holding.symbol}</strong>
-                    <span>{holding.quantity} × {holding.average_cost} {holding.currency}</span>
-                  </div>
-                  <div className="portfolio-values">
-                    <span>Value: {holding.market_value ?? "—"}</span>
-                    <span>P/L: {holding.unrealized_profit ?? "—"}</span>
-                  </div>
-                  <button type="button" className="btn-ghost portfolio-remove" onClick={() => void deleteHolding(holding.symbol)}>
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </section>
 
         <InvoiceImportPanel onStatus={setStatus} onError={setError} />
