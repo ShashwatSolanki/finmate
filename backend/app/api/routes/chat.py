@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.agents.agentic_orchestrator import build_plan
 from app.agents.orchestrator import run_turn
 from app.agents.types import AgentName
 from app.api.deps import get_current_user
@@ -162,6 +163,11 @@ def _followup_agent_override(db: Session, user_id, message: str) -> AgentName | 
     """
     last_agent = _latest_assistant_agent(db, user_id)
     if last_agent is None:
+        return None
+
+    # Explicit multi-domain requests must reach the agentic planner instead of
+    # being hijacked by conversational follow-up routing.
+    if build_plan(message) is not None:
         return None
 
     t = message.strip().lower()
