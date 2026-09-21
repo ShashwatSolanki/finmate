@@ -189,19 +189,19 @@ def run(
         rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
     if invoice and invoice.line_items:
-        if settings.finmate_use_llm:
-            enriched = (
-                f"{message}\n\n[Parsed invoice]\n{invoice.model_dump_json()}{rag_block}"
-            )
-            try:
-                reply = generate(enriched)
-                source = "llm"
-            except Exception:
-                reply = _format_reply(invoice, inv_id, source_note="generated from recent user transactions" if wants_expense_invoice else "parsed from message text")
-                source = "structured_parse"
-        else:
-            reply = _format_reply(invoice, inv_id, source_note="generated from recent user transactions" if wants_expense_invoice else "parsed from message text")
-            source = "transaction_summary" if wants_expense_invoice else "structured_parse"
+        # Invoice generation is intentionally deterministic here. The structured
+        # invoice object is the source of truth for PDF/CSV export artifacts; using
+        # the general LLM response path can discard those machine-readable fields.
+        reply = _format_reply(
+            invoice,
+            inv_id,
+            source_note=(
+                "generated from recent user transactions"
+                if wants_expense_invoice
+                else "parsed from message text"
+            ),
+        )
+        source = "transaction_summary" if wants_expense_invoice else "structured_parse"
 
         total = invoice.total or sum((i.amount for i in invoice.line_items), start=Decimal("0"))
         return AgentResult(
