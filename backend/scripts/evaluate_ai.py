@@ -49,7 +49,6 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--token", required=True)
-    parser.add_argument("--timeout", type=float, default=30.0, help="Per-case HTTP timeout in seconds")
     parser.add_argument(
         "--dataset",
         default="../training/data/final_ai_eval.jsonl",
@@ -94,7 +93,6 @@ def main() -> None:
                 response = client.post(
                     "/api/chat/message",
                     json={"message": message},
-                    timeout=args.timeout,
                 )
                 elapsed = time.perf_counter() - started
                 if response.status_code != 200:
@@ -104,11 +102,6 @@ def main() -> None:
                 metrics["http_ok"] += 1
                 data = response.json()
                 print(f"    OK ({elapsed:.1f}s)", flush=True)
-            except httpx.TimeoutException:
-                elapsed = time.perf_counter() - started
-                failures.append(f"{idx}: timeout after {elapsed:.1f}s")
-                print(f"    TIMEOUT after {elapsed:.1f}s", flush=True)
-                continue
             except Exception as exc:
                 elapsed = time.perf_counter() - started
                 failures.append(f"{idx}: request error after {elapsed:.1f}s: {exc}")
