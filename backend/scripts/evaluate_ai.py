@@ -175,7 +175,7 @@ def main() -> None:
         print(
             f"Invoice artifacts:         {metrics['invoice_artifacts_present']}/"
             f"{metrics['invoice_artifact_cases']} "
-            f"({pct(metrics['invoice_artifact_cases'], metrics['invoice_artifact_cases'])})"
+            f"({pct(metrics['invoice_artifacts_present'], metrics['invoice_artifact_cases'])})"
         )
 
     if failures:
