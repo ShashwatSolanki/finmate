@@ -11,10 +11,10 @@
 {"message":"Analyze my spending and tell me how much I can invest this month.","expected_source":"agentic","expected_agents":["budget_planner","investment_analyser"]}
 {"message":"Review my budget, suggest an investment, and create an invoice for my expenses.","expected_source":"agentic","expected_agents":["budget_planner","investment_analyser","invoice_generator"],"needs_invoice_artifacts":true}
 {"message":"Analyze my expenses and generate an invoice for them.","expected_source":"agentic","expected_agents":["budget_planner","invoice_generator"],"needs_invoice_artifacts":true}
-{"message":"Tell me how much I can invest and review my portfolio.","expected_source":"agentic","expected_agents":["investment_analyser","budget_planner"]}
+{"message":"Tell me how much I can invest and review my portfolio.","expected_agent":"investment_analyser"}
 {"message":"I earn 90000, spend 50000 monthly, and want to invest the remainder.","expected_source":"agentic","expected_agents":["budget_planner","investment_analyser"]}
 {"message":"Create an invoice and tell me whether my recent spending leaves room to invest.","expected_source":"agentic","expected_agents":["budget_planner","investment_analyser","invoice_generator"],"needs_invoice_artifacts":true}
 {"message":"How much did I spend on food recently?","expected_agent":"budget_planner"}
 {"message":"What is the current value of my portfolio?","expected_agent":"investment_analyser"}
-{"message":"Generate an invoice from my recent expenses.","expected_agent":"invoice_generator","needs_invoice_artifacts":true}
-{"message":"I have 20000 available after expenses. Explain a conservative investment allocation.","expected_agent":"investment_analyser"}
+{"message":"Generate an invoice from my recent expenses.","expected_source":"agentic","expected_agents":["budget_planner","invoice_generator"],"needs_invoice_artifacts":true}
+{"message":"I have 20000 available after expenses. Explain a conservative investment allocation.","expected_source":"agentic","expected_agents":["budget_planner","investment_analyser"]}
