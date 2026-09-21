@@ -62,6 +62,11 @@ def create_holding(
         )
     )
     if existing:
+        if existing.currency.upper() != body.currency.upper():
+            raise HTTPException(
+                status_code=400,
+                detail=f"{symbol} already exists in {existing.currency}; use the same currency when updating it.",
+            )
         total_cost = existing.quantity * existing.average_cost + body.quantity * body.average_cost
         existing.quantity += body.quantity
         existing.average_cost = total_cost / existing.quantity
