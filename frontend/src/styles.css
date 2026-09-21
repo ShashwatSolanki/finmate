@@ -1070,8 +1070,8 @@ input:focus, textarea:focus, select:focus {
   overflow-x: hidden;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 12rem;
-  scroll-padding-bottom: 12rem;
+  padding-bottom: 5.5rem;
+  scroll-padding-bottom: 5.5rem;
 }
 
 .chat-feedback {
