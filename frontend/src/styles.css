@@ -1039,8 +1039,8 @@ input:focus, textarea:focus, select:focus {
   .invoice-totals-editor > label, .invoice-totals-editor dl { width: 100%; }
 }
 
-/* Final chat layout override: keep header, messages, feedback, and composer
-   inside the viewport. The message pane is the only scrolling region. */
+/* Final chat layout: the page never scrolls; only the message thread scrolls.
+   The composer is viewport-anchored so it cannot be pushed below the fold. */
 .chat-main {
   display: flex !important;
   flex-direction: column;
@@ -1061,19 +1061,38 @@ input:focus, textarea:focus, select:focus {
   height: auto;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-bottom: 1.5rem;
+  padding-bottom: 7rem;
 }
 
 .chat-feedback {
-  flex: 0 0 auto;
+  position: absolute;
+  left: 1.5rem;
+  right: 1.5rem;
+  bottom: 6.9rem;
+  z-index: 19;
+  pointer-events: none;
 }
 
 .chat-composer {
-  position: relative;
-  left: auto;
-  right: auto;
-  bottom: auto;
-  flex: 0 0 auto;
+  position: fixed !important;
+  left: calc(280px + clamp(.65rem, 3vw, 2.5rem));
+  right: clamp(.65rem, 3vw, 2.5rem);
+  bottom: 1rem;
   width: auto;
-  margin: 0 clamp(.65rem, 3vw, 2.5rem) 1.2rem;
+  margin: 0 !important;
+  z-index: 100;
+}
+
+@media (max-width: 768px) {
+  .chat-composer {
+    left: .65rem;
+    right: .65rem;
+    bottom: .65rem;
+  }
+
+  .chat-feedback {
+    left: .9rem;
+    right: .9rem;
+    bottom: 6.5rem;
+  }
 }
