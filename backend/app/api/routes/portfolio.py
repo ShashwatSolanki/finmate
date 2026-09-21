@@ -33,6 +33,7 @@ class HoldingValuation(HoldingResponse):
     market_value: Decimal | None = None
     cost_basis: Decimal
     unrealized_profit: Decimal | None = None
+    unrealized_profit_pct: Decimal | None = None
 
 
 @router.get("/holdings", response_model=list[HoldingResponse])
@@ -134,6 +135,7 @@ def portfolio_summary(
                 market_value=market_value,
                 cost_basis=cost_basis,
                 unrealized_profit=market_value - cost_basis if market_value is not None else None,
+                unrealized_profit_pct=((market_value - cost_basis) / cost_basis * Decimal("100")) if market_value is not None and cost_basis else None,
             )
         )
     return result
