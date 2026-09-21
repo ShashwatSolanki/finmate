@@ -26,6 +26,28 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(result.metadata["source"], "no_investment_data")
         self.assertIn("don't have any stored investment holdings", result.reply)
 
+    def test_portfolio_history_uses_stored_holdings_and_market_price(self):
+        holding = MagicMock()
+        holding.symbol = "AAPL"
+        holding.quantity = Decimal("10")
+        holding.average_cost = Decimal("100")
+        holding.currency = "USD"
+        self.db.scalars.return_value.all.return_value = [holding]
+
+        ticker = MagicMock()
+        ticker.info = {"currentPrice": 125}
+
+        with patch("app.agents.investment_analyser.get_ticker", return_value=ticker):
+            result = run_investment(
+                self.user_id,
+                "What are my current investment profits?",
+                self.db,
+            )
+
+        self.assertEqual(result.metadata["source"], "portfolio_holdings")
+        self.assertEqual(result.metadata["holdings_count"], "1")
+        self.assertIn("unrealized P/L +250.00 (+25.00%)", result.reply)
+
     def test_expense_invoice_uses_recent_transactions(self):
         invoice = MagicMock()
         item = MagicMock()
