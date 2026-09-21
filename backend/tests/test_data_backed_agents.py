@@ -46,7 +46,7 @@ class DataBackedAgentTests(unittest.TestCase):
 
         self.assertEqual(result.metadata["source"], "portfolio_holdings")
         self.assertEqual(result.metadata["holdings_count"], "1")
-        self.assertIn("unrealized P/L +250.00 (+25.00%)", result.reply)
+        self.assertIn("Unrealized P/L: +250.00 USD (+25.00%)", result.reply)
 
     def test_expense_invoice_uses_recent_transactions(self):
         invoice = MagicMock()
