@@ -50,6 +50,14 @@ def main() -> None:
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--token", required=True)
     parser.add_argument(
+        "--quick", action="store_true",
+        help="Run a representative subset of the held-out cases.",
+    )
+    parser.add_argument(
+        "--cases", default="",
+        help="Comma-separated 1-based dataset case numbers (overrides --quick).",
+    )
+    parser.add_argument(
         "--dataset",
         default="../training/data/final_ai_eval.jsonl",
     )
@@ -58,6 +66,19 @@ def main() -> None:
     rows = load_jsonl(Path(args.dataset))
     if not rows:
         raise ValueError("Evaluation dataset is empty.")
+
+    if args.cases:
+        selected = [int(x.strip()) for x in args.cases.split(",") if x.strip()]
+        invalid = [x for x in selected if x < 1 or x > len(rows)]
+        if invalid:
+            raise ValueError(f"Invalid case number(s): {invalid}. Valid range: 1-{len(rows)}")
+        rows = [rows[i - 1] for i in selected]
+    elif args.quick:
+        quick_numbers = [3, 5, 11, 12, 13, 15, 16, 19]
+        rows = [rows[i - 1] for i in quick_numbers if i <= len(rows)]
+
+    if not rows:
+        raise ValueError("No evaluation cases selected.")
 
     headers = {"Authorization": f"Bearer {args.token}", "Content-Type": "application/json"}
     metrics = {
