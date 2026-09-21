@@ -1038,3 +1038,42 @@ input:focus, textarea:focus, select:focus {
   .invoice-totals-editor { align-items: stretch; flex-direction: column; gap: .8rem; }
   .invoice-totals-editor > label, .invoice-totals-editor dl { width: 100%; }
 }
+
+/* Final chat layout override: keep header, messages, feedback, and composer
+   inside the viewport. The message pane is the only scrolling region. */
+.chat-main {
+  display: flex !important;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.chat-header {
+  flex: 0 0 auto;
+}
+
+.chat-thread {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: 1.5rem;
+}
+
+.chat-feedback {
+  flex: 0 0 auto;
+}
+
+.chat-composer {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  flex: 0 0 auto;
+  width: auto;
+  margin: 0 clamp(.65rem, 3vw, 2.5rem) 1.2rem;
+}
