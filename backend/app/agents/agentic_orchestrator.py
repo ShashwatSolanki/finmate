@@ -14,6 +14,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.agents import budget_planner, invoice_generator, investment_analyser
+from app.agents.confidence import calculate_confidence
 from app.agents.types import AgentName, AgentResult
 from app.config import settings
 
@@ -256,6 +257,8 @@ def run_agentic_turn(
                     metadata[key] = result.metadata[key]
     if failed_agents:
         metadata["agents_failed"] = ",".join(failed_agents)
+
+    metadata.update(calculate_confidence(observations, rag_context=rag_context, failed_agents=failed_agents))
 
     return AgentResult(
         agent=primary,
