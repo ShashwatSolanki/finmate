@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import time
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--token", required=True)
+    parser.add_argument("--timeout", type=float, default=30.0, help="Per-case HTTP timeout in seconds")
     parser.add_argument(
         "--dataset",
         default="../training/data/final_ai_eval.jsonl",
@@ -73,7 +75,7 @@ def main() -> None:
     }
     failures: list[str] = []
 
-    with httpx.Client(base_url=args.base_url.rstrip("/"), headers=headers, timeout=90) as client:
+    with httpx.Client(base_url=args.base_url.rstrip("/"), headers=headers) as client:
         for idx, row in enumerate(rows, 1):
             message = str(row.get("message", "")).strip()
             expected_agent = str(row.get("expected_agent", "")).strip()
@@ -82,27 +84,57 @@ def main() -> None:
             needs_invoice_artifacts = bool(row.get("needs_invoice_artifacts", False))
 
             metrics["total"] += 1
+            preview = " ".join(message.split())
+            if len(preview) > 72:
+                preview = preview[:69] + "..."
+            print(f"[{idx}/{len(rows)}] {preview}", flush=True)
+
+            started = time.perf_counter()
             try:
-                response = client.post("/api/chat/message", json={"message": message})
+                response = client.post(
+                    "/api/chat/message",
+                    json={"message": message},
+                    timeout=args.timeout,
+                )
+                elapsed = time.perf_counter() - started
                 if response.status_code != 200:
-                    failures.append(f"{idx}: HTTP {response.status_code}")
+                    failures.append(f"{idx}: HTTP {response.status_code} after {elapsed:.1f}s")
+                    print(f"    FAIL HTTP {response.status_code} ({elapsed:.1f}s)", flush=True)
                     continue
                 metrics["http_ok"] += 1
                 data = response.json()
+                print(f"    OK ({elapsed:.1f}s)", flush=True)
+            except httpx.TimeoutException:
+                elapsed = time.perf_counter() - started
+                failures.append(f"{idx}: timeout after {elapsed:.1f}s")
+                print(f"    TIMEOUT after {elapsed:.1f}s", flush=True)
+                continue
             except Exception as exc:
-                failures.append(f"{idx}: request error: {exc}")
+                elapsed = time.perf_counter() - started
+                failures.append(f"{idx}: request error after {elapsed:.1f}s: {exc}")
+                print(f"    FAIL after {elapsed:.1f}s: {exc}", flush=True)
                 continue
 
             agent = str(data.get("agent", ""))
             reply = str(data.get("reply", ""))
             meta = data.get("metadata") or {}
 
-            if expected_agent and agent == expected_agent:
+            case_issues: list[str] = []
+            if expected_agent and agent != expected_agent:
+                case_issues.append(f"agent expected={expected_agent}, got={agent}")
+            elif expected_agent:
                 metrics["route_correct"] += 1
+
             if format_ok(reply):
                 metrics["format_ok"] += 1
+            else:
+                case_issues.append("format contract failed")
+
             if "confidence" in meta and "confidence_level" in meta:
                 metrics["confidence_present"] += 1
+            else:
+                case_issues.append("confidence metadata missing")
+
             if str(meta.get("rag_chunks_used", "0")) != "0":
                 metrics["rag_observed"] += 1
 
@@ -112,9 +144,7 @@ def main() -> None:
                 if executed == expected_agents:
                     metrics["agentic_correct"] += 1
                 else:
-                    failures.append(
-                        f"{idx}: expected agents {expected_agents}, got {executed}"
-                    )
+                    case_issues.append(f"agents expected={expected_agents}, got={executed}")
 
             if needs_invoice_artifacts:
                 metrics["invoice_artifact_cases"] += 1
@@ -122,13 +152,18 @@ def main() -> None:
                 if all(str(meta.get(k, "")).strip() for k in required):
                     metrics["invoice_artifacts_present"] += 1
                 else:
-                    failures.append(f"{idx}: missing invoice artifacts")
+                    case_issues.append("invoice artifacts missing")
+
+            if case_issues:
+                failures.append(f"{idx}: " + "; ".join(case_issues))
+                print("    ISSUES: " + "; ".join(case_issues), flush=True)
 
     evaluated = metrics["http_ok"]
 
     def pct(value: int, denominator: int = evaluated) -> str:
         return f"{100.0 * value / denominator:.2f}%" if denominator else "N/A"
 
+    print()
     print("Final AI Evaluation")
     print("===================")
     print(f"Dataset cases:             {metrics['total']}")
@@ -147,7 +182,7 @@ def main() -> None:
         print(
             f"Invoice artifacts:         {metrics['invoice_artifacts_present']}/"
             f"{metrics['invoice_artifact_cases']} "
-            f"({pct(metrics['invoice_artifacts_present'], metrics['invoice_artifact_cases'])})"
+            f"({pct(metrics['invoice_artifact_cases'], metrics['invoice_artifact_cases'])})"
         )
 
     if failures:
