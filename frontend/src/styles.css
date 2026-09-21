@@ -1061,7 +1061,8 @@ input:focus, textarea:focus, select:focus {
   height: auto;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-bottom: 7rem;
+  padding-bottom: 12rem;
+  scroll-padding-bottom: 12rem;
 }
 
 .chat-feedback {
