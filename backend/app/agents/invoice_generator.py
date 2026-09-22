@@ -25,6 +25,12 @@ _AMOUNT_LINE = re.compile(
     re.I,
 )
 
+_AMOUNT_FIRST_LINE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£)?\s*"
+    r"([\d,]+(?:\.\d{1,2})?)\s+(.+?)\s*[.!]?\s*$",
+    re.I,
+)
+
 
 def _extract_original_request(message: str) -> str:
     """Remove verified specialist observations before parsing invoice input."""
@@ -53,8 +59,12 @@ def _wants_expense_invoice(request: str) -> bool:
 def _parse_simple_lines(message: str) -> list[dict[str, str]]:
     """Parse compact natural-language invoice requests into line items."""
     cleaned = re.sub(
-        r"^\s*(?:create|generate|make)\s+(?:an?\s+)?invoice\s*(?:for|from)?\s*",
-        "", message, flags=re.I,
+        r"^\s*(?:(?:create|generate|make|draft)\s+(?:an?\s+)?invoice"
+        r"|i\s+need\s+(?:an?\s+)?(?:client\s+)?invoice)"
+        r"\s*(?:for|from|line\s+items?)?\s*[:\-]?\s*",
+        "",
+        message,
+        flags=re.I,
     )
     parts = re.split(r"\s+and\s+|[,;]", cleaned, flags=re.I)
     items: list[dict[str, str]] = []
@@ -63,9 +73,13 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
         if not text:
             continue
         m = _AMOUNT_LINE.match(text)
-        if not m:
-            continue
-        desc, amt = m.groups()
+        if m:
+            desc, amt = m.groups()
+        else:
+            m = _AMOUNT_FIRST_LINE.match(text)
+            if not m:
+                continue
+            amt, desc = m.groups()
         try:
             val = Decimal(amt.replace(",", ""))
         except InvalidOperation:
