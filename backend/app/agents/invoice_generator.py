@@ -41,7 +41,7 @@ def _wants_expense_invoice(request: str) -> bool:
     )
     has_expense_signal = bool(
         re.search(
-            r"\b(my|our|these|recent|monthly|last 30 days?|expenses?|
+            r"\b(my|our|these|recent|monthly|last 30 days?|expenses?|"
             r"spending|transactions?)\b",
             request,
             re.I,
