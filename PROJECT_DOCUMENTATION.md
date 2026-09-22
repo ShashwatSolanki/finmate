@@ -1,504 +1,138 @@
 # FinMate Project Documentation
 
-This document explains the FinMate project excluding the `training/` folder.
+This document describes the **current implementation** of FinMate in the repository root. It is intended to stay synchronized with the code in `backend/`, `frontend/`, and the local model artifacts under `backend/app/ml/finmate-lora/`.
 
-FinMate is a personal finance assistant built with a FastAPI backend, PostgreSQL database, React/Vite frontend, rule-based specialist agents, optional local LoRA-based LLM inference, JWT authentication, PDF invoice generation, transaction import, and lightweight RAG-style memory retrieval.
+> **Scope note:** the `training/` directory contains model/data-generation assets and is summarized where it affects runtime behavior. The detailed training notebooks/scripts remain in that directory.
 
-## 1. High-Level Overview
+---
 
-FinMate helps a user:
+## 1. Project Overview
 
-- Register and log in securely.
-- Save a financial onboarding profile.
-- Import or create transactions.
-- Chat with a financial assistant.
-- Route chat messages to the correct specialist agent.
-- Generate budget advice from transaction data.
-- Analyse investments using ticker detection and Yahoo Finance data.
-- Prepare invoice-related responses and generate sample invoice PDFs.
-- Store useful conversation and onboarding context as retrievable memory.
+FinMate is a multi-agent personal finance assistant with:
 
-The application has three main runtime layers:
+- React + Vite frontend
+- FastAPI backend
+- PostgreSQL persistence
+- JWT authentication with bcrypt password hashing
+- Financial onboarding and transaction management
+- Three specialist finance agents:
+  - Budget Planner
+  - Investment Analyser
+  - Invoice Generator
+- Hybrid routing using keyword signals and sentence embeddings
+- Optional local Qwen2.5-1.5B LoRA inference
+- Lightweight RAG memory using PostgreSQL + MiniLM embeddings + cosine similarity
+- Bounded multi-agent orchestration for cross-domain requests
+- Portfolio holdings and live market-value calculations
+- Invoice parsing, structured invoice editing, and PDF/CSV export
+- Conversation persistence
+- Explainable heuristic confidence metadata
+- Reproducible RAG and AI evaluation suites
 
-1. **Frontend:** React single-page app in `frontend/`.
-2. **Backend:** FastAPI application in `backend/`.
-3. **Database:** PostgreSQL service from `docker-compose.yml`.
+The runtime deliberately keeps deterministic/database-backed financial operations authoritative, while the local LLM is used where it improves natural-language generation and synthesis.
 
-There is also an optional local LLM adapter under `backend/app/ml/finmate-lora/`.
+---
 
-## 2. Main Runtime Pipeline
+## 2. System Architecture
 
-The normal application flow is:
-
-1. User starts PostgreSQL through Docker Compose.
-2. User starts the FastAPI backend.
-3. User starts the React/Vite frontend.
-4. User registers or logs in.
-5. Backend creates a JWT access token.
-6. Frontend stores the token in browser `localStorage`.
-7. User optionally saves onboarding information.
-8. Backend stores onboarding as a `MemoryChunk`.
-9. User sends a chat message.
-10. Backend authenticates the JWT.
-11. Backend retrieves:
-    - recent conversation memory,
-    - latest onboarding profile,
-    - semantically similar memory chunks.
-12. Backend chooses an agent:
-    - forced agent from request, or
-    - follow-up override, or
-    - hybrid auto-router, or
-    - optional LLM route when enabled.
-13. Chosen agent generates a reply.
-14. Backend enforces the reply contract:
-    - first line: `[AGENT: BUDGET]`, `[AGENT: INVESTMENT]`, or `[AGENT: INVOICE]`,
-    - middle: plain English response,
-    - final line: valid JSON.
-15. Backend stores high-signal user messages and useful assistant replies as memory.
-16. Frontend displays the cleaned assistant reply, planned steps, and metadata.
-
-## 3. Agent Pipeline
-
-The agent system lives in `backend/app/agents/`.
-
-There are three agents:
-
-- `budget_planner`
-- `invoice_generator`
-- `investment_analyser`
-
-The central function is:
-
-```python
-run_turn(user_id, user_message, db, agent=None, rag_context=None)
-```
-
-This function is defined in `backend/app/agents/orchestrator.py`.
-
-### 3.1 Agent Routing
-
-Routing happens in this order:
-
-1. If the frontend sends a forced agent, that agent is used.
-2. If the message looks like a follow-up to a previous investment conversation, the chat route can force investment again.
-3. Clear invoice-creation intent is routed to the deterministic invoice specialist first, so the UI receives an exact structured payload and export actions.
-4. Other unforced turns use the local LLM when enabled; failures fall back to hybrid intent classification.
-
-Hybrid intent classification uses:
-
-- regex keyword matching,
-- sentence embedding similarity,
-- prototype examples for each agent.
-
-The embedding model is:
+### 2.1 Runtime architecture
 
 ```text
-sentence-transformers/all-MiniLM-L6-v2
+                         ┌─────────────────────────┐
+                         │      React / Vite       │
+                         │ Chat • Settings • Auth  │
+                         └────────────┬────────────┘
+                                      │ /api
+                                      ▼
+                         ┌─────────────────────────┐
+                         │       FastAPI API       │
+                         │ Auth • Chat • Invoices  │
+                         │ Transactions • Portfolio│
+                         │ Conversations           │
+                         └────────────┬────────────┘
+                                      │
+                 ┌────────────────────┼────────────────────┐
+                 │                    │                    │
+                 ▼                    ▼                    ▼
+        ┌────────────────┐   ┌─────────────────┐   ┌─────────────────┐
+        │ Agent Layer    │   │ RAG / Memory    │   │ PostgreSQL      │
+        │ Router         │   │ MiniLM + cosine │   │ Users           │
+        │ Budget         │   │ recent chunks   │   │ Transactions    │
+        │ Investment     │   │ onboarding      │   │ Holdings        │
+        │ Invoice        │   │ chat memory     │   │ Conversations   │
+        │ Agentic plan   │   └─────────────────┘   │ Memory chunks   │
+        └───────┬────────┘                          └─────────────────┘
+                │
+       ┌────────┴─────────┐
+       ▼                  ▼
+┌────────────────┐  ┌──────────────────┐
+│ Local Qwen +   │  │ External/tool    │
+│ LoRA adapter   │  │ backed services  │
+│ optional       │  │ yfinance         │
+└────────────────┘  │ ReportLab/OCR    │
+                    └──────────────────┘
 ```
 
-### 3.2 Agent Result Shape
+### 2.2 Design principle
 
-Each agent returns an `AgentResult`:
+Deterministic code is the source of truth for operations that need reliable structured results:
 
-```python
-AgentResult(
-    agent=AgentName.BUDGET_PLANNER,
-    reply="...",
-    planned_steps=[...],
-    metadata={...},
-)
-```
+- transaction aggregation
+- portfolio valuation
+- invoice parsing/export data
+- routing safeguards
+- artifact preservation
 
-The chat route then converts this into the API response:
+The LLM is an optional generation layer and a bounded synthesis layer. Failures fall back to deterministic specialist responses.
 
-```json
-{
-  "agent": "budget_planner",
-  "reply": "...",
-  "planned_steps": ["..."],
-  "metadata": {}
-}
-```
+---
 
-## 4. LLM Used
+## 3. End-to-End Request Flow
 
-The backend includes an optional local PEFT/LoRA model adapter.
+A normal authenticated chat request follows this sequence:
 
-Adapter folder:
+1. Frontend sends `POST /api/chat/message` with a JWT bearer token.
+2. Backend authenticates the user.
+3. RAG retrieval searches recent `MemoryChunk` rows.
+4. Recent conversation context and the latest onboarding profile are loaded.
+5. A multi-domain request is checked for a bounded agentic plan.
+6. Otherwise, routing uses the explicit specialist, follow-up safeguards, or the hybrid router.
+7. The chosen specialist performs database/tool-backed work.
+8. Optional local Qwen generation is used where configured.
+9. The reply is normalized to the FinMate contract:
+   - first line: `[AGENT: BUDGET]`, `[AGENT: INVESTMENT]`, or `[AGENT: INVOICE]`
+   - natural-language response
+   - final JSON object containing intent/steps/tools/notes
+10. Confidence metadata is calculated.
+11. High-signal user messages and useful assistant messages are stored as memory.
+12. The turn is persisted in `chat_sessions` and `chat_messages`.
+13. The frontend renders the cleaned response, agent badge, metadata, and invoice export actions where available.
 
-```text
-backend/app/ml/finmate-lora/
-```
+---
 
-The adapter metadata shows:
+## 4. Authentication and User Context
 
-```text
-Base model: Qwen/Qwen2.5-1.5B-Instruct
-PEFT type: LoRA
-Task type: CAUSAL_LM
-LoRA rank: 16
-LoRA alpha: 32
-LoRA dropout: 0.05
-Target modules: q_proj, v_proj
-```
+### Authentication
 
-Runtime loading happens in:
+Relevant files:
 
-```text
-backend/app/ml/finmate.py
-```
+- `backend/app/api/routes/auth.py`
+- `backend/app/api/deps.py`
+- `backend/app/security/passwords.py`
+- `backend/app/security/jwt_tokens.py`
 
-Important config values in `backend/app/config.py`:
+Registration and login use bcrypt-backed password hashing and signed JWT access tokens.
 
-```python
-finmate_lora_path = "app/ml/finmate-lora"
-finmate_use_llm = True
-finmate_max_new_tokens = 256
-```
-
-`finmate_use_llm` defaults to `True`. If the adapter or runtime is unavailable, the orchestrator safely uses the rule-based specialist instead.
-
-If LLM mode is enabled:
-
-1. The backend finds the LoRA adapter folder.
-2. It reads the base model name from `adapter_config.json`.
-3. It loads the base model using Hugging Face Transformers.
-4. It loads adapter weights using PEFT.
-5. It formats the prompt using the tokenizer chat template if available.
-6. It generates a deterministic response with `do_sample=False`.
-7. It postprocesses the response into the FinMate reply contract.
-
-## 5. Backend Structure
-
-```text
-backend/
-  app/
-    api/
-      routes/
-    agents/
-    db/
-    invoice/
-    ml/
-    rag/
-    security/
-    services/
-    main.py
-    config.py
-  scripts/
-  requirements.txt
-```
-
-## 6. Backend Files Explained
-
-### `backend/requirements.txt`
-
-Lists Python dependencies for the backend.
-
-Important packages:
-
-- `fastapi`: API framework.
-- `uvicorn`: ASGI server.
-- `sqlalchemy`: ORM.
-- `psycopg2-binary`: PostgreSQL driver.
-- `pydantic`, `pydantic-settings`: validation and settings.
-- `python-jose`: JWT handling.
-- `passlib`, `bcrypt`: password hashing.
-- `sentence-transformers`: embeddings.
-- `numpy`: vector math.
-- `yfinance`: market data.
-- `reportlab`: PDF invoice generation.
-- `torch`, `transformers`, `peft`, `accelerate`, `safetensors`: local LLM loading.
-
-### `backend/app/__init__.py`
-
-Package marker for the backend app. It allows imports like:
-
-```python
-from app.config import settings
-```
-
-### `backend/app/main.py`
-
-Creates the FastAPI application.
-
-Important behavior:
-
-- Imports ORM models so SQLAlchemy metadata is registered.
-- Calls `init_db()` during app startup.
-- Enables CORS for:
-  - `http://localhost:5173`
-  - `http://127.0.0.1:5173`
-- Includes all API routes under `/api`.
-- Defines root route `/` returning service info.
-
-Important function:
-
-```python
-lifespan()
-```
-
-This startup lifecycle function initializes DB tables before the API starts serving.
-
-### `backend/app/config.py`
-
-Defines application settings using `pydantic-settings`.
-
-Important fields:
-
-- `app_name`: API display name.
-- `database_url`: PostgreSQL connection URL.
-- `jwt_secret`: JWT signing secret.
-- `jwt_algorithm`: JWT algorithm, default `HS256`.
-- `access_token_expire_minutes`: token expiry duration.
-- `embedding_model_name`: sentence-transformer model.
-- `intent_embedding_weight`: weight used in hybrid router.
-- `alpha_vantage_api_key`: optional key, currently not heavily used.
-- `finmate_lora_path`: local LoRA adapter path.
-- `finmate_use_llm`: enables/disables local LLM use.
-- `finmate_max_new_tokens`: generation length cap.
-
-### `backend/app/db/base.py`
-
-Defines the SQLAlchemy declarative base:
-
-```python
-class Base(DeclarativeBase):
-    pass
-```
-
-All ORM models inherit from this base.
-
-### `backend/app/db/session.py`
-
-Handles database connection and session lifecycle.
-
-Important objects/functions:
-
-- `engine`: SQLAlchemy engine using `settings.database_url`.
-- `SessionLocal`: session factory.
-- `get_db()`: FastAPI dependency that yields a DB session and closes it after request.
-- `init_db()`: creates all tables from ORM metadata.
-
-### `backend/app/db/models.py`
-
-Defines database tables.
-
-#### `User`
-
-Stores app users.
-
-Fields:
-
-- `id`: UUID primary key.
-- `email`: unique email.
-- `display_name`: optional name.
-- `password_hash`: hashed password.
-- `created_at`: timestamp.
-
-Relationships:
-
-- `transactions`
-- `memory_chunks`
-
-#### `Transaction`
-
-Stores user transactions.
-
-Fields:
-
-- `id`: UUID primary key.
-- `user_id`: foreign key to user.
-- `amount`: decimal value.
-- `currency`: currency code.
-- `category`: transaction category.
-- `description`: optional text.
-- `occurred_on`: transaction date.
-- `created_at`: timestamp.
-
-#### `Budget`
-
-Stores budget limits.
-
-Fields:
-
-- `id`
-- `user_id`
-- `category`
-- `limit_amount`
-- `period_start`
-- `period_end`
-
-Currently this table exists but there are no full budget CRUD routes.
-
-#### `MemoryChunk`
-
-Stores RAG memory.
-
-Fields:
-
-- `id`
-- `user_id`
-- `content`
-- `source`
-- `created_at`
-
-Sources include:
-
-- `chat`
-- `onboarding`
-
-### `backend/app/api/__init__.py`
-
-Package marker for API modules.
-
-### `backend/app/api/routes/__init__.py`
-
-Builds the central API router.
-
-Included routes:
-
-- `/api/health`
-- `/api/auth`
-- `/api/users`
-- `/api/transactions`
-- `/api/invoices`
-- `/api/agents`
-- `/api/chat`
-
-### `backend/app/api/routes/health.py`
-
-Defines:
-
-```python
-GET /api/health
-```
-
-Returns:
-
-```json
-{"status": "ok"}
-```
-
-Used as a simple health check.
-
-### `backend/app/api/routes/auth.py`
-
-Handles registration and login.
-
-Pydantic models:
-
-- `RegisterBody`
-- `LoginBody`
-- `TokenOut`
-
-Important functions:
-
-#### `register()`
-
-Endpoint:
-
-```text
-POST /api/auth/register
-```
-
-Workflow:
-
-1. Validate email/password.
-2. Check if email already exists.
-3. Hash password.
-4. Create user.
-5. Commit to DB.
-6. Create JWT.
-7. Return token and user ID.
-
-#### `login()`
-
-Endpoint:
-
-```text
-POST /api/auth/login
-```
-
-Workflow:
-
-1. Find user by email.
-2. Verify password hash.
-3. Create JWT.
-4. Return token and user ID.
-
-### `backend/app/api/deps.py`
-
-Defines authentication dependencies.
-
-Important functions:
-
-#### `get_current_user()`
-
-Workflow:
-
-1. Reads bearer token from `Authorization` header.
-2. Decodes JWT subject.
-3. Converts subject to UUID.
-4. Fetches user from DB.
-5. Rejects invalid/missing users.
-6. Returns the `User` object.
-
-#### `get_current_user_id()`
-
-Returns only the current user UUID.
-
-### `backend/app/security/passwords.py`
-
-Password hashing utilities.
-
-Functions:
-
-#### `hash_password(plain)`
-
-Hashes a plaintext password using bcrypt through Passlib.
-
-#### `verify_password(plain, hashed)`
-
-Checks a plaintext password against stored hash.
-
-### `backend/app/security/jwt_tokens.py`
-
-JWT token helpers.
-
-Functions:
-
-#### `create_access_token(user_id)`
-
-Creates a JWT containing:
+JWT payload includes:
 
 - `sub`: user UUID
-- `exp`: expiry timestamp
+- `exp`: expiration timestamp
 
-#### `decode_token_subject(token)`
+The frontend keeps the access token in browser `localStorage` under `finmate_token`.
 
-Decodes token, validates signature/expiry, returns user UUID or `None`.
+### Onboarding
 
-### `backend/app/api/routes/users.py`
-
-User and onboarding routes.
-
-Models:
-
-- `UserOut`
-- `OnboardingBody`
-- `OnboardingOut`
-
-Endpoints:
-
-#### `GET /api/users/me`
-
-Returns current authenticated user.
-
-#### `POST /api/users/onboarding`
-
-Stores financial profile as memory.
-
-Input:
+Users can save:
 
 - monthly income
 - location
@@ -506,286 +140,239 @@ Input:
 - risk tolerance
 - currency
 
-It creates a formatted profile string and stores it as:
+The profile is stored as a `MemoryChunk(source="onboarding")` and later injected into chat context. This lets the budget and investment flows use the user's stored profile.
 
-```python
-MemoryChunk(source="onboarding")
-```
+---
 
-#### `GET /api/users/onboarding/latest`
+## 5. Data Model
 
-Fetches the newest onboarding memory for the current user.
+The core PostgreSQL models are defined in `backend/app/db/models.py`.
 
-### `backend/app/api/routes/transactions.py`
+### User
 
-Transaction APIs.
+Stores account identity and password hash.
 
-Models:
+### Transaction
 
-- `TransactionCreate`
-- `TransactionOut`
-- `MonthlySummary`
-- `CsvImportBody`
-- `CsvImportOut`
+Stores:
 
-Endpoints:
+- user
+- amount
+- currency
+- category
+- description
+- occurred date
 
-#### `POST /api/transactions`
+Transactions are the primary data source for budget and spending analysis.
 
-Creates one transaction for current user.
+### Budget
 
-#### `GET /api/transactions`
+Stores category-level limits and periods. The table exists, but there is not currently a complete budget CRUD API.
 
-Lists all current user transactions ordered by date descending.
+### InvestmentHolding
 
-#### `GET /api/transactions/summary/monthly`
+Stores the user's portfolio position:
 
-Takes `year` and `month`, returns total amount for that month.
+- symbol
+- quantity
+- average cost
+- currency
 
-#### `POST /api/transactions/import/csv`
+It supports current-value and unrealized P/L calculations using live prices.
 
-Imports pasted CSV text.
+### MemoryChunk
 
-Workflow:
+Stores retrievable text such as:
 
-1. Parse CSV with `csv.DictReader`.
-2. Recognize common bank/export header aliases and comma, semicolon, tab, or pipe delimiters.
-3. Convert currency-formatted amounts and debit/credit columns to `Decimal`.
-4. Accept ISO, slash, dash, and month-name date formats.
-5. Insert rows up to `max_rows`.
-6. Return imported/skipped counts, sample errors, and a short imported-row preview for the chat UI.
+- onboarding context
+- high-signal user messages
+- useful assistant replies
 
-### `backend/app/api/routes/invoices.py`
+### ChatSession / ChatMessage
 
-PDF invoice API.
+Provide persisted conversations with:
 
-Models:
+- session title
+- user/assistant messages
+- selected agent
+- response metadata
+- timestamps
 
-- `LineItem`
-- `InvoicePdfBody`
+---
 
-Endpoint:
+## 6. RAG and Memory System
 
-#### `POST /api/invoices/parse` and `POST /api/invoices/parse/csv`
+### 6.1 Implementation
 
-Parse a PDF/image invoice or a one-row-per-item invoice CSV into `StructuredInvoice`. The PDF extractor tries embedded text first, then a compatibility extractor and OCR fallback for scans. OCR currency-glyph variants are normalized before field parsing. CSV imports recognize `invoice_no`, `item`, `quantity`, `unit_price`, `amount`, `subtotal`, `cgst`, `sgst`, and `total`; CGST/SGST are combined into the invoice tax total rather than line items.
+The RAG layer is in:
 
-#### `POST /api/invoices/pdf`
+`backend/app/rag/memory_store.py`
 
-Workflow:
+Embeddings use:
 
-1. Requires logged-in user.
-2. Generates short invoice reference.
-3. Uses current user email as `bill_to`.
-4. Calls `build_invoice_pdf()`.
-5. Returns PDF response with download headers.
+`sentence-transformers/all-MiniLM-L6-v2`
 
-### `backend/app/api/routes/agents.py`
+The embedding model is lazy-loaded in:
 
-Endpoint:
+`backend/app/ml/embeddings.py`
 
-```text
-GET /api/agents
-```
+with the Torch backend selected explicitly.
 
-Returns metadata about the three agents:
+### 6.2 Retrieval algorithm
 
-- Budget Planner
-- Invoice Generator
-- Investment Analyser
+For a query:
 
-Useful for Swagger documentation and frontend agent selection.
+1. Fetch up to the most recent 200 user memory chunks.
+2. Embed the query and candidate texts.
+3. Normalize the vectors.
+4. Compute cosine similarity.
+5. Sort descending.
+6. Return the top-(k) chunks above the configured threshold.
 
-### `backend/app/api/routes/chat.py`
+The chat route currently requests up to 5 chunks with a minimum similarity of 0.22.
 
-Central chat endpoint.
+This is a lightweight implementation. It is **not** using Chroma or pgvector in the current runtime.
 
-Models:
+### 6.3 Context construction
 
-- `ChatRequest`
-- `ChatResponse`
+Chat context can contain:
 
-Endpoint:
+- recent chat turns
+- latest onboarding profile
+- semantically retrieved memory
 
-```text
-POST /api/chat/message
-```
+The merged context is passed to the orchestrator and specialist agents.
 
-Important helper functions:
+### 6.4 Evaluation
 
-#### `_normalized_tag(agent)`
+`backend/scripts/evaluate_rag.py` provides a deterministic fixture evaluator for retrieval logic, reporting Hit@2 and MRR.
 
-Maps internal agent enum to response tag:
+`backend/tests/test_rag_evaluation.py` covers:
 
-- budget planner -> `[AGENT: BUDGET]`
-- invoice generator -> `[AGENT: INVOICE]`
-- investment analyser -> `[AGENT: INVESTMENT]`
+- empty queries/memory
+- ranking order
+- similarity thresholding
+- embedding-failure fallback
+- recent-context ordering/capping
+- latest onboarding retrieval
 
-#### `_canonical_json_tail(agent)`
+The fixture metrics validate retrieval logic; they are not production retrieval-quality claims.
 
-Returns fallback JSON tail for each agent if model/agent reply does not contain valid JSON.
+---
 
-#### `_enforce_reply_contract(reply, agent)`
+## 7. Agent Routing and Orchestration
 
-Guarantees every reply has:
+### 7.1 Specialist agents
 
-1. correct agent tag,
-2. prose,
-3. final JSON line.
+The three specialists are:
 
-This is important because both deterministic agents and LLM outputs can be inconsistent.
+1. `budget_planner`
+2. `investment_analyser`
+3. `invoice_generator`
 
-#### `_build_recent_context(db, user_id, turns=3)`
+Shared agent types live in `backend/app/agents/types.py`.
 
-Fetches recent chat `MemoryChunk` rows and builds compact conversation context.
+### 7.2 Hybrid router
 
-#### `_latest_onboarding_context(db, user_id)`
+`backend/app/agents/intent.py` combines:
 
-Fetches latest onboarding profile memory.
+- regex/keyword signals
+- sentence-embedding similarity
+- prototype examples
 
-#### `_is_high_signal_user_message(text)`
+The configured embedding contribution is controlled by `intent_embedding_weight`.
 
-Decides whether user message is important enough to store.
+### 7.3 Routing safeguards
 
-Signals include:
+The orchestrator in `backend/app/agents/orchestrator.py` adds safeguards so authoritative routing is preserved:
 
-- digits,
-- words like income, salary, budget, rent, stock, invoice, tax.
+- explicit forced specialist selections are respected
+- cross-domain requests can enter the bounded agentic flow
+- clear specialist intent is selected before the general LLM path
+- the generated LLM route cannot silently override an already-selected specialist
+- structured invoice flows preserve exportable artifacts
 
-#### `_latest_assistant_agent(db, user_id)`
+---
 
-Finds the most recent assistant memory and infers which agent answered.
+## 8. Bounded Agentic Workflow
 
-#### `_followup_agent_override(db, user_id, message)`
+The agentic system is implemented in:
 
-Keeps short follow-ups in the same investment flow when appropriate.
+`backend/app/agents/agentic_orchestrator.py`
 
-Example: after investment reply, a message like “how do I allocate this?” can stay with investment.
+It is deliberately **bounded**, not an unbounded recursive AutoGPT loop.
 
-#### `_should_store_assistant_reply(reply)`
+### 8.1 Planning
 
-Avoids storing crisis-mode or generic low-value assistant replies.
+`build_plan()` detects when a request spans at least two domains:
 
-#### `chat_message()`
+- budget
+- investment
+- invoice
 
-Main request handler.
+The plan is capped by `agentic_max_steps`, which defaults to 3.
 
-Workflow:
+### 8.2 Execution
 
-1. Search semantic memory.
-2. Build recent chat context.
-3. Get onboarding context.
-4. Merge context blocks.
-5. Apply follow-up override if needed.
-6. Call `run_turn()`.
-7. Enforce reply contract.
-8. Add metadata.
-9. Store user/assistant memory where appropriate.
-10. Return response.
+For each plan step:
 
-## 7. Agent Files Explained
+1. Execute the selected specialist.
+2. Capture its verified observation.
+3. Pass previous observations as context to the next specialist.
+4. Continue until the bounded plan is exhausted.
 
-### `backend/app/agents/__init__.py`
+### 8.3 Synthesis
 
-Package marker for the agents module.
+After specialist execution:
 
-### `backend/app/agents/types.py`
+- the local model may synthesize the verified observations when available
+- weak synthesis that drops specialist coverage is rejected
+- deterministic synthesis preserves all specialist observations if model synthesis fails
 
-Defines shared agent types.
+Invoice metadata is propagated through the final response:
 
-#### `AgentName`
+- `invoice_ref`
+- `invoice_payload`
+- `invoice_actions`
+- `parsed_items_count`
+- `parsed_total`
+- `currency`
 
-Enum with:
+### 8.4 Failure handling
 
-- `BUDGET_PLANNER`
-- `INVOICE_GENERATOR`
-- `INVESTMENT_ANALYSER`
+A failed specialist is recorded in `agents_failed`, while successful specialist observations remain available.
 
-#### `AgentResult`
+If every specialist fails, the agentic path returns `None` so the normal orchestrator can fall back.
 
-Dataclass returned by all agents.
+### 8.5 Scope boundary
 
-Fields:
+A true recursive:
 
-- `agent`
-- `reply`
-- `planned_steps`
-- `metadata`
+`plan → act → observe → decide → re-plan → ...`
 
-### `backend/app/agents/intent.py`
+loop is **not** part of the current implementation. It remains future work.
 
-Hybrid intent classifier.
+---
 
-Important constants:
+## 9. Budget Agent
 
-- `_BUDGET`: regex for budget/spending terms.
-- `_INVOICE`: regex for invoice/billing terms.
-- `_INVEST`: regex for stock/investment terms.
-- `PROTOTYPES`: example phrases for each agent.
+File:
 
-Functions:
+`backend/app/agents/budget_planner.py`
 
-#### `_keyword_vector(text)`
+The budget flow uses transaction data as its source of truth.
 
-Counts keyword matches per agent and normalizes scores.
+Typical steps:
 
-#### `_agent_centroids()`
+1. Determine a 30-day lookback window.
+2. Read transaction currency.
+3. Aggregate spending by category.
+4. Add month-over-month insights.
+5. Include relevant RAG context.
+6. Generate a personalized response with the local model when available.
+7. Fall back to deterministic output when generation is unavailable.
 
-Embeds prototype phrases and computes one centroid vector per agent. Cached with `lru_cache`.
-
-#### `_embedding_vector(text)`
-
-Embeds the user message and computes similarity to each agent centroid.
-
-#### `classify_agent(user_message)`
-
-Blends keyword and embedding scores:
-
-```python
-combined = (1 - w) * keyword_score + w * embedding_score
-```
-
-Returns the highest-scoring agent.
-
-### `backend/app/agents/orchestrator.py`
-
-Central agent runner.
-
-Important functions:
-
-#### `_compose_llm_user_message(user_message, rag_context)`
-
-Combines retrieved context and user message before sending to the local LLM.
-
-#### `run_turn(...)`
-
-Main orchestrator.
-
-Behavior:
-
-- If local LLM is enabled and no forced agent is set, try local LLM first.
-- If LLM works, determine agent from generated tag.
-- If LLM fails or is disabled, classify and call deterministic specialist.
-- Adds metadata such as `source: llm` or `source: rules`.
-
-### `backend/app/agents/budget_planner.py`
-
-Budget specialist.
-
-Workflow:
-
-1. Get today’s date.
-2. Look back 30 days.
-3. Read user transaction currency.
-4. Aggregate transactions by category.
-5. Compute net total.
-6. Add month-over-month insights.
-7. Add RAG context.
-8. Build enriched message.
-9. Try `generate()` from local FinMate model.
-10. If generation fails, return deterministic fallback response.
-
-Planned steps returned:
+Planned steps include:
 
 - `load_transactions_30d`
 - `aggregate_by_category`
@@ -793,854 +380,463 @@ Planned steps returned:
 - `retrieve_rag`
 - `finmate_generate`
 
-### `backend/app/agents/invoice_generator.py`
+---
 
-Invoice specialist.
+## 10. Investment Agent
 
-Important regex:
+File:
 
-```python
-_AMOUNT_LINE = re.compile(r"^\s*([\d.,]+)\s+(.+?)\s*$", re.M)
-```
+`backend/app/agents/investment_analyser.py`
 
-This parses lines like:
+### 10.1 Ticker analysis
 
-```text
-1200 Website design
-400 SEO audit
-```
+The agent can:
 
-Workflow:
+- detect explicit tickers
+- map known company names to tickers
+- validate symbols with Yahoo Finance
+- fetch market history
+- compute last close
+- compute previous-session change
+- compute percent change
+- compute a 20-day SMA
+- report session and 52-week ranges
 
-1. Parse line items from user message.
-2. Convert amounts to `Decimal`.
-3. Ignore invalid or non-positive amounts.
-4. Compute total.
-5. Generate invoice reference.
-6. Add RAG context.
-7. Build enriched message.
-8. Try local model generation.
-9. If generation fails:
-   - if items exist, return payload for `/api/invoices/pdf`,
-   - otherwise ask user for line items.
+### 10.2 Portfolio mode
+
+For stored holdings it can report:
+
+- quantity
+- average cost
+- last price
+- market value
+- unrealized P/L
+- unrealized P/L percentage
+
+Portfolio data comes from `InvestmentHolding`, rather than being fabricated from chat text.
+
+### 10.3 Allocation mode
+
+When no confirmed ticker is present, the agent can construct a deterministic allocation suggestion from:
+
+- investment amount
+- risk tolerance
+- income
+- location
+- onboarding context
+
+Current application heuristics:
+
+| Profile | Equity | Debt | Cash |
+|---|---:|---:|---:|
+| Aggressive | 75% | 20% | 5% |
+| Moderate/default | 60% | 30% | 10% |
+| Conservative | 40% | 45% | 15% |
+
+These are application-level heuristics, not guarantees of investment outcomes.
+
+---
+
+## 11. Invoice System
+
+Invoice functionality spans:
+
+- `backend/app/agents/invoice_generator.py`
+- `backend/app/invoice/`
+- `backend/app/api/routes/invoices.py`
+- `backend/app/invoice/pdf_invoice.py`
+
+### 11.1 Chat invoice generation
+
+The invoice specialist can parse natural-language requests and simple item lines, including:
+
+- description-first item lines
+- amount-first item lines
+- common invoice request prefixes
+- expense-grounded invoice requests based on recent transactions
+
+Expense invoice requests can turn recent available transactions into invoice-style line items.
+
+### 11.2 Structured invoice metadata
+
+Successful invoice responses preserve:
+
+- invoice reference
+- structured invoice payload
+- export actions
+- parsed item count
+- parsed total
+- currency
+
+The metadata survives bounded agentic synthesis.
+
+### 11.3 Invoice parsing
+
+The API supports:
+
+- text-based PDF parsing
+- image OCR
+- invoice CSV parsing
+
+OCR uses Tesseract through `pytesseract`.
+
+Invoice CSV imports can recognize:
+
+- `invoice_no`
+- `item`
+- `quantity`
+- `unit_price`
+- `amount`
+- `subtotal`
+- `cgst`
+- `sgst`
+- `total`
+
+CGST and SGST are combined into the invoice tax total rather than treated as line items.
+
+### 11.4 PDF generation
+
+ReportLab is used for PDF generation.
+
+Supported API paths include:
+
+- `POST /api/invoices/pdf`
+- `POST /api/invoices/pdf/structured`
+
+The structured endpoint is used when an imported or edited invoice is exported.
+
+---
+
+## 12. Portfolio Tracking
+
+Portfolio support is exposed under:
+
+- `GET /api/portfolio/summary`
+- `POST /api/portfolio/holdings`
+- `DELETE /api/portfolio/holdings/{symbol}`
+
+The Settings page provides:
+
+- holding entry
+- quantity
+- average cost
+- currency
+- live-price refresh
+- invested value
+- current market value
+- unrealized P/L
+- count of valued holdings
+
+The investment agent consumes the same stored holdings for grounded portfolio questions.
+
+---
+
+## 13. Confidence Indicator
+
+File:
+
+`backend/app/agents/confidence.py`
+
+Every assistant turn can include a transparent confidence indicator.
+
+It is explicitly a **heuristic signal, not a calibrated probability**.
+
+The score uses:
+
+| Factor | Weight |
+|---|---:|
+| Execution success | 40% |
+| Retrieval availability signal | 20% |
+| Evidence signal | 25% |
+| Response completeness | 15% |
+
+Levels:
+
+- high: score (ge 0.80)
+- medium: score (ge 0.60)
+- low: below 0.60
 
 Metadata includes:
 
-- invoice reference,
-- parsed item count,
-- parsed total.
+- `confidence`
+- `confidence_level`
+- `confidence_method`
+- `confidence_factors`
 
-### `backend/app/agents/investment_analyser.py`
+The implementation is covered by `backend/tests/test_confidence.py`.
 
-Investment specialist.
+The frontend exposes message metadata through `MessageMetadata.tsx`. The implemented confidence mechanism is the backend score/level, not a statistically calibrated probability.
 
-Main features:
+---
 
-- extracts stock tickers,
-- maps company names to tickers,
-- validates tickers with Yahoo Finance,
-- fetches 3-month market history,
-- computes last close,
-- computes previous-day change,
-- computes 20-day SMA,
-- uses onboarding risk/location/income when available,
-- provides fallback allocation suggestions.
+## 14. Conversation Persistence
 
-Important helper functions:
+Chat sessions are persisted in:
 
-#### `_extract_risk_from_context(ctx)`
+- `chat_sessions`
+- `chat_messages`
 
-Reads risk tolerance from onboarding context.
+Frontend capabilities include:
 
-#### `_extract_income_from_context(ctx)`
+- create a new conversation
+- select previous conversations
+- delete conversations
+- preserve session IDs across requests
+- display the responding agent and metadata
 
-Reads monthly income from onboarding context.
+Relevant routes are under:
 
-#### `_extract_location_from_context(ctx)`
+`/api/conversations`
 
-Reads location from onboarding context.
+The chat endpoint accepts an optional `session_id` and attaches messages to the corresponding conversation.
 
-#### `_extract_lump_sum(message)`
+---
 
-Extracts investment amount from text. Supports:
+## 15. Frontend
 
-- plain numbers,
-- `k`,
-- `m`,
-- `lakh`,
-- `lakhs`.
+### Pages
 
-#### `_allocation_for_risk(risk)`
+- `frontend/src/pages/LoginPage.tsx`
+- `frontend/src/pages/RegisterPage.tsx`
+- `frontend/src/pages/ChatPage.tsx`
+- `frontend/src/pages/SettingsPage.tsx`
 
-Returns equity/debt/cash split:
+### Important components
 
-- aggressive: `75/20/5`
-- conservative: `40/45/15`
-- moderate/default: `60/30/10`
+- `ChatSidebar.tsx`
+- `ChatComposerMenu.tsx`
+- `InvoiceExportActions.tsx`
+- `MessageMetadata.tsx`
+- `InvoiceImportPanel.tsx`
 
-#### `_plain_investment_plan(message, rag_context)`
+### Chat behavior
 
-Used when no ticker is found. Builds deterministic portfolio guidance from amount, risk, income, and location.
+The chat page:
 
-#### `_pick_tickers(message)`
+1. loads persisted conversations
+2. sends authenticated messages
+3. strips machine-readable agent tags/JSON from displayed text
+4. shows agent badges
+5. shows response metadata
+6. renders invoice PDF/CSV export actions when structured invoice data is available
+7. supports invoice/document and transaction import from the composer
 
-Detects tickers from:
+### Settings behavior
 
-- `$AAPL`,
-- known company names like Microsoft, Apple, Tesla,
-- uppercase tokens after stopword filtering,
-- Yahoo validation for unknown uppercase symbols.
+The Settings page provides:
 
-#### `_analyze_symbol(symbol)`
+- financial profile management
+- transaction CSV import
+- portfolio holding management and live-price refresh
+- Invoice Studio / invoice import workflows
+- sample PDF generation
 
-Calls `yfinance.Ticker(symbol)` and computes:
+---
 
-- last close,
-- change vs previous close,
-- percent change,
-- 20-day SMA,
-- whether price is above/below SMA,
-- session range,
-- 52-week range.
+## 16. Import and Export Workflows
 
-#### `run(...)`
-
-Main investment agent:
-
-1. Detect tickers.
-2. If no tickers, return allocation plan.
-3. If tickers found, fetch market data.
-4. Build response requirements.
-5. Try model generation with investment-specific system instructions.
-6. Normalize investment reply shape.
-7. Return metadata with tickers.
-
-## 8. ML And RAG Files Explained
-
-### `backend/app/ml/__init__.py`
-
-Package marker for ML modules.
-
-### `backend/app/ml/embeddings.py`
-
-Lazy-loads the sentence transformer.
-
-Functions:
-
-#### `get_sentence_model()`
-
-Loads:
+### Transaction CSV import
 
 ```text
-sentence-transformers/all-MiniLM-L6-v2
+CSV
+  ↓
+/api/transactions/import/csv
+  ↓
+parse aliases / delimiter
+  ↓
+parse Decimal amounts + dates
+  ↓
+create Transaction rows
+  ↓
+return counts + preview
+  ↓
+show result in chat
 ```
 
-Cached with `lru_cache`.
-
-#### `encode_texts(texts)`
-
-Returns normalized embeddings for a list of strings.
-
-### `backend/app/ml/finmate.py`
-
-Local LLM loader, generator, and postprocessor.
-
-Important constants:
-
-- `SYSTEM`: system prompt enforcing FinMate response format.
-- `SYSTEM_EXTRA_INVESTMENT`: extra investment-specific instructions.
-- `CRISIS_KEYWORDS`: triggers budget emergency response.
-- `VALID_KEYS`: allowed JSON keys.
-
-Important functions:
-
-#### `_resolve_lora_root()`
-
-Resolves configured LoRA path.
-
-#### `_find_adapter_dir(root)`
-
-Finds a directory containing:
-
-- `adapter_model.safetensors`, or
-- `adapter_model.bin`.
-
-Prefers root directory, then checkpoint folders.
-
-#### `_read_base_model_name(adapter_dir)`
-
-Reads base model from `adapter_config.json`.
-
-Fallback:
+### Invoice import
 
 ```text
-Qwen/Qwen2.5-1.5B-Instruct
+PDF / Image / Invoice CSV
+  ↓
+invoice extraction
+  ↓
+StructuredInvoice
+  ↓
+chat preview / Invoice Studio
+  ↓
+edit if needed
+  ↓
+PDF or CSV export
 ```
 
-#### `_load_model()`
+### Chat exports
 
-Loads:
+The chat composer also exposes transaction CSV export and conversation text download.
 
-- base causal LM,
-- tokenizer,
-- PEFT adapter.
+---
 
-Uses CUDA if available, otherwise CPU.
+## 17. Reply Contract
 
-#### `_normalize_tools_needed()`
-
-Cleans the `tools_needed` JSON field so it becomes short machine-readable tokens.
-
-#### `_normalize_steps()`
-
-Cleans the `steps` JSON field.
-
-#### `_last_brace_object_span()`
-
-Finds the last JSON-like object in model output.
-
-#### `_parse_finmate_dict()`
-
-Tries to parse model JSON. Has fallback regex extraction when malformed.
-
-#### `_postprocess()`
-
-Normalizes:
-
-- malformed agent tags,
-- bad JSON,
-- invalid `tools_needed`,
-- vague intents,
-- missing steps.
-
-#### `route_key_from_reply(text)`
-
-Maps reply tags to internal route keys:
-
-- `[AGENT: INVOICE]` -> `invoice_generator`
-- `[AGENT: INVESTMENT]` -> `investment_analyser`
-- otherwise -> `budget_planner`
-
-#### `extract_planned_steps(text)`
-
-Extracts `steps` array from final JSON line.
-
-#### `llm_available()`
-
-Checks whether LoRA adapter weights exist.
-
-#### `ensure_investment_reply_shape(reply)`
-
-Fixes investment replies that are missing tag/prose/valid JSON.
-
-#### `ensure_budget_invoice_llm_reply_shape(reply)`
-
-Fixes budget/invoice replies.
-
-#### `finalize_llm_reply(reply)`
-
-Routes generated reply to the correct fixer.
-
-#### `generate(user_message, ...)`
-
-Main local generation function.
-
-Workflow:
-
-1. Check crisis keywords.
-2. Load model/tokenizer.
-3. Build system + user prompt.
-4. Apply chat template if tokenizer supports it.
-5. Tokenize.
-6. Generate with:
-   - `max_new_tokens`
-   - `repetition_penalty=1.15`
-   - `do_sample=False`
-7. Decode only new tokens.
-8. Postprocess output.
-
-#### `clear_model_cache()`
-
-Clears cached loaded model.
-
-### `backend/app/ml/finmate-lora/`
-
-Contains trained local LoRA adapter artifacts.
-
-Important files:
-
-#### `adapter_config.json`
-
-PEFT adapter configuration. Defines base model, LoRA rank, alpha, dropout, target modules, task type.
-
-#### `adapter_model.safetensors`
-
-Main LoRA adapter weights.
-
-#### `tokenizer.json`
-
-Tokenizer data.
-
-#### `tokenizer_config.json`
-
-Tokenizer configuration.
-
-#### `chat_template.jinja`
-
-Chat prompt template used by tokenizer/model.
-
-#### `README.md`
-
-Generated model card. States this is a fine-tuned version of `Qwen/Qwen2.5-1.5B-Instruct`.
-
-#### `checkpoint-*` folders
-
-Intermediate checkpoint directories. They contain adapter weights, tokenizer files, trainer state, RNG state, and configs. Runtime `_find_adapter_dir()` can fall back to checkpoint folders if root weights are absent.
-
-### `backend/app/rag/memory_store.py`
-
-Lightweight RAG memory layer.
-
-Important functions:
-
-#### `add_memory(db, user_id, content, source="chat")`
-
-Stores a memory chunk in Postgres.
-
-#### `search_memory(db, user_id, query, k=5, min_similarity=0.22)`
-
-Workflow:
-
-1. Fetch latest 200 memory chunks for user.
-2. Embed query and memory texts.
-3. Normalize vectors.
-4. Compute cosine similarity.
-5. Sort descending.
-6. Return top-k chunks above threshold.
-
-Important note: this is not using Chroma or pgvector. It uses Postgres as storage and local NumPy similarity search at request time.
-
-## 9. Services And Invoice Files
-
-### `backend/app/services/spending_insights.py`
-
-Adds deterministic budget insight beyond LLM text.
-
-Function:
-
-#### `category_delta_vs_prior_month(db, user_id, ref=None)`
-
-Compares last completed calendar month with the month before.
-
-Workflow:
-
-1. Determine last completed month.
-2. Determine previous month.
-3. Aggregate transaction totals by category for both.
-4. Compute percent change.
-5. Return readable month-over-month signals.
-
-### `backend/app/invoice/pdf_invoice.py`
-
-Generates invoice PDFs using ReportLab.
-
-Function:
-
-#### `build_invoice_pdf(invoice_ref, bill_to, line_items, currency="USD")`
-
-Workflow:
-
-1. Create in-memory PDF buffer.
-2. Draw invoice title.
-3. Draw invoice reference and bill-to email.
-4. Draw line-item table.
-5. Sum total.
-6. Add new pages if the y-position gets too low.
-7. Return raw PDF bytes.
-
-## 10. Backend Scripts
-
-### `backend/scripts/migrate_add_password_hash.sql`
-
-Migration helper for older databases.
-
-Adds:
-
-```sql
-ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
-```
-
-### `backend/scripts/csv_seed_transactions.py`
-
-CLI script for importing CSV data into the transactions table for one user.
-
-Important functions:
-
-#### `parse_date(raw)`
-
-Supports multiple date formats and falls back to today.
-
-#### `dec(raw)`
-
-Safely converts strings to `Decimal`.
-
-#### `detect_format(header)`
-
-Detects supported CSV format.
-
-#### `seed_tracker(user_id, row)`
-
-Creates one transaction from tracker-style rows. Expenses are stored as negative values.
-
-#### `seed_indian(user_id, row)`
-
-Creates multiple category transactions from Indian spending rows.
-
-#### `main()`
-
-Parses CLI args, validates user, reads CSV, inserts or dry-runs transactions.
-
-### `backend/scripts/evaluate_chat.py`
-
-Evaluates a running backend against held-out prompts.
-
-Important functions:
-
-#### `_load_jsonl(path)`
-
-Reads JSONL dataset rows.
-
-#### `_is_format_compliant(reply)`
-
-Checks:
-
-- first line has valid agent tag,
-- final line is JSON,
-- JSON has required keys,
-- `steps` is a list.
-
-#### `evaluate(base_url, token, dataset)`
-
-Calls `/api/chat/message` for each prompt and reports:
-
-- routing accuracy,
-- format compliance,
-- failed rows.
-
-### `backend/scripts/generate_eval_set.py`
-
-Creates synthetic evaluation prompts.
-
-Important functions:
-
-#### `build_row(kind, rnd)`
-
-Creates one synthetic prompt for:
-
-- budget,
-- invoice,
-- investment.
-
-#### `main()`
-
-Generates balanced rows and writes JSONL.
-
-## 11. Frontend Structure
+FinMate normalizes assistant responses into:
 
 ```text
-frontend/
-  src/
-    App.tsx
-    main.tsx
-    styles.css
-    vite-env.d.ts
-  index.html
-  package.json
-  package-lock.json
-  tsconfig.json
-  tsconfig.node.json
-  tsconfig.tsbuildinfo
-  vite.config.ts
+[AGENT: BUDGET|INVESTMENT|INVOICE]
+
+Natural-language response...
+
+{"intent":"...","steps":[...],"tools_needed":[...],"notes":"..."}
 ```
 
-## 12. Frontend Files Explained
+The API enforces:
 
-### `frontend/package.json`
+1. valid agent tag
+2. prose response
+3. final JSON object
 
-Defines frontend scripts:
+This contract supports frontend rendering, evaluation, routing inspection, and deterministic fallback behavior.
 
-```json
-{
-  "dev": "vite",
-  "build": "tsc -b && vite build",
-  "preview": "vite preview"
-}
+The frontend removes the tag and JSON tail before showing the natural-language response.
+
+---
+
+## 18. Local Model and LoRA Adapter
+
+Runtime model files live in:
+
+`backend/app/ml/finmate-lora/`
+
+Configured model:
+
+- base: `Qwen/Qwen2.5-1.5B-Instruct`
+- PEFT: LoRA
+- rank: 16
+- alpha: 32
+- dropout: 0.05
+- target modules: `q_proj`, `v_proj`
+- task: causal language modeling
+
+Runtime loading is handled by:
+
+`backend/app/ml/finmate.py`
+
+The loader:
+
+1. resolves the adapter directory
+2. reads `adapter_config.json`
+3. loads the base model/tokenizer
+4. loads PEFT adapter weights
+5. applies the tokenizer chat template when available
+6. generates deterministically with sampling disabled
+7. postprocesses the output into the reply contract
+
+If adapter files or runtime dependencies are unavailable, the application falls back to deterministic specialist behavior.
+
+---
+
+## 19. Evaluation and Testing
+
+### 19.1 Unit and integration coverage
+
+Dedicated tests cover:
+
+- RAG retrieval and context construction
+- confidence calculation
+- data-backed investment behavior
+- data-backed invoice behavior
+- bounded agentic execution
+- invoice artifact preservation
+- routing edge cases
+
+The final Member 2 development cycle reached **29 backend unit tests passing** locally.
+
+### 19.2 RAG evaluator
+
+`backend/scripts/evaluate_rag.py`
+
+Reports fixture-based:
+
+- Hit@2
+- MRR
+
+### 19.3 Final AI evaluator
+
+`backend/scripts/evaluate_ai.py`
+
+The evaluator sends held-out prompts to a running backend and checks:
+
+- HTTP success
+- routing accuracy
+- reply-format compliance
+- confidence metadata coverage
+- observed RAG usage
+- bounded agentic-plan execution
+- invoice artifact preservation
+
+Dataset:
+
+`training/data/final_ai_eval.jsonl`
+
+Examples:
+
+```bash
+python scripts/evaluate_ai.py --token <JWT_TOKEN>
+python scripts/evaluate_ai.py --token <JWT_TOKEN> --quick
+python scripts/evaluate_ai.py --token <JWT_TOKEN> --cases 3,5,11
 ```
 
-Dependencies:
+The dataset is an implementation regression suite, not a general model-quality or production-performance benchmark.
 
-- `react`
-- `react-dom`
+---
 
-Dev dependencies:
+## 20. API Reference
 
-- TypeScript
-- Vite
-- React plugin
-- React type packages
-
-### `frontend/index.html`
-
-HTML shell.
-
-Contains:
-
-```html
-<div id="root"></div>
-<script type="module" src="/src/main.tsx"></script>
-```
-
-### `frontend/vite.config.ts`
-
-Vite configuration.
-
-Important behavior:
-
-- Uses React plugin.
-- Runs dev server on port `5173`.
-- Proxies `/api` requests to backend:
+### Health
 
 ```text
-http://127.0.0.1:8000
-```
-
-### `frontend/tsconfig.json`
-
-Strict TypeScript settings for frontend source.
-
-Important flags:
-
-- `strict: true`
-- `noUnusedLocals: true`
-- `noUnusedParameters: true`
-- `jsx: react-jsx`
-
-### `frontend/tsconfig.node.json`
-
-TypeScript settings for Node-side config files such as `vite.config.ts`.
-
-### `frontend/tsconfig.tsbuildinfo`
-
-Generated TypeScript build cache. Not part of app logic.
-
-### `frontend/src/vite-env.d.ts`
-
-Vite type declarations.
-
-### `frontend/src/main.tsx`
-
-React entry point.
-
-Workflow:
-
-1. Imports React.
-2. Imports ReactDOM.
-3. Imports `App`.
-4. Imports CSS.
-5. Renders app inside `React.StrictMode`.
-
-### `frontend/src/styles.css`
-
-Global styling.
-
-Defines:
-
-- root font/colors/background,
-- centered `.app` layout,
-- `.panel` cards,
-- labels,
-- inputs,
-- textarea,
-- buttons,
-- disabled button state,
-- preformatted output wrapping.
-
-### `frontend/src/App.tsx`
-
-Main frontend component.
-
-Important types:
-
-#### `ChatResponse`
-
-Matches backend chat response.
-
-Fields:
-
-- `agent`
-- `reply`
-- `planned_steps`
-- `metadata`
-
-#### `ChatTurn`
-
-Represents local conversation history.
-
-Fields:
-
-- `id`
-- `role`
-- `text`
-- `agent`
-
-Important constants:
-
-#### `AGENTS`
-
-Dropdown options:
-
-- Auto hybrid routing
-- Budget Planner
-- Invoice Generator
-- Investment Analyser
-
-#### `TOKEN_KEY`
-
-Browser localStorage key:
-
-```text
-finmate_token
-```
-
-Important helper:
-
-#### `authHeaders(token)`
-
-Builds JSON headers and adds bearer token when present.
-
-Important state:
-
-- `token`: JWT from localStorage.
-- `email`, `password`, `displayName`: auth form.
-- `agent`: selected forced agent.
-- `message`: chat message.
-- onboarding fields.
-- `csvText`: transaction import text.
-- `reply`: latest chat response.
-- `history`: displayed conversation.
-- `error`: error output.
-- `loading`: UI loading state.
-
-Important functions:
-
-#### `cleanAssistantText(raw)`
-
-Removes:
-
-- `[AGENT: ...]` tag lines,
-- final JSON line.
-
-This lets the UI show only natural language.
-
-#### `logout()`
-
-Clears token and chat state.
-
-#### `register()`
-
-Calls:
-
-```text
-POST /api/auth/register
-```
-
-Stores returned JWT in localStorage.
-
-#### `login()`
-
-Calls:
-
-```text
-POST /api/auth/login
-```
-
-Stores returned JWT.
-
-#### `send()`
-
-Calls:
-
-```text
-POST /api/chat/message
-```
-
-Workflow:
-
-1. Validate token.
-2. Add user turn to local history.
-3. Send message and optional forced agent.
-4. Store backend reply.
-5. Add assistant turn to local history.
-
-#### `downloadSamplePdf()`
-
-Calls:
-
-```text
-POST /api/invoices/pdf
-```
-
-With sample line items:
-
-- Consulting
-- Hosting
-
-Then creates a browser download link.
-
-#### `saveOnboarding()`
-
-Calls:
-
-```text
-POST /api/users/onboarding
-```
-
-Converts comma-separated goals into an array and saves profile.
-
-#### `importCsvTransactions()`
-
-Calls:
-
-```text
-POST /api/transactions/import/csv
-```
-
-Displays import result in conversation history.
-
-Rendered sections:
-
-- app title,
-- auth panel,
-- logged-in actions,
-- agent dropdown,
-- onboarding panel,
-- CSV import panel,
-- chat panel,
-- conversation history,
-- error panel,
-- latest reply details.
-
-## 13. Root Files Explained
-
-### `README.md`
-
-Setup and usage guide.
-
-Documents:
-
-- PostgreSQL startup,
-- backend startup,
-- frontend startup,
-- auth smoke tests,
-- CSV seed script,
-- chat evaluation,
-- project layout,
-- recommended next steps.
-
-### `docker-compose.yml`
-
-Defines PostgreSQL service:
-
-```yaml
-image: postgres:16-alpine
-POSTGRES_USER: finmate
-POSTGRES_PASSWORD: finmate
-POSTGRES_DB: finmate
-ports:
-  - "5432:5432"
-```
-
-Uses named volume:
-
-```text
-finmate_pg
-```
-
-### `package.json`
-
-Root convenience scripts.
-
-Scripts:
-
-#### `npm run dev`
-
-Runs backend and frontend together using `concurrently`.
-
-#### `npm run dev:api`
-
-Starts FastAPI:
-
-```text
-cd backend && python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-#### `npm run dev:web`
-
-Starts Vite frontend:
-
-```text
-cd frontend && npm run dev
-```
-
-### `package-lock.json`
-
-Pinned dependency tree for root Node dependencies.
-
-### `.gitignore`
-
-Git ignore rules for generated files, dependencies, environments, and local artifacts.
-
-### `bash.exe.stackdump`
-
-Crash dump from a shell process. It is not used by the application.
-
-## 14. API Summary
-
-### Public/Basic
-
-```text
-GET /
 GET /api/health
 ```
 
-### Auth
+### Authentication
 
 ```text
 POST /api/auth/register
 POST /api/auth/login
 ```
 
-### User
+### Users
 
 ```text
-GET /api/users/me
+GET  /api/users/me
 POST /api/users/onboarding
-GET /api/users/onboarding/latest
+GET  /api/users/onboarding/latest
+GET  /api/users/onboarding/profile
 ```
 
 ### Transactions
 
 ```text
 POST /api/transactions
-GET /api/transactions
-GET /api/transactions/summary/monthly
+GET  /api/transactions
+GET  /api/transactions/summary/monthly
 POST /api/transactions/import/csv
+GET  /api/transactions/export/csv
+```
+
+### Portfolio
+
+```text
+GET    /api/portfolio/summary
+POST   /api/portfolio/holdings
+DELETE /api/portfolio/holdings/{symbol}
 ```
 
 ### Invoices
 
 ```text
+POST /api/invoices/parse
+POST /api/invoices/parse/csv
 POST /api/invoices/pdf
+POST /api/invoices/pdf/structured
 ```
 
 ### Agents
@@ -1655,102 +851,166 @@ GET /api/agents
 POST /api/chat/message
 ```
 
-## 15. Data Flow By Feature
-
-### 15.1 Register/Login
+### Conversations
 
 ```text
-Frontend form
-  -> /api/auth/register or /api/auth/login
-  -> password hash / password verify
-  -> JWT creation
-  -> frontend localStorage
+GET    /api/conversations
+POST   /api/conversations
+PATCH  /api/conversations/{session_id}
+DELETE /api/conversations/{session_id}
+GET    /api/conversations/{session_id}/messages
 ```
 
-### 15.2 Onboarding
+---
+
+## 21. Repository Structure
 
 ```text
-Frontend onboarding form
-  -> /api/users/onboarding
-  -> MemoryChunk(source="onboarding")
-  -> later injected into chat context
+finmate/
+├── backend/
+│   ├── app/
+│   │   ├── agents/
+│   │   │   ├── agentic_orchestrator.py
+│   │   │   ├── budget_planner.py
+│   │   │   ├── confidence.py
+│   │   │   ├── intent.py
+│   │   │   ├── invoice_generator.py
+│   │   │   ├── investment_analyser.py
+│   │   │   └── orchestrator.py
+│   │   ├── api/
+│   │   │   └── routes/
+│   │   ├── db/
+│   │   ├── invoice/
+│   │   ├── ml/
+│   │   │   ├── embeddings.py
+│   │   │   ├── finmate.py
+│   │   │   └── finmate-lora/
+│   │   ├── rag/
+│   │   ├── security/
+│   │   └── services/
+│   ├── scripts/
+│   │   ├── evaluate_ai.py
+│   │   ├── evaluate_rag.py
+│   │   └── csv_seed_transactions.py
+│   └── tests/
+├── frontend/
+│   └── src/
+├── training/
+│   ├── data/
+│   ├── scripts/
+│   └── colab/
+├── docker-compose.yml
+├── package.json
+├── README.md
+└── PROJECT_DOCUMENTATION.md
 ```
 
-### 15.3 Chat
+---
 
-```text
-Frontend message
-  -> /api/chat/message
-  -> auth
-  -> memory retrieval
-  -> recent context
-  -> onboarding context
-  -> orchestrator
-  -> agent
-  -> reply contract enforcement
-  -> memory write
-  -> frontend display
+## 22. Configuration
+
+Important settings in `backend/app/config.py` include:
+
+| Setting | Current role |
+|---|---|
+| `database_url` | PostgreSQL connection |
+| `jwt_secret` | JWT signing secret |
+| `jwt_algorithm` | JWT algorithm |
+| `access_token_expire_minutes` | JWT lifetime |
+| `embedding_model_name` | MiniLM embedding model |
+| `intent_embedding_weight` | hybrid routing weight |
+| `finmate_lora_path` | local LoRA adapter |
+| `finmate_use_llm` | enable local generation |
+| `finmate_max_new_tokens` | generation cap |
+| `finmate_agentic_mode` | enable bounded agentic workflow |
+| `agentic_max_steps` | maximum specialist steps |
+| `tesseract_cmd` | optional OCR executable path |
+
+For real deployments, `JWT_SECRET` should be replaced with a strong environment-provided secret.
+
+---
+
+## 23. Development and Startup
+
+Typical local startup:
+
+```bash
+docker compose up -d
+
+cd backend
+python -m venv .venv
+# Windows
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+cd ../frontend
+npm install
+npm run dev
 ```
 
-### 15.4 Budget Advice
+The project also provides root-level convenience scripts.
 
-```text
-Chat message
-  -> budget_planner
-  -> load last 30 days transactions
-  -> aggregate by category
-  -> month-over-month comparison
-  -> optional LLM generation
-  -> fallback if needed
-```
+Frontend:
 
-### 15.5 Investment Advice
+`http://127.0.0.1:5173`
 
-```text
-Chat message
-  -> investment_analyser
-  -> extract tickers/company names
-  -> yfinance market lookup
-  -> compute last close/change/SMA
-  -> optional LLM generation
-  -> deterministic allocation fallback if no ticker
-```
+Backend:
 
-### 15.6 Invoice PDF
+`http://127.0.0.1:8000`
 
-```text
-Frontend sample PDF button or direct API call
-  -> /api/invoices/pdf
-  -> build_invoice_pdf()
-  -> PDF bytes
-  -> browser download
-```
+Swagger:
 
-### 15.7 CSV Import
+`http://127.0.0.1:8000/docs`
 
-```text
-Frontend CSV textarea
-  -> /api/transactions/import/csv
-  -> csv.DictReader
-  -> Decimal/date parsing
-  -> Transaction rows
-  -> import result
-```
+---
 
-## 16. Important Implementation Notes
+## 24. Current Limitations
 
-1. The backend currently uses `Base.metadata.create_all()` instead of a full migration framework.
-2. The `Budget` table exists but does not yet have complete CRUD API routes.
-3. The frontend text says “RAG memory (Chroma)”, but the actual backend uses Postgres plus local embedding similarity.
-4. Local LLM inference is optional and disabled by default.
-5. The LoRA adapter depends on the base model being available locally or downloadable.
-6. The investment agent depends on Yahoo Finance availability through `yfinance`.
-7. Assistant replies are intentionally machine-readable because each response ends with JSON.
-8. The invoice agent prepares invoice guidance, while actual PDF generation is handled by `/api/invoices/pdf`.
-9. Conversation memory is selective: not every message is stored.
-10. The app is designed as a capstone/demo scaffold but already has real auth, database persistence, routing, memory, and PDF generation.
+1. Memory retrieval scans a capped recent set of Postgres rows and computes similarity locally.
+2. There is no persistent pgvector/FAISS/Chroma retrieval layer in the current runtime.
+3. The Budget table exists without a complete CRUD API.
+4. Local model inference can be slow on CPU.
+5. Yahoo Finance availability is external and can fail.
+6. Tesseract is required for scanned-image OCR.
+7. Confidence is an explainable heuristic, not a calibrated probability.
+8. The agentic workflow is bounded to three specialists by default and is not a recursive AutoGPT loop.
+9. The evaluation suite is an implementation regression suite, not a production benchmark.
+10. Optional model/training artifacts can be large relative to the application source.
 
-## 17. Recommended Report Description
+---
 
-FinMate is a multi-agent personal finance assistant. The backend authenticates users with JWT, stores users, transactions, and memory in PostgreSQL, retrieves relevant financial context with sentence-transformer embeddings, and routes each chat message to a budget, invoice, or investment specialist. The budget agent uses transaction aggregates and spending insights, the investment agent uses ticker detection and Yahoo Finance market data, and the invoice flow supports PDF generation. The system can optionally use a local Qwen2.5 LoRA fine-tuned model for structured replies, but by default it runs through deterministic specialist agents with fallback responses.
+## 25. Future Work
+
+Potential extensions include:
+
+- recursive agent re-planning for longer tasks
+- scalable vector-backed memory
+- richer budget CRUD and budget history
+- spending visualizations
+- additional market-data providers
+- calibrated confidence estimation
+- broader evaluation datasets and human evaluation
+- production-grade database migrations
+- expanded document extraction workflows
+
+---
+
+## 26. Current Project State
+
+The current `main` branch contains the integrated implementation for the major AI/agent scope:
+
+- local LoRA adapter integration
+- model inference and deterministic fallbacks
+- RAG memory/context retrieval
+- budget, investment, and invoice specialists
+- bounded multi-agent orchestration
+- portfolio grounding
+- invoice artifacts and exports
+- explainable confidence metadata
+- RAG evaluation
+- final AI regression evaluation tooling
+- unit/integration testing
+- persisted conversations and current frontend integration
+
+This document and the code in `main` should be treated as the source of truth for the current project behavior.
 
