@@ -2,8 +2,6 @@
 
 Multi-agent personal finance assistant: **FastAPI + PostgreSQL** backend, **React (Vite)** frontend, hybrid intent routing to three specialist agents, lightweight RAG memory, and optional local **Qwen2.5 + LoRA** inference.
 
-For a full file-by-file reference, see [PROJECT_DOCUMENTATION.md](./PROJECT_DOCUMENTATION.md).
-
 ## What it does
 
 - **Auth** — register/login with bcrypt + JWT
@@ -11,312 +9,188 @@ For a full file-by-file reference, see [PROJECT_DOCUMENTATION.md](./PROJECT_DOCU
 - **Transactions** — CRUD, monthly summaries, flexible bank/export CSV import with an in-chat preview
 - **Chat** — routes to Budget Planner, Investment Analyser, or Invoice Generator
 - **Budget** — 30-day aggregates, month-over-month spending insights
-- **Investment** — ticker/company detection, Yahoo Finance data, risk-based allocation
-- **Invoice** — chat-created drafts with PDF/CSV exports; PDF/image/invoice-CSV parsing; editable table-based Invoice Studio
-- **Memory (RAG)** — Postgres + sentence-transformer similarity search (not Chroma/pgvector)
-- **UI** — separate login/register pages, chat layout with conversation sidebar, settings for profile and CSV import
-- **Chat import/export** — **+** menu in chat for invoice PDF/image upload and CSV import; **↓** menu to export transactions or download the conversation
+- **Investment** — ticker/company detection, Yahoo Finance data, portfolio grounding, risk-based allocation
+- **Invoice** — chat-created drafts with PDF/CSV exports; PDF/image/invoice-CSV parsing; editable Invoice Studio
+- **Memory (RAG)** — PostgreSQL + sentence-transformer similarity search (not Chroma/pgvector)
+- **UI** — login/register, chat, conversation sidebar, settings, invoice workflows
+- **Chat import/export** — invoice/document and CSV import plus transaction/conversation export
 
-## Frontend pages
-
-| Route       | Purpose                                                                                                              |
-| ----------- | -------------------------------------------------------------------------------------------------------------------- |
-| `/login`    | Sign in (redirects to `/chat` when authenticated)                                                                    |
-| `/register` | Create account                                                                                                       |
-| `/chat`     | Main chat UI — scrollable message thread, agent selector, sidebar, **+ import** (invoice/CSV) and **↓ export** menus |
-| `/settings` | Financial onboarding profile, CSV transaction import, and the editable **Invoice Studio**                              |
-
-Conversations are stored in PostgreSQL (`chat_sessions`, `chat_messages`) and exposed via `/api/conversations`. Each chat message optionally links to a session via `session_id` on `POST /api/chat/message`.
-
-## Architecture (runtime)
+## Architecture
 
 ```text
-React UI  →  FastAPI  →  Orchestrator
-                │              ├─ hybrid router (keywords + embeddings)
-                │              ├─ optional local LLM (Qwen2.5 LoRA)
-                │              └─ rule-based specialists + fallbacks
-                ├─ PostgreSQL (users, transactions, memory)
-                └─ yfinance / ReportLab
+React UI
+   │
+   ▼
+FastAPI API
+   │
+   ├── Authentication / user context
+   ├── Chat / conversations
+   ├── Transactions
+   ├── Portfolio
+   └── Invoices
+   │
+   ▼
+Context + Orchestration
+   │
+   ├── RAG retrieval
+   ├── recent conversation context
+   ├── onboarding context
+   ├── hybrid specialist routing
+   └── bounded agentic planning
+   │
+   ├──────────────┬───────────────┬───────────────┐
+   ▼              ▼               ▼
+ Budget        Investment       Invoice
+ Agent         Agent            Agent
+   │              │               │
+   ▼              ▼               ▼
+PostgreSQL     Yahoo Finance    Invoice services
+transactions   + holdings      + OCR + PDF/CSV
+   │
+   ├── MiniLM + cosine memory
+   └── optional Qwen2.5-1.5B LoRA
 ```
 
-Reply contract for every assistant turn: `[AGENT: BUDGET|INVESTMENT|INVOICE]` tag, natural-language prose, then a valid JSON line.
+### Core design principle
 
-**Agentic behavior:**
+Deterministic code and stored financial data are authoritative for operations such as transaction aggregation, portfolio valuation, invoice totals, routing safeguards and exports. The local LLM is an optional generation/synthesis layer with deterministic fallbacks.
 
-- Cross-domain requests that clearly require multiple specialists use a bounded plan/execution loop.
-- The planner can execute up to `agentic_max_steps` specialists (default: 3), preserving the existing specialist implementations.
-- Each step receives prior verified observations, and the final answer is synthesized by the local model when available.
-- Single-domain requests continue through the existing routing path, so the agentic layer does not replace normal specialist routing.
-
-**Default agent behavior:**
-
-- **Investment** — live Yahoo Finance quotes (last close, 20-day SMA, ranges); personalized allocation from onboarding when no ticker is confirmed. Ticker detection is case-sensitive (`MSFT` yes, lowercase “right” no).
-- **Budget** — real transaction aggregates and month-over-month deltas from PostgreSQL.
-- **Invoice** — structured drafts and export actions. Invoice-intent messages are routed to the deterministic invoice workflow so totals are not reinterpreted by the general chat model.
+The current agentic workflow is **bounded**, not a recursive AutoGPT loop.
 
 ## Prerequisites
 
 - Docker Desktop (or Docker Engine) for PostgreSQL
 - Python 3.11+
-- Node.js 20+ (for the frontend)
+- Node.js 20+
 
-## Quick start (all services)
+## Quick start
 
 From the repo root:
 
 ```bash
 docker compose up -d
-cd backend && python -m venv .venv
+
+cd backend
+python -m venv .venv
 # Windows:
-.venv\Scripts\pip install -r requirements.txt
+.venv\\Scripts\\pip install -r requirements.txt
 copy .env.example .env
+
 cd ..
 npm install
 npm run dev
 ```
 
-- API docs: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- Frontend: [http://127.0.0.1:5173](http://127.0.0.1:5173) (proxies `/api` to port 8000)
+- API docs: http://127.0.0.1:8000/docs
+- Frontend: http://127.0.0.1:5173
 
-Or run backend and frontend separately (see sections below).
+For separate backend/frontend startup and troubleshooting, see [Development](docs/development.md).
 
-## 1. Database
+## Local LLM
 
-From the repo root:
+The local adapter is based on **Qwen/Qwen2.5-1.5B-Instruct** with LoRA.
 
-```bash
-docker compose up -d
-```
+Current adapter configuration:
 
-Copy `backend/.env.example` to `backend/.env`. Defaults use **port 5433** on the host (see [Troubleshooting](#troubleshooting)).
+| Parameter | Value |
+|---|---:|
+| LoRA rank | 16 |
+| LoRA alpha | 32 |
+| LoRA dropout | 0.05 |
+| Target modules | `q_proj`, `v_proj` |
 
-Verify the container is up:
-
-```bash
-docker compose ps
-# expect: 0.0.0.0:5433->5432/tcp
-```
-
-## 2. Backend
-
-```bash
-cd backend
-python -m venv .venv
-# Windows:
-.venv\Scripts\pip install -r requirements.txt
-copy .env.example .env
-.venv/Scripts/uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Set **`JWT_SECRET`** in `backend/.env` to a long random string for production.
-
-If your database already existed **before** password auth was added, run once in psql/pgAdmin:
-
-`backend/scripts/migrate_add_password_hash.sql`, then register a new account.
-
-**Smoke test:** `POST /api/auth/register` (email + password, min 8 chars) → use `access_token` as `Authorization: Bearer <token>` on `POST /api/chat/message`, `GET /api/users/me`, `POST /api/transactions`, `POST /api/invoices/pdf`.
-
-**Seed demo transactions** (after you have a user id from register or `/api/users/me`):
-
-```bash
-cd backend
-.venv\Scripts\python scripts/csv_seed_transactions.py --user-id <UUID> --csv ../training/data/personal_finance_tracker_dataset.csv --limit 300
-```
-
-Use `--format indian` for `Indian Personal Finance and Spending Habits.csv`. Add `--dry-run` first to preview rows.
-
-**Evaluate routing + response format:**
-
-```bash
-cd backend
-.venv\Scripts\python scripts/evaluate_chat.py --token <JWT_TOKEN> --dataset ../training/data/eval_prompts_heldout.jsonl
-```
-
-Reports routing accuracy and format compliance (tag + prose + JSON tail).
-
-Generate a larger held-out set:
-
-```bash
-.venv\Scripts\python scripts/generate_eval_set.py --total 200 --out ../training/data/eval_prompts_heldout_200.jsonl
-```
-
-### Local LLM
-
-A fine-tuned LoRA adapter lives in `backend/app/ml/finmate-lora/` (base: **Qwen/Qwen2.5-1.5B-Instruct**) and is enabled by default. Budget turns use it for personalized replies; FinMate falls back safely to specialist rules if weights or runtime dependencies are unavailable.
-
-To enable local inference, in `backend/.env`:
+The model is optional. Enable it with:
 
 ```env
 FINMATE_USE_LLM=true
 ```
 
-Requires `torch`, `transformers`, `peft` (in `requirements.txt`) and adapter weights under `FINMATE_LORA_PATH`. The orchestrator falls back to rule-based agents if generation fails.
+If model loading or generation fails, deterministic specialist paths remain available.
 
-## 3. Frontend
+## Documentation
 
-```bash
-cd frontend
-npm install
-npm run dev
+The README is the single entry point. Detailed technical material is organized by subsystem rather than stored in one large documentation file.
+
+| Document | Purpose |
+|---|---|
+| [Architecture](docs/architecture.md) | System architecture and end-to-end request flow |
+| [AI & ML](docs/ai-system.md) | QLoRA model, inference and training relationship |
+| [Agents](docs/agents.md) | Budget, Investment, Invoice, routing, orchestration and confidence |
+| [RAG & Memory](docs/rag.md) | Embeddings, retrieval, context construction and memory |
+| [Backend](docs/backend.md) | FastAPI, PostgreSQL, authentication, services and APIs |
+| [Invoice System](docs/invoice-system.md) | Invoice parsing, OCR, Invoice Studio and PDF/CSV exports |
+| [Frontend](docs/frontend.md) | React/Vite pages, components and API integration |
+| [Evaluation & Testing](docs/evaluation.md) | Unit/integration tests, RAG evaluation and AI regression |
+| [Development](docs/development.md) | Local setup, configuration and troubleshooting |
+
+### Recommended reading order
+
+**New developer:** Architecture → Backend → AI & ML → RAG → Agents → Invoice → Frontend → Evaluation → Development
+
+**Viva/presentation:** Architecture → AI & ML → RAG → Agents → Evaluation
+
+## Training
+
+Training assets live under `training/`. The detailed notebooks and scripts remain with those assets rather than being duplicated in runtime documentation.
+
+## Important implementation notes
+
+- RAG currently uses PostgreSQL `MemoryChunk` rows, `all-MiniLM-L6-v2` embeddings and cosine similarity.
+- The chat retrieval path uses a capped recent memory set and top-k semantic retrieval.
+- The agentic workflow is bounded to a maximum of 3 specialist steps by default.
+- A recursive `plan → act → observe → re-plan` loop is future work.
+- Portfolio analysis is grounded in stored holdings and market-data services.
+- Invoice responses preserve structured artifacts for PDF/CSV export.
+- Confidence is an explainable heuristic, not a calibrated probability.
+- The current authentication implementation is password + JWT based; documentation should not claim Google OAuth or refresh-token rotation unless corresponding code is added.
+- The Budget model exists, but a complete budget CRUD API is not currently exposed.
+
+## Source-of-truth rule
+
+Documentation describes the implementation that actually exists in the repository.
+
+When a module changes:
+
+1. update the corresponding document in `docs/`
+2. update [Architecture](docs/architecture.md) if the system flow changes
+3. update [Evaluation & Testing](docs/evaluation.md) if tests or evaluation behavior changes
+4. update this README when setup or user-visible functionality changes
+
+Avoid duplicating detailed implementation material across multiple files.
+
+## Project structure
+
+```text
+finmate/
+├── backend/
+│   ├── app/
+│   │   ├── agents/
+│   │   ├── api/
+│   │   ├── db/
+│   │   ├── invoice/
+│   │   ├── ml/
+│   │   ├── rag/
+│   │   ├── security/
+│   │   └── services/
+│   ├── scripts/
+│   └── tests/
+├── frontend/
+│   └── src/
+├── training/
+│   ├── data/
+│   ├── scripts/
+│   └── colab/
+├── docs/
+│   ├── architecture.md
+│   ├── ai-system.md
+│   ├── agents.md
+│   ├── rag.md
+│   ├── backend.md
+│   ├── invoice-system.md
+│   ├── frontend.md
+│   ├── evaluation.md
+│   └── development.md
+├── docker-compose.yml
+├── package.json
+└── README.md
 ```
-
-Open [http://127.0.0.1:5173](http://127.0.0.1:5173). You will land on `/login` if not signed in; after auth, use `/chat` with the sidebar to switch or start conversations.
-
-### Chat import & export
-
-In the chat composer:
-
-| Control | Action                                                                                                                                    |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| **+**   | Upload a PDF/image invoice or a CSV. Invoice PDFs/images/CSVs are parsed once and shown in chat with export actions; transaction CSVs are imported and previewed in chat. |
-| **↓**   | **Download transactions (CSV)** from your account, or **download the current conversation** as a `.txt` file                              |
-
-Importing does not send the extracted document back through the LLM or store it as chat memory. The parsed invoice is also made available in **Settings → Invoice Studio**.
-
-### Invoice Studio and imports
-
-In **Settings → Invoice Studio**:
-
-1. Upload a PDF or image (PNG/JPEG/WebP).
-2. Click **Extract structured data** — returns vendor, dates, line items, subtotal/tax/total.
-3. Create or edit invoices in the line-item table (item, quantity, rate, amount). GST/tax is a separate total, not a line item.
-4. Download a clean PDF. Chat-created and imported invoice drafts also offer PDF and CSV exports in the chat thread.
-
-API (Bearer token required):
-
-| Endpoint                            | Purpose                                                |
-| ----------------------------------- | ------------------------------------------------------ |
-| `POST /api/invoices/parse`          | Multipart file upload → `ParseInvoiceResult` JSON      |
-| `POST /api/invoices/parse/csv`      | Multipart invoice CSV → `ParseInvoiceResult` JSON      |
-| `POST /api/invoices/pdf`            | JSON line items (+ optional header fields) → PDF bytes |
-| `POST /api/invoices/pdf/structured` | Full `StructuredInvoice` body → PDF bytes              |
-| `GET /api/transactions/export/csv`  | Download all transactions as CSV                       |
-
-**Image OCR** uses [Tesseract](https://github.com/tesseract-ocr/tesseract) via `pytesseract`. Install Tesseract on your system. FinMate auto-detects common Windows install paths (`C:\Program Files\Tesseract-OCR\tesseract.exe`). If OCR still fails, set in `backend/.env`:
-
-```env
-TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
-```
-
-Restart the backend after changing `.env`. Text-based PDFs work without Tesseract (`pdfplumber`). Scanned PDFs fall back to OCR via `pymupdf` + Tesseract.
-
-In chat, ask for an invoice with line items (for example, `Create an invoice for Acme: Website design 1200, hosting 300`). FinMate returns a structured draft with **Download PDF** and **Download CSV** actions.
-
-## 4. Training (Google Colab)
-
-1. `cd training` → `python scripts/build_finmate_train.py` → `training/data/finmate_train.jsonl`
-2. `python scripts/analyze_finmate_dataset.py data/finmate_train.jsonl`
-3. Subset: `python scripts/sample_finmate_small.py --input data/finmate_train.jsonl --out data/finmate_train_small.jsonl --total 4500`
-4. Upload JSONL to Colab/Drive; run `training/colab/finmate_qlora_sft.ipynb`
-5. Copy the adapter into `backend/app/ml/finmate-lora/` (or set `FINMATE_LORA_PATH`)
-
-## Project layout
-
-| Path                                           | Purpose                                                      |
-| ---------------------------------------------- | ------------------------------------------------------------ |
-| `backend/app/main.py`                          | FastAPI app, CORS, DB init                                   |
-| `backend/app/agents/orchestrator.py`           | Hybrid routing + optional LLM                                |
-| `backend/app/agents/confidence.py`              | Transparent heuristic confidence signals                     |
-| `backend/app/agents/intent.py`                 | Keyword + embedding intent classifier                        |
-| `backend/app/agents/budget_planner.py`         | Spending aggregates and insights                             |
-| `backend/app/agents/investment_analyser.py`    | Tickers, yfinance, allocation                                |
-| `backend/app/agents/invoice_generator.py`      | Line items and invoice guidance                              |
-| `backend/app/ml/finmate.py`                    | Local LoRA load/generate/postprocess                         |
-| `backend/app/rag/memory_store.py`              | Embedding similarity over `MemoryChunk`                      |
-| `backend/app/api/routes/chat.py`               | Chat, context injection, reply contract, session persistence |
-| `backend/app/api/routes/conversations.py`      | List/create/delete conversations and messages                |
-| `backend/app/services/market_data.py`          | Yahoo Finance client (`curl_cffi` session)                   |
-| `backend/scripts/evaluate_chat.py`             | Held-out routing/format evaluation                           |
-| `frontend/src/pages/ChatPage.tsx`              | Chat thread + sidebar + import/export menus                  |
-| `frontend/src/components/ChatComposerMenu.tsx` | **+** import and **↓** export menus in chat                  |
-| `frontend/src/pages/SettingsPage.tsx`          | Onboarding, CSV import, PDF                                  |
-| `frontend/src/pages/LoginPage.tsx`             | Login                                                        |
-| `frontend/src/pages/RegisterPage.tsx`          | Registration                                                 |
-| `frontend/src/App.tsx`                         | React Router routes                                          |
-| `PROJECT_DOCUMENTATION.md`                     | Detailed backend/frontend reference                          |
-| `work_division.md`                             | Capstone report section outline                              |
-
-## Troubleshooting
-
-### `password authentication failed for user "finmate"`
-
-Usually one of:
-
-1. **PostgreSQL container not running** — `docker compose up -d` from repo root; `docker compose ps` should show the db service **Up**.
-2. **Wrong port** — This project maps Docker Postgres to host **5433** (not 5432) so it does not clash with a local Windows PostgreSQL service. Ensure `backend/.env` has:
-   ```env
-   DATABASE_URL=postgresql+psycopg2://finmate:finmate@localhost:5433/finmate
-   ```
-3. **Stale volume with different password** — reset the dev database (destroys data):
-   ```bash
-   docker compose down -v
-   docker compose up -d
-   ```
-
-### Tesseract / image OCR not working
-
-1. **Install Tesseract** — [Windows installer](https://github.com/UB-Mannheim/tesseract/wiki) or `winget install UB-Mannheim.TesseractOCR`.
-2. **Set explicit path** if the backend cannot find the binary (common when PATH is not updated for the terminal running uvicorn):
-   ```env
-   TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
-   ```
-3. **Restart the backend** after install or `.env` changes.
-4. **Check the API response** — missing Tesseract returns HTTP **503** with a clear message; empty OCR returns **422** (try a clearer scan).
-
-### Backend starts but chat is slow on first message
-
-The sentence-transformer model (`all-MiniLM-L6-v2`) loads on the first embedding call. Subsequent requests are faster.
-
-### Yahoo Finance errors (`Failed to get ticker`, `possibly delisted`, symbol `RIGHT`)
-
-**False ticker `RIGHT`:** caused by uppercasing the whole message for caps detection — fixed in `backend/app/agents/ticker_utils.py` (only tokens already typed in `ALLCAPS` or `$TICKER` / company names are candidates).
-
-Yahoo sometimes blocks plain HTTP clients. FinMate uses `curl_cffi` in `backend/app/services/market_data.py`. Reinstall backend deps if needed:
-
-```bash
-cd backend
-.venv\Scripts\pip install -r requirements.txt
-```
-
-Only symbols with confirmed price history are used. If tickers still fail, check network/VPN.
-
-### `torch_dtype` deprecation warning
-
-Resolved in `backend/app/ml/finmate.py` (`dtype=` instead of `torch_dtype=`). Restart the backend after updating.
-
-## Next steps (optional)
-
-1. Enable `FINMATE_USE_LLM=true` and compare rule-based vs LoRA replies with `evaluate_chat.py`.
-2. Add spending charts (e.g. Recharts) on the frontend.
-3. Scale memory with **pgvector** or **FAISS** for larger histories.
-
-
-## RAG Evaluation
-
-FinMate includes deterministic regression tests for retrieval and context construction in `backend/tests/test_rag_evaluation.py`. A small reproducible fixture evaluator is available at `backend/scripts/evaluate_rag.py` and reports Hit@2 and mean reciprocal rank (MRR). These fixture metrics validate the retrieval logic itself; they are not claims about live production retrieval quality.
-
-
-## Confidence indicator
-
-Each assistant turn now includes a transparent, deterministic confidence indicator in response metadata. It is a **heuristic signal, not a calibrated probability**.
-
-The score combines:
-
-- **Execution** — proportion of planned specialist agents that completed successfully.
-- **Retrieval signal** — whether retrieved RAG context was available; this is not a retrieval-quality score.
-- **Evidence** — whether specialist output shows evidence of database/tool-backed work.
-- **Response completeness** — whether successful specialist responses contain non-empty output.
-
-Metadata includes `confidence`, `confidence_level`, `confidence_method`, and `confidence_factors`. The implementation lives in `backend/app/agents/confidence.py` and is covered by `backend/tests/test_confidence.py`.
-
-
-## Final AI evaluation
-
-Run the end-to-end evaluator against a running backend using a real user token:
-
-```bash
-cd backend
-python scripts/evaluate_ai.py --token <JWT_TOKEN>
-```
-
-The evaluator reports routing accuracy, reply-format compliance, confidence metadata coverage, observed RAG usage, bounded agentic-plan execution, and invoice artifact preservation. The dataset is a small held-out regression suite for this implementation; its percentages should not be interpreted as general model-quality or production-performance claims.
