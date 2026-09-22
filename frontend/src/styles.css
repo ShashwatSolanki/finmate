@@ -201,6 +201,8 @@ button:disabled {
   color: var(--sidebar-text);
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  height: 100%;
   border-right: 1px solid #1e293b;
 }
 
@@ -240,9 +242,13 @@ button:disabled {
 }
 
 .conversation-list {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 0 0.5rem;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .sidebar-empty {
@@ -316,8 +322,10 @@ button:disabled {
 
 /* Chat main */
 .chat-main {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
@@ -332,6 +340,9 @@ button:disabled {
   padding: 1rem 1.25rem;
   border-bottom: 1px solid var(--border);
   background: #fff;
+  min-height: 0;
+  position: relative;
+  z-index: 10;
 }
 
 .chat-header h2 {
@@ -352,11 +363,11 @@ button:disabled {
 }
 
 .chat-thread {
-  flex: 1;
   min-height: 0;
+  height: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 1.25rem;
+  padding: 1.25rem 1.25rem 7.5rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -531,11 +542,17 @@ button:disabled {
 .chat-composer {
   display: flex;
   gap: 0.65rem;
-  padding: 1rem 1.25rem 1.25rem;
+  padding: 0.75rem 1.25rem 1rem;
   border-top: 1px solid var(--border);
   background: #fff;
   align-items: flex-end;
-  flex-shrink: 0;
+  min-height: 72px;
+  position: absolute;
+  left: clamp(.65rem, 3vw, 2.5rem);
+  right: clamp(.65rem, 3vw, 2.5rem);
+  bottom: 1.2rem;
+  z-index: 20;
+  box-shadow: 0 -6px 18px rgba(15, 23, 42, 0.04);
 }
 
 .composer-toolbar {
@@ -615,6 +632,99 @@ button:disabled {
 .chat-composer .btn-primary {
   margin: 0;
   min-width: 88px;
+}
+
+.portfolio-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+  margin: 1rem 0 .25rem;
+}
+
+.portfolio-toolbar p {
+  margin: 0;
+}
+
+.portfolio-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .65rem;
+  margin-top: 1rem;
+}
+
+.portfolio-summary > div {
+  padding: .8rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.portfolio-summary span {
+  display: block;
+  color: var(--muted);
+  font-size: .76rem;
+  margin-bottom: .25rem;
+}
+
+.portfolio-summary strong {
+  font-size: .92rem;
+}
+
+.portfolio-list {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.portfolio-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.portfolio-row > div:first-child {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.portfolio-row > div:first-child span,
+.portfolio-values {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.portfolio-values {
+  display: grid;
+  gap: 0.15rem;
+  text-align: right;
+}
+
+.portfolio-remove {
+  width: auto;
+  color: #b91c1c;
+  padding: 0.35rem 0.5rem;
+}
+
+@media (max-width: 720px) {
+  .portfolio-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .portfolio-values {
+    grid-column: 1;
+    text-align: left;
+  }
+
+  .portfolio-remove {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
 }
 
 /* Settings */
@@ -883,18 +993,36 @@ input:focus, textarea:focus, select:focus {
 .sidebar-footer { border-color: rgba(255,255,255,.08); padding: .9rem; }
 .sidebar-link { border-radius: 10px; padding: .62rem .68rem; }
 
-.chat-main { background: transparent; }
-.chat-header { padding: 1.15rem 1.7rem; border: 0; background: rgba(255,255,255,.76); backdrop-filter: blur(18px); }
+.chat-main {
+  background: transparent;
+  min-width: 0;
+  min-height: 0;
+}
+.chat-header {
+  padding: 1.15rem 1.7rem;
+  border: 0;
+  background: rgba(255,255,255,.92);
+  backdrop-filter: blur(18px);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+}
 .chat-header h2 { font-size: 1.25rem; letter-spacing: -.03em; }
 .agent-select { border-radius: 10px; background: #f7f7fc; }
-.chat-thread { padding: 1.8rem clamp(1rem, 5vw, 5.5rem); gap: 1rem; }
+.chat-thread {
+  padding: 1.8rem clamp(1rem, 5vw, 5.5rem);
+  gap: 1rem;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  scrollbar-gutter: stable;
+}
 .chat-empty { background: rgba(255,255,255,.76); border: 1px solid rgba(223,226,239,.9); border-radius: 24px; padding: 2rem; box-shadow: 0 14px 36px rgba(37,44,92,.06); }
 .chat-empty h3 { font-size: 1.45rem; letter-spacing: -.04em; }
 .bubble { padding: .9rem 1.1rem; border-radius: 18px; box-shadow: 0 5px 17px rgba(40,48,93,.05); }
 .bubble.user { background: linear-gradient(135deg, #6e5de9, #5140cb); border-bottom-right-radius: 5px; }
 .bubble.assistant { border-color: rgba(226,229,240,.9); background: rgba(255,255,255,.92); border-bottom-left-radius: 5px; }
 .agent-badge { color: #6554dc; }
-.chat-composer { margin: 0 clamp(.65rem, 3vw, 2.5rem) 1.2rem; padding: .7rem; border: 1px solid rgba(223,226,239,.95); border-radius: 18px; background: rgba(255,255,255,.9); box-shadow: 0 12px 36px rgba(37,44,92,.1); }
+.chat-composer { margin: 0; padding: .7rem; border: 1px solid rgba(223,226,239,.95); border-radius: 18px; background: rgba(255,255,255,.9); box-shadow: 0 12px 36px rgba(37,44,92,.1); }
 .chat-composer textarea { border: 0; box-shadow: none; padding: .65rem .35rem; }
 .chat-composer textarea:focus { box-shadow: none; }
 .composer-icon-btn { border-radius: 11px; border: 0; background: #f2f1fb; color: #5140cb; }
@@ -952,4 +1080,144 @@ input:focus, textarea:focus, select:focus {
   .invoice-line-row { grid-template-columns: minmax(0, 1fr) 5.6rem 2.3rem; }
   .invoice-totals-editor { align-items: stretch; flex-direction: column; gap: .8rem; }
   .invoice-totals-editor > label, .invoice-totals-editor dl { width: 100%; }
+}
+
+/* Final chat layout: the page never scrolls; only the message thread scrolls.
+   The composer is viewport-anchored so it cannot be pushed below the fold. */
+.chat-main {
+  display: flex !important;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.chat-header {
+  flex: 0 0 auto;
+}
+
+.chat-thread {
+  flex: 1 1 0;
+  min-height: 0;
+  height: 0;
+  max-height: 100%;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 5.5rem;
+  scroll-padding-bottom: 5.5rem;
+}
+
+.chat-feedback {
+  position: absolute;
+  left: 1.5rem;
+  right: 1.5rem;
+  bottom: 6.9rem;
+  z-index: 19;
+  pointer-events: none;
+}
+
+.chat-composer {
+  position: fixed !important;
+  left: calc(280px + clamp(.65rem, 3vw, 2.5rem));
+  right: clamp(.65rem, 3vw, 2.5rem);
+  bottom: 1rem;
+  width: auto;
+  margin: 0 !important;
+  z-index: 100;
+}
+
+@media (max-width: 768px) {
+  .chat-composer {
+    left: .65rem;
+    right: .65rem;
+    bottom: .65rem;
+  }
+
+  .chat-feedback {
+    left: .9rem;
+    right: .9rem;
+    bottom: 6.5rem;
+  }
+}
+
+
+/* Final mobile chat rules: the drawer must sit above the chat/composer. */
+@media (max-width: 768px) {
+  .app-shell {
+    grid-template-columns: 1fr !important;
+  }
+
+  .sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: min(82vw, 300px) !important;
+    max-width: 300px;
+    z-index: 300 !important;
+    transform: translateX(-100%);
+    overflow: hidden;
+  }
+
+  .app-shell.sidebar-open .sidebar {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 250 !important;
+  }
+
+  .chat-main {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .chat-header {
+    padding: .85rem 1rem;
+  }
+
+  .chat-header-actions {
+    gap: .4rem;
+  }
+
+  .chat-header-actions .agent-select {
+    max-width: 6.5rem;
+  }
+
+  .chat-thread {
+    padding: .8rem .7rem 5.5rem;
+  }
+
+  .chat-composer {
+    left: .6rem !important;
+    right: .6rem !important;
+    bottom: .6rem !important;
+    z-index: 100 !important;
+    width: auto;
+  }
+
+  .chat-composer textarea {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .chat-composer .btn-primary {
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .portfolio-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portfolio-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

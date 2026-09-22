@@ -216,6 +216,7 @@ In chat, ask for an invoice with line items (for example, `Create an invoice for
 | ---------------------------------------------- | ------------------------------------------------------------ |
 | `backend/app/main.py`                          | FastAPI app, CORS, DB init                                   |
 | `backend/app/agents/orchestrator.py`           | Hybrid routing + optional LLM                                |
+| `backend/app/agents/confidence.py`              | Transparent heuristic confidence signals                     |
 | `backend/app/agents/intent.py`                 | Keyword + embedding intent classifier                        |
 | `backend/app/agents/budget_planner.py`         | Spending aggregates and insights                             |
 | `backend/app/agents/investment_analyser.py`    | Tickers, yfinance, allocation                                |
@@ -288,3 +289,34 @@ Resolved in `backend/app/ml/finmate.py` (`dtype=` instead of `torch_dtype=`). Re
 1. Enable `FINMATE_USE_LLM=true` and compare rule-based vs LoRA replies with `evaluate_chat.py`.
 2. Add spending charts (e.g. Recharts) on the frontend.
 3. Scale memory with **pgvector** or **FAISS** for larger histories.
+
+
+## RAG Evaluation
+
+FinMate includes deterministic regression tests for retrieval and context construction in `backend/tests/test_rag_evaluation.py`. A small reproducible fixture evaluator is available at `backend/scripts/evaluate_rag.py` and reports Hit@2 and mean reciprocal rank (MRR). These fixture metrics validate the retrieval logic itself; they are not claims about live production retrieval quality.
+
+
+## Confidence indicator
+
+Each assistant turn now includes a transparent, deterministic confidence indicator in response metadata. It is a **heuristic signal, not a calibrated probability**.
+
+The score combines:
+
+- **Execution** — proportion of planned specialist agents that completed successfully.
+- **Retrieval signal** — whether retrieved RAG context was available; this is not a retrieval-quality score.
+- **Evidence** — whether specialist output shows evidence of database/tool-backed work.
+- **Response completeness** — whether successful specialist responses contain non-empty output.
+
+Metadata includes `confidence`, `confidence_level`, `confidence_method`, and `confidence_factors`. The implementation lives in `backend/app/agents/confidence.py` and is covered by `backend/tests/test_confidence.py`.
+
+
+## Final AI evaluation
+
+Run the end-to-end evaluator against a running backend using a real user token:
+
+```bash
+cd backend
+python scripts/evaluate_ai.py --token <JWT_TOKEN>
+```
+
+The evaluator reports routing accuracy, reply-format compliance, confidence metadata coverage, observed RAG usage, bounded agentic-plan execution, and invoice artifact preservation. The dataset is a small held-out regression suite for this implementation; its percentages should not be interpreted as general model-quality or production-performance claims.

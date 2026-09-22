@@ -5,35 +5,90 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.types import AgentName, AgentResult
+from app.db.models import Transaction
 from app.config import settings
 from app.invoice.parse_invoice import parse_invoice_text
 from app.invoice.schemas import ParsedLineItem, StructuredInvoice
 from app.ml.finmate import generate
 
-_AMOUNT_LINE = re.compile(r"^\s*(?:[-*]\s*)?([\d.,]+)\s+(.+?)\s*$|^\s*(?:[-*]\s*)?(.+?)\s+(?:₹|Rs\.?|INR|\$)?\s*([\d,]+(?:\.\d{1,2})?)\s*$", re.M | re.I)
+_AMOUNT_LINE = re.compile(
+    r"^\s*(?:[-*]\s*)?(.+?)\s+(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£)?\s*"
+    r"([\d,]+(?:\.\d{1,2})?)\s*[.!]?\s*$",
+    re.I,
+)
+
+_AMOUNT_FIRST_LINE = re.compile(
+    r"^\s*(?:[-*]\s*)?(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£)?\s*"
+    r"([\d,]+(?:\.\d{1,2})?)\s+(.+?)\s*[.!]?\s*$",
+    re.I,
+)
+
+
+def _extract_original_request(message: str) -> str:
+    """Remove verified specialist observations before parsing invoice input."""
+    marker = "\n\n[Verified specialist observations]"
+    if marker in message:
+        return message.split(marker, 1)[0].strip()
+    return message.strip()
+
+
+def _wants_expense_invoice(request: str) -> bool:
+    """Detect invoice requests that should be grounded in the user's expenses."""
+    has_invoice_signal = bool(
+        re.search(r"\b(invoice|invoices|bill|receipt)\b", request, re.I)
+    )
+    has_expense_signal = bool(
+        re.search(
+            r"\b(my|our|these|recent|monthly|last 30 days?|expenses?|"
+            r"spending|transactions?)\b",
+            request,
+            re.I,
+        )
+    )
+    return has_invoice_signal and has_expense_signal
 
 
 def _parse_simple_lines(message: str) -> list[dict[str, str]]:
+    """Parse compact natural-language invoice requests into line items."""
+    cleaned = re.sub(
+        r"^\s*(?:(?:create|generate|make|draft)\s+(?:an?\s+)?invoice"
+        r"|i\s+need\s+(?:an?\s+)?(?:client\s+)?invoice)"
+        r"\s*(?:for|from|line\s+items?)?\s*[:\-]?\s*",
+        "",
+        message,
+        flags=re.I,
+    )
+    parts = re.split(r"\s+and\s+|[,;]", cleaned, flags=re.I)
     items: list[dict[str, str]] = []
-    total = Decimal("0")
-    for m in _AMOUNT_LINE.finditer(message):
-        amount_first = m.group(1) is not None
-        amt = m.group(1) if amount_first else m.group(4)
-        desc = (m.group(2) if amount_first else m.group(3)).strip()
+    for part in parts:
+        text = part.strip().rstrip(".!?")
+        if not text:
+            continue
+        m = _AMOUNT_LINE.match(text)
+        if m:
+            desc, amt = m.groups()
+        else:
+            m = _AMOUNT_FIRST_LINE.match(text)
+            if not m:
+                continue
+            amt, desc = m.groups()
         try:
             val = Decimal(amt.replace(",", ""))
         except InvalidOperation:
             continue
         if val <= 0:
             continue
-        items.append({"description": desc, "amount": f"{val:.2f}"})
-        total += val
+        desc = re.sub(r"^(?:for|of)\s+", "", desc.strip(), flags=re.I)
+        if desc:
+            items.append({"description": desc, "amount": f"{val:.2f}"})
     return items
 
 
@@ -54,6 +109,42 @@ def _structured_from_message(message: str) -> StructuredInvoice | None:
         total = sum((i.amount for i in line_items), start=Decimal("0"))
         return StructuredInvoice(line_items=line_items, total=total, currency=result.invoice.currency)
     return None
+
+
+def _expense_invoice_from_transactions(db: Session, user_id: UUID) -> StructuredInvoice | None:
+    """Build an exportable invoice-style expense summary from recent transactions."""
+    rows = db.scalars(
+        select(Transaction)
+        .where(Transaction.user_id == user_id)
+        .order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc())
+        .limit(50)
+    ).all()
+    if not rows:
+        return None
+
+    currency = (rows[0].currency or "USD").upper()
+    items = [
+        ParsedLineItem(
+            description=(row.description or row.category or "Expense")[:500],
+            amount=abs(row.amount),
+        )
+        for row in rows
+        if row.amount != 0
+    ]
+    if not items:
+        return None
+
+    subtotal = sum((item.amount for item in items), start=Decimal("0"))
+    return StructuredInvoice(
+        invoice_number=f"EXP-{date.today().strftime('%Y%m%d')}",
+        invoice_date=date.today().isoformat(),
+        vendor_name="FinMate Expense Summary",
+        currency=currency,
+        line_items=items,
+        subtotal=subtotal,
+        total=subtotal,
+        notes="Generated from the user's recent available transactions.",
+    )
 
 
 def _format_reply(invoice: StructuredInvoice, inv_id: str, *, source_note: str) -> str:
@@ -126,26 +217,31 @@ def run(
 ) -> AgentResult:
     _ = db
     inv_id = str(uuid.uuid4())[:8].upper()
-    invoice = _structured_from_message(message)
+    request_text = _extract_original_request(message)
+    invoice = _structured_from_message(request_text)
+    request = request_text.lower()
+    wants_expense_invoice = _wants_expense_invoice(request)
+    if invoice is None and wants_expense_invoice:
+        invoice = _expense_invoice_from_transactions(db, user_id)
 
     rag_block = ""
     if rag_context and rag_context.strip():
         rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
     if invoice and invoice.line_items:
-        if settings.finmate_use_llm:
-            enriched = (
-                f"{message}\n\n[Parsed invoice]\n{invoice.model_dump_json()}{rag_block}"
-            )
-            try:
-                reply = generate(enriched)
-                source = "llm"
-            except Exception:
-                reply = _format_reply(invoice, inv_id, source_note="parsed from message text")
-                source = "structured_parse"
-        else:
-            reply = _format_reply(invoice, inv_id, source_note="parsed from message text")
-            source = "structured_parse"
+        # Invoice generation is intentionally deterministic here. The structured
+        # invoice object is the source of truth for PDF/CSV export artifacts; using
+        # the general LLM response path can discard those machine-readable fields.
+        reply = _format_reply(
+            invoice,
+            inv_id,
+            source_note=(
+                "generated from recent user transactions"
+                if wants_expense_invoice
+                else "parsed from message text"
+            ),
+        )
+        source = "transaction_summary" if wants_expense_invoice else "structured_parse"
 
         total = invoice.total or sum((i.amount for i in invoice.line_items), start=Decimal("0"))
         return AgentResult(
@@ -164,8 +260,8 @@ def run(
         )
 
     upload_hint = (
-        "Upload a PDF or image invoice in Settings → Invoice import, or paste line items like:\n"
-        "  1200 Website design\n  400 SEO audit"
+        "Upload a PDF or image invoice in Settings → Invoice import, paste line items like:\n"
+        "  1200 Website design\n  400 SEO audit, or import transactions first if you want an expense summary."
     )
     reply = (
         "[AGENT: INVOICE]\n\n"

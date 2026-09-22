@@ -6,10 +6,12 @@ import re
 from decimal import Decimal
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.ticker_utils import extract_ticker_candidates, has_investment_signal, pick_validated_tickers
 from app.agents.types import AgentName, AgentResult
+from app.db.models import InvestmentHolding
 from app.config import settings
 from app.ml.finmate import SYSTEM_EXTRA_INVESTMENT, ensure_investment_reply_shape, generate
 from app.services.market_data import fetch_history, get_ticker
@@ -73,6 +75,112 @@ def _extract_lump_sum(message: str) -> Decimal | None:
     if num < 100:
         return None
     return num
+
+
+def _is_portfolio_history_request(message: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(last|previous|past|current|existing|my)\b.*\b(investments?|portfolio|holdings?|positions?|returns?|profits?|gains?|losses?)\b",
+            message,
+            re.I,
+        )
+        or re.search(r"\b(investments?|portfolio|holdings?|positions?)\b.*\b(profit|profits|return|returns|gain|gains|loss|losses)\b", message, re.I)
+    )
+
+
+def _portfolio_history_reply(db: Session, user_id: UUID) -> AgentResult:
+    holdings = db.scalars(
+        select(InvestmentHolding)
+        .where(InvestmentHolding.user_id == user_id)
+        .order_by(InvestmentHolding.symbol.asc())
+    ).all()
+    if not holdings:
+        return AgentResult(
+            agent=AgentName.INVESTMENT_ANALYSER,
+            reply=_no_portfolio_data_reply(),
+            planned_steps=["check_portfolio_data", "report_data_unavailable"],
+            metadata={"tickers": "", "market_data": "none", "source": "no_investment_data"},
+        )
+
+    lines: list[str] = []
+    total_cost = Decimal("0")
+    total_value = Decimal("0")
+    valued_count = 0
+    currency = holdings[0].currency
+
+    for holding in holdings:
+        cost = holding.quantity * holding.average_cost
+        total_cost += cost
+        try:
+            info = get_ticker(holding.symbol).info or {}
+            raw = info.get("currentPrice") or info.get("regularMarketPrice")
+            if raw is None:
+                raise ValueError("current price unavailable")
+            price = Decimal(str(raw))
+            value = holding.quantity * price
+            profit = value - cost
+            total_value += value
+            valued_count += 1
+            pct = (profit / cost * 100) if cost else Decimal("0")
+            lines.append(
+                f"{holding.symbol} | {holding.quantity:g} units | "
+                f"Avg cost: {holding.average_cost:,.2f} {holding.currency} | "
+                f"Current: {price:,.2f} {holding.currency} | "
+                f"P/L: {profit:+,.2f} {holding.currency} ({pct:+.2f}%)"
+            )
+        except Exception:
+            lines.append(
+                f"{holding.symbol} | {holding.quantity:g} units | "
+                f"Avg cost: {holding.average_cost:,.2f} {holding.currency} | "
+                "Current market price unavailable"
+            )
+
+    if valued_count:
+        total_profit = total_value - total_cost
+        total_pct = (total_profit / total_cost * 100) if total_cost else Decimal("0")
+        summary = (
+            f"Total invested: {total_cost:,.2f} {currency}\n"
+            f"Current value: {total_value:,.2f} {currency}\n"
+            f"Unrealized P/L: {total_profit:+,.2f} {currency} ({total_pct:+.2f}%)\n"
+            f"Holdings valued: {valued_count}/{len(holdings)}"
+        )
+    else:
+        summary = f"Portfolio cost basis: {total_cost:.2f}. Current market prices are unavailable, so P/L cannot be calculated."
+
+    reply = (
+        "[AGENT: INVESTMENT]\n\n"
+        "Portfolio Snapshot\n\n"
+        + "\n".join(lines)
+        + "\n\n"
+        + summary
+        + "\n"
+        + "Note: P/L shown here is unrealized because FinMate currently tracks holdings, "
+        "not completed buy/sell transactions."
+    )
+    return AgentResult(
+        agent=AgentName.INVESTMENT_ANALYSER,
+        reply=reply,
+        planned_steps=["check_portfolio_data", "fetch_current_prices", "calculate_unrealized_returns"],
+        metadata={
+            "tickers": ",".join(h.symbol for h in holdings),
+            "market_data": "live" if valued_count else "unavailable",
+            "source": "portfolio_holdings",
+            "holdings_count": str(len(holdings)),
+            "valued_holdings": str(valued_count),
+        },
+    )
+
+
+def _no_portfolio_data_reply() -> str:
+    return (
+        "[AGENT: INVESTMENT]\n\n"
+        "I don't have any stored investment holdings or investment transactions for your account yet, "
+        "so I can't calculate your past investment profits or returns. "
+        "You can add investment data when portfolio tracking is available, or ask me about a stock using "
+        "a ticker such as AAPL for live market data.\n\n"
+        '{"intent":"investment_history_unavailable","steps":["Check stored investment data","Add portfolio holdings or transactions","Analyze returns"],'
+        '"tools_needed":[],"notes":"no investment holdings data is currently stored"}'
+    )
 
 
 def _allocation_for_risk(risk: str | None) -> tuple[int, int, int]:
@@ -266,6 +374,8 @@ def run(
         rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
     if not tickers:
+        if _is_portfolio_history_request(request):
+            return _portfolio_history_reply(db, user_id)
         reply = _portfolio_plan_reply(message, rag_context)
         return AgentResult(
             agent=AgentName.INVESTMENT_ANALYSER,

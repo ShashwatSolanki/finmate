@@ -17,6 +17,21 @@ export default function SettingsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [holdings, setHoldings] = useState<Array<{
+    id: string;
+    symbol: string;
+    quantity: string;
+    average_cost: string;
+    currency: string;
+    last_price?: string | null;
+    market_value?: string | null;
+    unrealized_profit?: string | null;
+    unrealized_profit_pct?: string | null;
+  }>>([]);
+  const [holdingSymbol, setHoldingSymbol] = useState("");
+  const [holdingQuantity, setHoldingQuantity] = useState("");
+  const [holdingCost, setHoldingCost] = useState("");
+  const [holdingCurrency, setHoldingCurrency] = useState("INR");
 
   const loadProfile = useCallback(async () => {
     if (!token) return;
@@ -34,6 +49,67 @@ export default function SettingsPage() {
   useEffect(() => {
     void loadProfile();
   }, [loadProfile]);
+
+  async function loadPortfolio() {
+    if (!token) return;
+    const res = await fetch("/api/portfolio/summary", { headers: authHeaders(token) });
+    if (!res.ok) return;
+    setHoldings(await res.json());
+  }
+
+  useEffect(() => {
+    void loadPortfolio();
+  }, [token]);
+
+  async function refreshPortfolio() {
+    await loadPortfolio();
+    setStatus("Portfolio prices refreshed.");
+  }
+
+  async function addHolding(e: FormEvent) {
+    e.preventDefault();
+    if (!token) return;
+    setError(null);
+    setStatus(null);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/portfolio/holdings", {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          symbol: holdingSymbol.trim().toUpperCase(),
+          quantity: Number(holdingQuantity),
+          average_cost: Number(holdingCost),
+          currency: holdingCurrency.trim().toUpperCase(),
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await loadPortfolio();
+      setHoldingSymbol("");
+      setHoldingQuantity("");
+      setHoldingCost("");
+      setStatus("Portfolio holding saved.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save holding");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function deleteHolding(symbol: string) {
+    if (!token) return;
+    setError(null);
+    const res = await fetch(`/api/portfolio/holdings/${encodeURIComponent(symbol)}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+    if (!res.ok) {
+      setError(await res.text());
+      return;
+    }
+    await loadPortfolio();
+    setStatus(`${symbol} removed from portfolio.`);
+  }
 
   async function saveOnboarding(e: FormEvent) {
     e.preventDefault();
@@ -171,6 +247,103 @@ export default function SettingsPage() {
           <button type="button" className="btn-secondary" onClick={importCsv} disabled={loading}>
             Import CSV
           </button>
+        </section>
+
+        <section className="settings-card">
+          <h2>Investment portfolio</h2>
+          <p className="muted">
+            Store your holdings here. FinMate uses quantity and average cost to calculate unrealized P/L from live prices.
+          </p>
+          <div className="portfolio-toolbar">
+            <p className="muted">Add a holding or refresh live prices.</p>
+            <button type="button" className="btn-secondary" onClick={() => void refreshPortfolio()} disabled={loading}>
+              Refresh prices
+            </button>
+          </div>
+          <form onSubmit={addHolding} className="settings-form">
+            <label htmlFor="holding-symbol">Ticker</label>
+            <input
+              id="holding-symbol"
+              value={holdingSymbol}
+              onChange={(e) => setHoldingSymbol(e.target.value)}
+              placeholder="RELIANCE.NS"
+              required
+            />
+            <label htmlFor="holding-quantity">Quantity</label>
+            <input
+              id="holding-quantity"
+              type="number"
+              min="0.000001"
+              step="any"
+              value={holdingQuantity}
+              onChange={(e) => setHoldingQuantity(e.target.value)}
+              placeholder="10"
+              required
+            />
+            <label htmlFor="holding-cost">Average cost per unit</label>
+            <input
+              id="holding-cost"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={holdingCost}
+              onChange={(e) => setHoldingCost(e.target.value)}
+              placeholder="1450"
+              required
+            />
+            <label htmlFor="holding-currency">Currency</label>
+            <input
+              id="holding-currency"
+              value={holdingCurrency}
+              onChange={(e) => setHoldingCurrency(e.target.value)}
+              placeholder="INR"
+              required
+            />
+            <button type="submit" className="btn-primary" disabled={loading}>
+              Add / update holding
+            </button>
+          </form>
+
+          {holdings.length > 0 && (() => {
+            const currencies = [...new Set(holdings.map((h) => h.currency.toUpperCase()))];
+            const sameCurrency = currencies.length === 1;
+            const currency = currencies[0] ?? "";
+            const invested = holdings.reduce((sum, h) => sum + Number(h.average_cost) * Number(h.quantity), 0);
+            const current = holdings.reduce((sum, h) => sum + (h.market_value != null ? Number(h.market_value) : 0), 0);
+            const profit = holdings.reduce((sum, h) => sum + (h.unrealized_profit != null ? Number(h.unrealized_profit) : 0), 0);
+            const valued = holdings.filter((h) => h.market_value != null).length;
+            return (
+              <>
+                <div className="portfolio-summary">
+                  <div><span>Invested</span><strong>{sameCurrency ? invested.toFixed(2) + " " + currency : "Mixed currencies"}</strong></div>
+                  <div><span>Current value</span><strong>{sameCurrency && valued ? current.toFixed(2) + " " + currency : sameCurrency ? "—" : "Mixed currencies"}</strong></div>
+                  <div><span>Unrealized P/L</span><strong>{sameCurrency && valued ? (profit >= 0 ? "+" : "") + profit.toFixed(2) + " " + currency : sameCurrency ? "—" : "Mixed currencies"}</strong></div>
+                  <div><span>Holdings valued</span><strong>{valued}/{holdings.length}</strong></div>
+                </div>
+                <div className="portfolio-list">
+                  {holdings.map((holding) => (
+                    <div className="portfolio-row" key={holding.id}>
+                      <div>
+                        <strong>{holding.symbol}</strong>
+                        <span>{holding.quantity} × {holding.average_cost} {holding.currency}</span>
+                      </div>
+                      <div className="portfolio-values">
+                        <span>Price: {holding.last_price ?? "—"}</span>
+                        <span>Value: {holding.market_value ?? "—"}</span>
+                        <span>
+                          P/L: {holding.unrealized_profit ?? "—"}
+                          {holding.unrealized_profit_pct != null ? " (" + Number(holding.unrealized_profit_pct).toFixed(2) + "%)" : ""}
+                        </span>
+                      </div>
+                      <button type="button" className="btn-ghost portfolio-remove" onClick={() => void deleteHolding(holding.symbol)}>
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
         </section>
 
         <InvoiceImportPanel onStatus={setStatus} onError={setError} />
