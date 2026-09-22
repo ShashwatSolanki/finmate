@@ -34,6 +34,22 @@ def _extract_original_request(message: str) -> str:
     return message.strip()
 
 
+def _wants_expense_invoice(request: str) -> bool:
+    """Detect invoice requests that should be grounded in the user's expenses."""
+    has_invoice_signal = bool(
+        re.search(r"\\b(invoice|invoices|bill|receipt)\\b", request, re.I)
+    )
+    has_expense_signal = bool(
+        re.search(
+            r"\\b(my|our|these|recent|monthly|last 30 days?|expenses?|"
+            r"spending|transactions?)\\b",
+            request,
+            re.I,
+        )
+    )
+    return has_invoice_signal and has_expense_signal
+
+
 def _parse_simple_lines(message: str) -> list[dict[str, str]]:
     """Parse compact natural-language invoice requests into line items."""
     cleaned = re.sub(
@@ -191,10 +207,7 @@ def run(
     request_text = _extract_original_request(message)
     invoice = _structured_from_message(request_text)
     request = request_text.lower()
-    wants_expense_invoice = bool(
-        re.search(r"\b(invoice|bill|receipt)\b", request)
-        and re.search(r"\b(my|our|these|recent|monthly|last 30 days?)\b.*\b(expenses?|spending|transactions?)\b", request)
-    )
+    wants_expense_invoice = _wants_expense_invoice(request)
     if invoice is None and wants_expense_invoice:
         invoice = _expense_invoice_from_transactions(db, user_id)
 
