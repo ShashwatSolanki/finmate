@@ -26,6 +26,14 @@ _AMOUNT_LINE = re.compile(
 )
 
 
+def _extract_original_request(message: str) -> str:
+    """Remove verified specialist observations before parsing invoice input."""
+    marker = "\n\n[Verified specialist observations]"
+    if marker in message:
+        return message.split(marker, 1)[0].strip()
+    return message.strip()
+
+
 def _parse_simple_lines(message: str) -> list[dict[str, str]]:
     """Parse compact natural-language invoice requests into line items."""
     cleaned = re.sub(
