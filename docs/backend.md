@@ -102,7 +102,7 @@ Login:
 2. verify password
 3. issue JWT
 
-The current implementation uses access-token JWT authentication. Do not describe refresh-token rotation or Google OAuth as implemented unless corresponding code is added.
+The implementation provides dual-token authentication (short-lived access tokens + long-lived rotating refresh tokens), Google OAuth integration, account linking/unlinking, and brute-force rate limiting.
 
 ## 5. Main API groups
 
@@ -111,15 +111,23 @@ The current implementation uses access-token JWT authentication. Do not describe
 ```text
 POST /api/auth/register
 POST /api/auth/login
+POST /api/auth/refresh
+POST /api/auth/logout
+POST /api/auth/google
+POST /api/auth/link/google
+POST /api/auth/unlink/google
 ```
 
 ### Users
 
 ```text
-GET  /api/users/me
-POST /api/users/onboarding
-GET  /api/users/onboarding/latest
-GET  /api/users/onboarding/profile
+GET    /api/users/me
+PATCH  /api/users/me
+POST   /api/users/change-password
+DELETE /api/users/me
+POST   /api/users/onboarding
+GET    /api/users/onboarding/latest
+GET    /api/users/onboarding/profile
 ```
 
 ### Transactions

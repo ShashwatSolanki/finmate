@@ -26,8 +26,8 @@ export default function RegisterPage() {
         }),
       });
       if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as { access_token: string };
-      setToken(data.access_token);
+      const data = (await res.json()) as { access_token: string; refresh_token?: string };
+      setToken(data.access_token, data.refresh_token);
       navigate("/chat");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
