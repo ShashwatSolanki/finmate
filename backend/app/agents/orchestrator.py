@@ -94,7 +94,10 @@ def run_turn(
                 prompt = _compose_llm_user_message(user_message, rag_context) + budget_instruction
                 reply = finmate.finalize_llm_reply(finmate.generate(prompt))
                 route = finmate.route_key_from_reply(reply)
-                agent_enum = _ROUTE_TO_AGENT.get(route, AgentName.BUDGET_PLANNER)
+                # Preserve the deterministic/explicit specialist selection.
+                # The model generates the response, but must not override the
+                # already-selected route (especially for budget queries).
+                agent_enum = chosen or _ROUTE_TO_AGENT.get(route, AgentName.BUDGET_PLANNER)
                 steps = finmate.extract_planned_steps(reply)
                 meta = {"source": "llm", "route_key": route}
                 if rag_context and rag_context.strip():
