@@ -37,12 +37,12 @@ def _extract_original_request(message: str) -> str:
 def _wants_expense_invoice(request: str) -> bool:
     """Detect invoice requests that should be grounded in the user's expenses."""
     has_invoice_signal = bool(
-        re.search(r"\\b(invoice|invoices|bill|receipt)\\b", request, re.I)
+        re.search(r"\b(invoice|invoices|bill|receipt)\b", request, re.I)
     )
     has_expense_signal = bool(
         re.search(
-            r"\\b(my|our|these|recent|monthly|last 30 days?|expenses?|"
-            r"spending|transactions?)\\b",
+            r"\b(my|our|these|recent|monthly|last 30 days?|expenses?|
+            r"spending|transactions?)\b",
             request,
             re.I,
         )
