@@ -15,7 +15,14 @@ class Settings(BaseSettings):
         description="Set JWT_SECRET in .env for production",
     )
     jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 60 * 24 * 7
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 7
+
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+
+    auth_rate_limit_max_attempts: int = 5
+    auth_rate_limit_window_seconds: int = 60
 
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     intent_embedding_weight: float = 0.25
