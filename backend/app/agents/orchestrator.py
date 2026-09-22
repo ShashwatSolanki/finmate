@@ -68,7 +68,11 @@ def run_turn(
     # tool-backed data is authoritative and exportable artifacts survive.
     if chosen is None:
         classified = classify_agent(user_message)
-        if classified in (AgentName.INVOICE_GENERATOR, AgentName.INVESTMENT_ANALYSER):
+        if classified in (
+            AgentName.BUDGET_PLANNER,
+            AgentName.INVOICE_GENERATOR,
+            AgentName.INVESTMENT_ANALYSER,
+        ):
             chosen = classified
     # Skip embedding-based intent for the remaining budget/general-chat path.
     if chosen is None and not (settings.finmate_use_llm and agent is None):
