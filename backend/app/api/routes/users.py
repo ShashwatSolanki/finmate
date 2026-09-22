@@ -1,14 +1,19 @@
 import re
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
-from app.db.models import MemoryChunk, User
+from app.db.models import MemoryChunk, RefreshToken, User
 from app.db.session import get_db
+from app.security.passwords import (
+    hash_password,
+    validate_password_strength,
+    verify_password,
+)
 
 router = APIRouter()
 
@@ -17,8 +22,26 @@ class UserOut(BaseModel):
     id: uuid.UUID
     email: str
     display_name: str | None
+    is_active: bool = True
+    has_password: bool = True
+    google_linked: bool = False
+    auth_provider: str = "local"
 
     model_config = {"from_attributes": True}
+
+
+class UpdateProfileBody(BaseModel):
+    display_name: str | None = Field(None, max_length=120)
+
+
+class ChangePasswordBody(BaseModel):
+    current_password: str | None = None
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class MessageOut(BaseModel):
+    message: str
+    success: bool = True
 
 
 class OnboardingBody(BaseModel):
@@ -77,9 +100,77 @@ def _parse_onboarding_profile(text: str) -> OnboardingProfileOut:
 
 
 @router.get("/me", response_model=UserOut)
-def read_me(current: User = Depends(get_current_user)) -> User:
+def read_me(current: User = Depends(get_current_user)) -> UserOut:
     """Current profile (requires Bearer token)."""
-    return current
+    return UserOut(
+        id=current.id,
+        email=current.email,
+        display_name=current.display_name,
+        is_active=getattr(current, "is_active", True),
+        has_password=bool(current.password_hash),
+        google_linked=bool(getattr(current, "google_id", None)),
+        auth_provider=getattr(current, "auth_provider", "local"),
+    )
+
+
+@router.patch("/me", response_model=UserOut)
+def update_profile(
+    body: UpdateProfileBody,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    """Update profile information like display name."""
+    if body.display_name is not None:
+        current.display_name = body.display_name.strip()
+    db.commit()
+    db.refresh(current)
+    return UserOut(
+        id=current.id,
+        email=current.email,
+        display_name=current.display_name,
+        is_active=getattr(current, "is_active", True),
+        has_password=bool(current.password_hash),
+        google_linked=bool(getattr(current, "google_id", None)),
+        auth_provider=getattr(current, "auth_provider", "local"),
+    )
+
+
+@router.post("/change-password", response_model=MessageOut)
+def change_password(
+    body: ChangePasswordBody,
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MessageOut:
+    """Change account password. If a password is set, verifies current_password."""
+    if current.password_hash:
+        if not body.current_password or not verify_password(body.current_password, current.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is incorrect.",
+            )
+
+    is_valid, err = validate_password_strength(body.new_password)
+    if not is_valid:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=err,
+        )
+
+    current.password_hash = hash_password(body.new_password)
+    db.commit()
+    return MessageOut(message="Password updated successfully.", success=True)
+
+
+@router.delete("/me", response_model=MessageOut)
+def deactivate_account(
+    current: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MessageOut:
+    """Deactivate user account and revoke active sessions."""
+    current.is_active = False
+    db.query(RefreshToken).filter(RefreshToken.user_id == current.id).update({"revoked": True})
+    db.commit()
+    return MessageOut(message="Account deactivated successfully.", success=True)
 
 
 @router.post("/onboarding", response_model=OnboardingOut)
