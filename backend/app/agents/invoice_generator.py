@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
@@ -99,10 +99,9 @@ def _structured_from_message(message: str) -> StructuredInvoice | None:
 
 def _expense_invoice_from_transactions(db: Session, user_id: UUID) -> StructuredInvoice | None:
     """Build an exportable invoice-style expense summary from recent transactions."""
-    cutoff = date.today() - timedelta(days=30)
     rows = db.scalars(
         select(Transaction)
-        .where(Transaction.user_id == user_id, Transaction.occurred_on >= cutoff)
+        .where(Transaction.user_id == user_id)
         .order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc())
         .limit(50)
     ).all()
@@ -130,7 +129,7 @@ def _expense_invoice_from_transactions(db: Session, user_id: UUID) -> Structured
         line_items=items,
         subtotal=subtotal,
         total=subtotal,
-        notes="Generated from the user's transactions from the last 30 days.",
+        notes="Generated from the user's recent available transactions.",
     )
 
 
