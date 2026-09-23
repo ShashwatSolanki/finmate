@@ -92,17 +92,18 @@ Registration:
 1. validate input
 2. check existing email
 3. hash password
-4. create user
-5. commit
+4. create user and verification token
+5. send verification email
 6. issue JWT
 
 Login:
 
 1. find user
 2. verify password
-3. issue JWT
+3. check verification status
+4. issue JWT
 
-The implementation provides dual-token authentication (short-lived access tokens + long-lived rotating refresh tokens), Google OAuth integration, account linking/unlinking, and brute-force rate limiting.
+The implementation provides dual-token authentication (short-lived access tokens + long-lived rotating refresh tokens), Google OAuth integration, email verification & password reset, account linking/unlinking, and brute-force rate limiting.
 
 ## 5. Main API groups
 
@@ -110,6 +111,10 @@ The implementation provides dual-token authentication (short-lived access tokens
 
 ```text
 POST /api/auth/register
+POST /api/auth/verify-email
+POST /api/auth/resend-verification
+POST /api/auth/forgot-password
+POST /api/auth/reset-password
 POST /api/auth/login
 POST /api/auth/refresh
 POST /api/auth/logout
