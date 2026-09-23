@@ -40,12 +40,17 @@ def override_get_db():
 class EmailVerificationAndResetTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        from app.config import settings
+        cls._orig_mock = settings.email_mock_mode
+        settings.email_mock_mode = True
         Base.metadata.create_all(bind=engine)
         app.dependency_overrides[get_db] = override_get_db
         cls.client = TestClient(app)
 
     @classmethod
     def tearDownClass(cls):
+        from app.config import settings
+        settings.email_mock_mode = cls._orig_mock
         app.dependency_overrides.pop(get_db, None)
         Base.metadata.drop_all(bind=engine)
 
@@ -244,6 +249,226 @@ class EmailVerificationAndResetTests(unittest.TestCase):
         self.assertIsNotNone(user)
         self.assertTrue(user.is_verified)
         db.close()
+
+    def test_08_email_verification_preserves_chat_history_and_memory_story(self):
+        """Verify that verifying email does not corrupt or wipe chat history, messages, or user memory story."""
+        email = "history_verify@example.com"
+        reg_res = self.client.post(
+            "/api/auth/register",
+            json={"email": email, "password": "SecureP@ssw0rd123"},
+        )
+        self.assertEqual(reg_res.status_code, 200)
+        token_data = reg_res.json()
+        auth_header = {"Authorization": f"Bearer {token_data['access_token']}"}
+
+        # Create chat session, message, memory chunk (story), and transaction before verification
+        db = TestingSessionLocal()
+        user = db.query(User).filter(User.email == email).first()
+        from app.db.models import ChatMessage, ChatSession, MemoryChunk, Transaction
+        from decimal import Decimal
+        from datetime import date
+
+        session = ChatSession(user_id=user.id, title="Financial Planning Discussion")
+        db.add(session)
+        db.flush()
+        session_id = session.id
+
+        db.add(ChatMessage(session_id=session.id, role="user", content="How much can I save monthly?"))
+        db.add(ChatMessage(session_id=session.id, role="assistant", content="Based on your 50k salary, you can save 15k."))
+        db.add(MemoryChunk(user_id=user.id, content="User monthly salary is 50000 INR with moderate risk tolerance", source="onboarding"))
+        db.add(Transaction(user_id=user.id, amount=Decimal("250.00"), currency="USD", occurred_on=date.today(), description="Groceries"))
+        db.commit()
+
+        # Retrieve verification code
+        v_token = (
+            db.query(EmailVerificationToken)
+            .filter(EmailVerificationToken.user_id == user.id, EmailVerificationToken.used.is_(False))
+            .first()
+        )
+        code = v_token.code
+        db.close()
+
+        # Complete email verification
+        ver_res = self.client.post(
+            "/api/auth/verify-email",
+            json={"email": email, "code": code},
+        )
+        self.assertEqual(ver_res.status_code, 200)
+        new_token_data = ver_res.json()
+        new_auth_header = {"Authorization": f"Bearer {new_token_data['access_token']}"}
+
+        # Verify chat history and session information still accessible via API
+        conv_res = self.client.get("/api/conversations", headers=new_auth_header)
+        self.assertEqual(conv_res.status_code, 200)
+        conversations = conv_res.json()
+        self.assertEqual(len(conversations), 1)
+        self.assertEqual(conversations[0]["title"], "Financial Planning Discussion")
+
+        conv_detail = self.client.get(f"/api/conversations/{session_id}/messages", headers=new_auth_header)
+        self.assertEqual(conv_detail.status_code, 200)
+        messages = conv_detail.json()
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0]["content"], "How much can I save monthly?")
+
+        # Check DB directly to ensure memory story and transactions remain intact
+        db = TestingSessionLocal()
+        user = db.query(User).filter(User.email == email).first()
+        self.assertTrue(user.is_verified)
+        self.assertEqual(len(user.chat_sessions), 1)
+        self.assertEqual(len(user.memory_chunks), 1)
+        self.assertIn("moderate risk tolerance", user.memory_chunks[0].content)
+        self.assertEqual(len(user.transactions), 1)
+        db.close()
+
+    def test_09_password_reset_preserves_chat_history_and_session_story(self):
+        """Verify that resetting password preserves all chat sessions, messages, and user story while updating security."""
+        email = "history_reset@example.com"
+        reg_res = self.client.post(
+            "/api/auth/register",
+            json={"email": email, "password": "OriginalP@ssw0rd123"},
+        )
+        self.assertEqual(reg_res.status_code, 200)
+        token_data = reg_res.json()
+
+        # Populate user story, chat sessions, and financial data
+        db = TestingSessionLocal()
+        user = db.query(User).filter(User.email == email).first()
+        from app.db.models import ChatMessage, ChatSession, MemoryChunk, Transaction
+        from decimal import Decimal
+        from datetime import date
+
+        session = ChatSession(user_id=user.id, title="Investment Portfolio Review")
+        db.add(session)
+        db.flush()
+        session_id = session.id
+        db.add(ChatMessage(session_id=session.id, role="user", content="Review my tech stock allocation"))
+        db.add(ChatMessage(session_id=session.id, role="assistant", content="Tech represents 40% of your portfolio."))
+        db.add(MemoryChunk(user_id=user.id, content="User plans to buy a house in 5 years", source="chat"))
+        db.add(Transaction(user_id=user.id, amount=Decimal("1200.00"), currency="USD", occurred_on=date.today(), description="Rent"))
+        db.commit()
+        db.close()
+
+        # Trigger forgot password
+        forgot_res = self.client.post("/api/auth/forgot-password", json={"email": email})
+        self.assertEqual(forgot_res.status_code, 200)
+
+        db = TestingSessionLocal()
+        user = db.query(User).filter(User.email == email).first()
+        reset_token = (
+            db.query(PasswordResetToken)
+            .filter(PasswordResetToken.user_id == user.id, PasswordResetToken.used.is_(False))
+            .first()
+        )
+        code = reset_token.code
+        db.close()
+
+        # Perform password reset
+        reset_res = self.client.post(
+            "/api/auth/reset-password",
+            json={"email": email, "code": code, "new_password": "CompletelyNewP@ssw0rd888"},
+        )
+        self.assertEqual(reset_res.status_code, 200)
+
+        # Login with new password
+        login_res = self.client.post(
+            "/api/auth/login",
+            json={"email": email, "password": "CompletelyNewP@ssw0rd888"},
+        )
+        self.assertEqual(login_res.status_code, 200)
+        new_auth_header = {"Authorization": f"Bearer {login_res.json()['access_token']}"}
+
+        # Verify chat history is completely preserved and accessible
+        conv_res = self.client.get("/api/conversations", headers=new_auth_header)
+        self.assertEqual(conv_res.status_code, 200)
+        conversations = conv_res.json()
+        self.assertEqual(len(conversations), 1)
+        self.assertEqual(conversations[0]["title"], "Investment Portfolio Review")
+
+        # Verify messages in conversation
+        conv_detail = self.client.get(f"/api/conversations/{session_id}/messages", headers=new_auth_header)
+        self.assertEqual(conv_detail.status_code, 200)
+        messages = conv_detail.json()
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[0]["content"], "Review my tech stock allocation")
+
+        # Verify memory story and transactions in DB
+        db = TestingSessionLocal()
+        user = db.query(User).filter(User.email == email).first()
+        self.assertEqual(len(user.chat_sessions), 1)
+        self.assertEqual(len(user.memory_chunks), 1)
+        self.assertIn("buy a house in 5 years", user.memory_chunks[0].content)
+        self.assertEqual(len(user.transactions), 1)
+        self.assertEqual(user.transactions[0].description, "Rent")
+        db.close()
+
+    def test_10_password_reset_revokes_old_sessions_cleanly(self):
+        """Ensure password reset revokes old active refresh tokens without corrupting user account state."""
+        email = "session_security@example.com"
+        reg_res = self.client.post(
+            "/api/auth/register",
+            json={"email": email, "password": "OriginalP@ssw0rd123"},
+        )
+        old_rf_token = reg_res.json()["refresh_token"]
+
+        # Request reset and change password
+        self.client.post("/api/auth/forgot-password", json={"email": email})
+        db = TestingSessionLocal()
+        user = db.query(User).filter(User.email == email).first()
+        token = db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user.id).first()
+        code = token.code
+        db.close()
+
+        self.client.post(
+            "/api/auth/reset-password",
+            json={"email": email, "code": code, "new_password": "NewSecureP@ssw0rd456"},
+        )
+
+        # Attempt to refresh token using old session refresh token -> should be rejected (revoked)
+        rf_res = self.client.post(
+            "/api/auth/refresh",
+            json={"refresh_token": old_rf_token},
+        )
+        self.assertEqual(rf_res.status_code, 401)
+        self.assertIn("revoked", rf_res.json()["detail"].lower())
+
+    def test_11_google_linking_preserves_existing_user_history_and_story(self):
+        """Ensure linking Google account preserves existing chat history, story, and sessions."""
+        email = "existing_google_user@example.com"
+        reg_res = self.client.post(
+            "/api/auth/register",
+            json={"email": email, "password": "Password123!#$"},
+        )
+        self.assertEqual(reg_res.status_code, 200)
+
+        # Add chat session and memory
+        db = TestingSessionLocal()
+        user = db.query(User).filter(User.email == email).first()
+        from app.db.models import ChatMessage, ChatSession, MemoryChunk
+        session = ChatSession(user_id=user.id, title="Pre-Google Linked Chat")
+        db.add(session)
+        db.flush()
+        db.add(ChatMessage(session_id=session.id, role="user", content="Hello before Google link"))
+        db.add(MemoryChunk(user_id=user.id, content="User likes index funds", source="onboarding"))
+        db.commit()
+        user_id = user.id
+        db.close()
+
+        # Log in via Google with same email
+        g_res = self.client.post(
+            "/api/auth/google",
+            json={"credential": f"mock-google-token:{email}:google-sub-777:Existing Google Linked"},
+        )
+        self.assertEqual(g_res.status_code, 200)
+        g_token_data = g_res.json()
+        self.assertEqual(g_token_data["user_id"], str(user_id))
+
+        # Check conversations with new token
+        headers = {"Authorization": f"Bearer {g_token_data['access_token']}"}
+        conv_res = self.client.get("/api/conversations", headers=headers)
+        self.assertEqual(conv_res.status_code, 200)
+        conversations = conv_res.json()
+        self.assertEqual(len(conversations), 1)
+        self.assertEqual(conversations[0]["title"], "Pre-Google Linked Chat")
 
 
 if __name__ == "__main__":
