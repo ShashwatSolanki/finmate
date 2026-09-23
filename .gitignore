@@ -7,11 +7,13 @@ venv/
 *.egg-info/
 dist/
 build/
+*.db
 
 # Node
 node_modules/
 dist/
 *.log
+*.tsbuildinfo
 
 # IDE
 .idea/

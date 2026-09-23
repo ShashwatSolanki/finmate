@@ -72,7 +72,10 @@ export default function LoginPage() {
             autoComplete="email"
             required
           />
-          <label htmlFor="password">Password</label>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginTop: "0.75rem" }}>
+            <label htmlFor="password" style={{ margin: 0 }}>Password</label>
+            <Link to="/forgot-password" style={{ fontSize: "0.85rem" }}>Forgot password?</Link>
+          </div>
           <input
             id="password"
             type="password"

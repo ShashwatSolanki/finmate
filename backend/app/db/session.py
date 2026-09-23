@@ -44,6 +44,8 @@ def _ensure_auth_schema(target_engine=None) -> None:
     with eng.begin() as conn:
         if "is_active" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE"))
+        if "is_verified" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT FALSE"))
         if "google_id" not in user_cols:
             conn.execute(text("ALTER TABLE users ADD COLUMN google_id VARCHAR(128) NULL"))
         if "auth_provider" not in user_cols:

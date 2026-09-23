@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
@@ -8,7 +8,13 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
 from app.config import settings
-from app.db.models import OAuthAccount, RefreshToken, User
+from app.db.models import (
+    EmailVerificationToken,
+    OAuthAccount,
+    PasswordResetToken,
+    RefreshToken,
+    User,
+)
 from app.db.session import get_db
 from app.security.jwt_tokens import (
     create_access_token,
@@ -21,6 +27,11 @@ from app.security.passwords import (
     verify_password,
 )
 from app.security.rate_limiter import auth_rate_limiter
+from app.services.email_service import (
+    generate_otp,
+    send_password_reset_email,
+    send_verification_email,
+)
 
 router = APIRouter()
 
@@ -41,6 +52,9 @@ class TokenOut(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     user_id: uuid.UUID
+    is_verified: bool = False
+    requires_verification: bool = False
+    verification_code_preview: str | None = None
 
 
 class RefreshTokenBody(BaseModel):
@@ -51,12 +65,36 @@ class GoogleAuthBody(BaseModel):
     credential: str = Field(..., description="Google ID Token (JWT) or test token")
 
 
+class VerifyEmailBody(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=4, max_length=16)
+
+
+class ResendVerificationBody(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordBody(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordBody(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=4, max_length=16)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
 class MessageOut(BaseModel):
     message: str
     success: bool = True
 
 
-def _issue_tokens_for_user(user: User, db: Session) -> TokenOut:
+def _issue_tokens_for_user(
+    user: User,
+    db: Session,
+    requires_verification: bool = False,
+    verification_code_preview: str | None = None,
+) -> TokenOut:
     """Generate access token and rotating refresh token, persisting the refresh token in DB."""
     access_token = create_access_token(user.id)
     refresh_token_str, jti, expires_at = create_refresh_token(user.id)
@@ -73,6 +111,9 @@ def _issue_tokens_for_user(user: User, db: Session) -> TokenOut:
         access_token=access_token,
         refresh_token=refresh_token_str,
         user_id=user.id,
+        is_verified=bool(getattr(user, "is_verified", False)),
+        requires_verification=requires_verification,
+        verification_code_preview=verification_code_preview,
     )
 
 
@@ -93,13 +134,156 @@ def register(body: RegisterBody, db: Session = Depends(get_db)) -> TokenOut:
         display_name=body.display_name,
         password_hash=hash_password(body.password),
         is_active=True,
+        is_verified=False,
         auth_provider="local",
     )
     db.add(user)
     db.commit()
     db.refresh(user)
 
+    # 3. Generate verification token and send verification email
+    otp = generate_otp()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.verification_code_expire_minutes)
+    verification_token = EmailVerificationToken(
+        user_id=user.id,
+        code=otp,
+        expires_at=expires_at,
+        used=False,
+    )
+    db.add(verification_token)
+    db.commit()
+
+    send_verification_email(user.email, otp)
+    code_preview = otp if settings.email_mock_mode else None
+
+    return _issue_tokens_for_user(
+        user,
+        db,
+        requires_verification=True,
+        verification_code_preview=code_preview,
+    )
+
+
+@router.post("/verify-email", response_model=TokenOut)
+def verify_email(body: VerifyEmailBody, db: Session = Depends(get_db)) -> TokenOut:
+    user = db.query(User).filter(User.email == body.email.lower().strip()).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    now = datetime.now(timezone.utc)
+    token_rec = (
+        db.query(EmailVerificationToken)
+        .filter(
+            EmailVerificationToken.user_id == user.id,
+            EmailVerificationToken.code == body.code.strip(),
+            EmailVerificationToken.used.is_(False),
+        )
+        .order_by(EmailVerificationToken.created_at.desc())
+        .first()
+    )
+    if not token_rec:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code")
+
+    exp = token_rec.expires_at
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < now:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification code has expired")
+
+    token_rec.used = True
+    user.is_verified = True
+    db.commit()
+    db.refresh(user)
+
     return _issue_tokens_for_user(user, db)
+
+
+@router.post("/resend-verification", response_model=MessageOut)
+def resend_verification(body: ResendVerificationBody, db: Session = Depends(get_db)) -> MessageOut:
+    user = db.query(User).filter(User.email == body.email.lower().strip()).first()
+    if not user:
+        return MessageOut(message="If the email is registered, a new verification code has been sent.")
+
+    if user.is_verified:
+        return MessageOut(message="Email is already verified.")
+
+    # Invalidate previous unused verification tokens
+    db.query(EmailVerificationToken).filter(
+        EmailVerificationToken.user_id == user.id,
+        EmailVerificationToken.used.is_(False),
+    ).update({"used": True})
+
+    otp = generate_otp()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.verification_code_expire_minutes)
+    db.add(EmailVerificationToken(user_id=user.id, code=otp, expires_at=expires_at, used=False))
+    db.commit()
+
+    send_verification_email(user.email, otp)
+    return MessageOut(message="Verification code sent successfully.")
+
+
+@router.post("/forgot-password", response_model=MessageOut)
+def forgot_password(body: ForgotPasswordBody, db: Session = Depends(get_db)) -> MessageOut:
+    user = db.query(User).filter(User.email == body.email.lower().strip()).first()
+    if not user:
+        return MessageOut(message="If the email exists in our system, a password reset code has been sent.")
+
+    # Invalidate old unused reset tokens
+    db.query(PasswordResetToken).filter(
+        PasswordResetToken.user_id == user.id,
+        PasswordResetToken.used.is_(False),
+    ).update({"used": True})
+
+    otp = generate_otp()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.password_reset_code_expire_minutes)
+    db.add(PasswordResetToken(user_id=user.id, code=otp, expires_at=expires_at, used=False))
+    db.commit()
+
+    send_password_reset_email(user.email, otp)
+    return MessageOut(message="If the email exists in our system, a password reset code has been sent.")
+
+
+@router.post("/reset-password", response_model=MessageOut)
+def reset_password(body: ResetPasswordBody, db: Session = Depends(get_db)) -> MessageOut:
+    # Enforce password strength
+    is_valid_pwd, pwd_error = validate_password_strength(body.new_password)
+    if not is_valid_pwd:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=pwd_error)
+
+    user = db.query(User).filter(User.email == body.email.lower().strip()).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email or reset code")
+
+    now = datetime.now(timezone.utc)
+    reset_rec = (
+        db.query(PasswordResetToken)
+        .filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.code == body.code.strip(),
+            PasswordResetToken.used.is_(False),
+        )
+        .order_by(PasswordResetToken.created_at.desc())
+        .first()
+    )
+    if not reset_rec:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code")
+
+    exp = reset_rec.expires_at
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp < now:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code")
+
+    # Update password and mark verified
+    user.password_hash = hash_password(body.new_password)
+    user.is_verified = True
+    reset_rec.used = True
+
+    # Revoke all active refresh tokens for user to force re-login on all devices
+    db.query(RefreshToken).filter(RefreshToken.user_id == user.id).update({"revoked": True})
+    db.commit()
+
+    return MessageOut(message="Password reset successfully. You can now log in with your new password.")
 
 
 @router.post("/login", response_model=TokenOut)
@@ -235,6 +419,7 @@ def google_auth(body: GoogleAuthBody, db: Session = Depends(get_db)) -> TokenOut
         if user:
             # Link Google account to existing user
             user.google_id = google_sub
+            user.is_verified = True
             db.commit()
 
     # 3. If new user, create user record
@@ -245,6 +430,7 @@ def google_auth(body: GoogleAuthBody, db: Session = Depends(get_db)) -> TokenOut
             google_id=google_sub,
             auth_provider="google",
             is_active=True,
+            is_verified=True,
         )
         db.add(user)
         db.commit()
