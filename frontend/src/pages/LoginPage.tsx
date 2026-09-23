@@ -33,17 +33,30 @@ export default function LoginPage() {
 
   async function onGoogleSignIn() {
     setError(null);
+    let targetEmail = email.trim().toLowerCase();
+    if (!targetEmail) {
+      const prompted = window.prompt("Enter your Google / Gmail account email to sign in:");
+      if (!prompted || !prompted.trim()) {
+        return;
+      }
+      targetEmail = prompted.trim().toLowerCase();
+      setEmail(targetEmail);
+    }
+
     setLoading(true);
     try {
-      // In production with Google Identity Services, google.accounts.id prompts user and returns credential.
-      // We pass the credential to FinMate /api/auth/google endpoint.
-      const mockCredential = `mock-google-token:${email || "user@example.com"}:google-sub-${Date.now()}:FinMate User`;
+      // Deterministic, isolated Google Sub based on email to ensure consistent session isolation
+      const safeId = targetEmail.replace(/[^a-zA-Z0-9]/g, "_");
+      const mockCredential = `mock-google-token:${targetEmail}:google-sub-${safeId}:${targetEmail.split("@")[0]}`;
       const res = await fetch("/api/auth/google", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ credential: mockCredential }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.detail || "Google Sign-in failed");
+      }
       const data = (await res.json()) as { access_token: string; refresh_token?: string };
       setToken(data.access_token, data.refresh_token);
       navigate("/chat");

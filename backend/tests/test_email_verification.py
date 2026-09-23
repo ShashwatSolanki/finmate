@@ -470,6 +470,92 @@ class EmailVerificationAndResetTests(unittest.TestCase):
         self.assertEqual(len(conversations), 1)
         self.assertEqual(conversations[0]["title"], "Pre-Google Linked Chat")
 
+    def test_12_multi_user_google_isolation_and_profile_settings(self):
+        """Verify strict isolation between distinct Google accounts for chat sessions and profile settings."""
+        # 1. Login User Alice
+        alice_res = self.client.post(
+            "/api/auth/google",
+            json={"credential": "mock-google-token:alice_iso@gmail.com:google-sub-alice_iso:Alice"},
+        )
+        self.assertEqual(alice_res.status_code, 200)
+        alice_token = alice_res.json()["access_token"]
+        alice_headers = {"Authorization": f"Bearer {alice_token}"}
+
+        # 2. Login User Bob
+        bob_res = self.client.post(
+            "/api/auth/google",
+            json={"credential": "mock-google-token:bob_iso@gmail.com:google-sub-bob_iso:Bob"},
+        )
+        self.assertEqual(bob_res.status_code, 200)
+        bob_token = bob_res.json()["access_token"]
+        bob_headers = {"Authorization": f"Bearer {bob_token}"}
+
+        self.assertNotEqual(alice_res.json()["user_id"], bob_res.json()["user_id"])
+
+        # 3. Alice creates conversation and saves profile
+        conv_alice = self.client.post(
+            "/api/conversations",
+            headers=alice_headers,
+            json={"title": "Alice's Private Budget Plan"},
+        )
+        self.assertEqual(conv_alice.status_code, 201)
+
+        prof_alice = self.client.post(
+            "/api/users/onboarding",
+            headers=alice_headers,
+            json={
+                "monthly_income": 65000,
+                "location": "Bengaluru",
+                "goals": ["Retirement", "Home"],
+                "risk_tolerance": "moderate",
+                "currency": "INR",
+            },
+        )
+        self.assertEqual(prof_alice.status_code, 200)
+
+        # 4. Bob creates conversation and saves profile
+        conv_bob = self.client.post(
+            "/api/conversations",
+            headers=bob_headers,
+            json={"title": "Bob's Crypto Strategies"},
+        )
+        self.assertEqual(conv_bob.status_code, 201)
+
+        prof_bob = self.client.post(
+            "/api/users/onboarding",
+            headers=bob_headers,
+            json={
+                "monthly_income": 120000,
+                "location": "San Francisco",
+                "goals": ["Angel investing"],
+                "risk_tolerance": "aggressive",
+                "currency": "USD",
+            },
+        )
+        self.assertEqual(prof_bob.status_code, 200)
+
+        # 5. Verify Alice only sees Alice's chats
+        alice_convs = self.client.get("/api/conversations", headers=alice_headers).json()
+        self.assertEqual(len(alice_convs), 1)
+        self.assertEqual(alice_convs[0]["title"], "Alice's Private Budget Plan")
+
+        # 6. Verify Bob only sees Bob's chats
+        bob_convs = self.client.get("/api/conversations", headers=bob_headers).json()
+        self.assertEqual(len(bob_convs), 1)
+        self.assertEqual(bob_convs[0]["title"], "Bob's Crypto Strategies")
+
+        # 7. Verify Alice profile is isolated
+        alice_prof_res = self.client.get("/api/users/onboarding/profile", headers=alice_headers).json()
+        self.assertEqual(alice_prof_res["monthly_income"], 65000)
+        self.assertEqual(alice_prof_res["location"], "Bengaluru")
+        self.assertEqual(alice_prof_res["currency"], "INR")
+
+        # 8. Verify Bob profile is isolated
+        bob_prof_res = self.client.get("/api/users/onboarding/profile", headers=bob_headers).json()
+        self.assertEqual(bob_prof_res["monthly_income"], 120000)
+        self.assertEqual(bob_prof_res["location"], "San Francisco")
+        self.assertEqual(bob_prof_res["currency"], "USD")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -116,6 +116,18 @@ export default function SettingsPage() {
     if (!token) return;
     setError(null);
     setStatus(null);
+
+    const incomeNum = Number(onboardIncome);
+    if (!onboardIncome.trim() || isNaN(incomeNum) || incomeNum <= 0) {
+      setError("Please enter a valid monthly income greater than 0.");
+      return;
+    }
+
+    if (!onboardLocation || onboardLocation.trim().length < 2) {
+      setError("Please enter a valid location (at least 2 characters).");
+      return;
+    }
+
     setLoading(true);
     try {
       const goals = onboardGoals
@@ -126,14 +138,23 @@ export default function SettingsPage() {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({
-          monthly_income: Number(onboardIncome),
-          location: onboardLocation,
+          monthly_income: incomeNum,
+          location: onboardLocation.trim(),
           goals,
           risk_tolerance: onboardRisk,
-          currency: onboardCurrency,
+          currency: onboardCurrency.trim() || "USD",
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        let msg = "Could not save financial profile.";
+        if (typeof errData.detail === "string") {
+          msg = errData.detail;
+        } else if (Array.isArray(errData.detail)) {
+          msg = errData.detail.map((d: any) => d.msg || JSON.stringify(d)).join(". ");
+        }
+        throw new Error(msg);
+      }
       setStatus("Financial profile saved. FinMate will use this in chat context.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -218,14 +239,29 @@ export default function SettingsPage() {
             <label htmlFor="income">Monthly income</label>
             <input
               id="income"
+              type="number"
+              min="1"
+              step="any"
               value={onboardIncome}
               onChange={(e) => setOnboardIncome(e.target.value)}
+              placeholder="e.g. 50000"
               required
             />
             <label htmlFor="location">Location</label>
-            <input id="location" value={onboardLocation} onChange={(e) => setOnboardLocation(e.target.value)} required />
+            <input
+              id="location"
+              value={onboardLocation}
+              onChange={(e) => setOnboardLocation(e.target.value)}
+              placeholder="e.g. Bengaluru, India"
+              required
+            />
             <label htmlFor="goals">Goals (comma separated)</label>
-            <input id="goals" value={onboardGoals} onChange={(e) => setOnboardGoals(e.target.value)} />
+            <input
+              id="goals"
+              value={onboardGoals}
+              onChange={(e) => setOnboardGoals(e.target.value)}
+              placeholder="e.g. Emergency fund, retirement, travel"
+            />
             <label htmlFor="risk">Risk tolerance</label>
             <select id="risk" value={onboardRisk} onChange={(e) => setOnboardRisk(e.target.value)}>
               <option value="conservative">Conservative</option>
