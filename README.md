@@ -142,7 +142,7 @@ Training assets live under `training/`. The detailed notebooks and scripts remai
 - Portfolio analysis is grounded in stored holdings and market-data services.
 - Invoice responses preserve structured artifacts for PDF/CSV export.
 - Confidence is an explainable heuristic, not a calibrated probability.
-- The current authentication implementation is password + JWT based; documentation should not claim Google OAuth or refresh-token rotation unless corresponding code is added.
+- Authentication supports JWT with refresh tokens, email verification, password reset, and Google OAuth.
 - The Budget model exists, but a complete budget CRUD API is not currently exposed.
 
 ## Source-of-truth rule
