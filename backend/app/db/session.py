@@ -33,6 +33,25 @@ def _ensure_chat_message_metadata_column() -> None:
         conn.execute(text("ALTER TABLE chat_messages ADD COLUMN metadata JSONB NULL"))
 
 
+def _ensure_auth_schema(target_engine=None) -> None:
+    eng = target_engine or engine
+    inspector = inspect(eng)
+    table_names = inspector.get_table_names()
+    if "users" not in table_names:
+        return
+
+    user_cols = {col["name"] for col in inspector.get_columns("users")}
+    with eng.begin() as conn:
+        if "is_active" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT TRUE"))
+        if "google_id" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN google_id VARCHAR(128) NULL"))
+        if "auth_provider" not in user_cols:
+            conn.execute(text("ALTER TABLE users ADD COLUMN auth_provider VARCHAR(32) DEFAULT 'local'"))
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_chat_message_metadata_column()
+    _ensure_auth_schema()
+

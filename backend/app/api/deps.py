@@ -31,10 +31,12 @@ def get_current_user(
     user = db.get(User, uid)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
-    if not user.password_hash:
+    if not getattr(user, "is_active", True):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
+    if not user.password_hash and not getattr(user, "google_id", None):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account has no password; register again or reset",
+            detail="Account has no password or linked OAuth provider",
         )
     return user
 
