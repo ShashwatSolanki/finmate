@@ -41,7 +41,10 @@ def run_migration(db_url: str | None = None):
 
     assert "refresh_tokens" in tables, "refresh_tokens table missing"
     assert "oauth_accounts" in tables, "oauth_accounts table missing"
+    assert "email_verification_tokens" in tables, "email_verification_tokens table missing"
+    assert "password_reset_tokens" in tables, "password_reset_tokens table missing"
     assert "is_active" in user_cols, "is_active column missing on users"
+    assert "is_verified" in user_cols, "is_verified column missing on users"
     assert "google_id" in user_cols, "google_id column missing on users"
 
     print("Auth migration completed successfully!")

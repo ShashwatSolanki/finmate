@@ -65,6 +65,8 @@ Important backend settings include:
 - JWT secret
 - JWT algorithm
 - token lifetime
+- optional SMTP settings for email delivery
+- optional Google OAuth client ID
 - embedding model
 - routing embedding weight
 - LoRA adapter path
@@ -104,7 +106,12 @@ Text-based PDFs do not require OCR.
 
 The current application initializes SQLAlchemy metadata at startup.
 
-A production deployment should eventually use a proper migration system rather than relying solely on table creation.
+For updating existing development databases with new auth fields:
+
+```bash
+cd backend
+python scripts/migrate_auth.py
+```
 
 ## 9. Useful validation commands
 
@@ -115,15 +122,24 @@ cd backend
 python -m unittest discover -s tests -p "test_*.py"
 ```
 
+Frontend build:
+
+```bash
+cd frontend
+npm run build
+```
+
 RAG evaluation:
 
 ```bash
+cd backend
 python scripts/evaluate_rag.py
 ```
 
 AI evaluation:
 
 ```bash
+cd backend
 python scripts/evaluate_ai.py --token <JWT_TOKEN>
 ```
 

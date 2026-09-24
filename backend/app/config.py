@@ -24,6 +24,16 @@ class Settings(BaseSettings):
     auth_rate_limit_max_attempts: int = 5
     auth_rate_limit_window_seconds: int = 60
 
+    # Email & SMTP Settings
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str = "noreply@finmate.com"
+    email_mock_mode: bool = True  # Logs to console and returns code in development/tests
+    verification_code_expire_minutes: int = 15
+    password_reset_code_expire_minutes: int = 15
+
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     intent_embedding_weight: float = 0.25
 
