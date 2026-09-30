@@ -23,6 +23,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")
+    budgets: Mapped[list["Budget"]] = relationship(back_populates="user")
     memory_chunks: Mapped[list["MemoryChunk"]] = relationship(back_populates="user")
     chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="user")
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -55,6 +56,8 @@ class Budget(Base):
     limit_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     period_start: Mapped[date] = mapped_column(Date)
     period_end: Mapped[date] = mapped_column(Date)
+
+    user: Mapped["User"] = relationship(back_populates="budgets")
 
 
 class InvestmentHolding(Base):
