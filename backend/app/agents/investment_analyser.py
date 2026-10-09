@@ -61,20 +61,35 @@ def _extract_original_request(message: str) -> str:
 
 
 def _extract_lump_sum(message: str) -> Decimal | None:
-    m = re.search(r"\b(\d+(?:\.\d+)?)\s*([kKmM]|lakh|lakhs)?\b", message)
-    if not m:
+    """Extract an investment amount without mistaking ages, dates, or percentages for money."""
+    amount_pattern = r"(\d[\d,]*(?:\.\d{1,2})?)\s*(k|m|lakh|lakhs)?"
+    currency_match = re.search(
+        r"(?:₹|\$|€|£|\bINR\b|\bUSD\b|\bEUR\b|\bGBP\b)\s*" + amount_pattern,
+        message,
+        re.I,
+    )
+    match = currency_match
+    if not match:
+        match = re.search(
+            r"\b(?:invest(?:ing)?|investment of|lump[ -]?sum|deposit|amount of)\s*(?:about\s+|around\s+|of\s+)?"
+            + amount_pattern,
+            message,
+            re.I,
+        )
+    if not match:
         return None
-    num = Decimal(m.group(1))
-    mult = (m.group(2) or "").lower()
+    try:
+        num = Decimal(match.group(1).replace(",", ""))
+    except Exception:
+        return None
+    mult = (match.group(2) or "").lower()
     if mult == "k":
         return num * Decimal("1000")
     if mult == "m":
         return num * Decimal("1000000")
     if mult in {"lakh", "lakhs"}:
         return num * Decimal("100000")
-    if num < 100:
-        return None
-    return num
+    return num if num >= 100 else None
 
 
 def _is_portfolio_history_request(message: str) -> bool:
@@ -114,8 +129,9 @@ def _portfolio_history_reply(db: Session, user_id: UUID) -> AgentResult:
         try:
             info = get_ticker(holding.symbol).info or {}
             raw = info.get("currentPrice") or info.get("regularMarketPrice")
-            if raw is None:
-                raise ValueError("current price unavailable")
+            quote_currency = str(info.get("currency") or "").upper()
+            if raw is None or quote_currency != holding.currency.upper():
+                raise ValueError("current price unavailable or quote currency mismatch")
             price = Decimal(str(raw))
             value = holding.quantity * price
             profit = value - cost
@@ -135,7 +151,13 @@ def _portfolio_history_reply(db: Session, user_id: UUID) -> AgentResult:
                 "Current market price unavailable"
             )
 
-    if valued_count:
+    holding_currencies = {h.currency.upper() for h in holdings}
+    if len(holding_currencies) > 1:
+        summary = (
+            "Combined portfolio totals are omitted because holdings use multiple currencies. "
+            "Convert all holdings to one reporting currency before aggregating."
+        )
+    elif valued_count:
         total_profit = total_value - total_cost
         total_pct = (total_profit / total_cost * 100) if total_cost else Decimal("0")
         summary = (
@@ -145,7 +167,7 @@ def _portfolio_history_reply(db: Session, user_id: UUID) -> AgentResult:
             f"Holdings valued: {valued_count}/{len(holdings)}"
         )
     else:
-        summary = f"Portfolio cost basis: {total_cost:.2f}. Current market prices are unavailable, so P/L cannot be calculated."
+        summary = f"Portfolio cost basis: {total_cost:.2f} {currency}. Current market prices are unavailable or use a different currency, so P/L cannot be calculated."
 
     reply = (
         "[AGENT: INVESTMENT]\n\n"
