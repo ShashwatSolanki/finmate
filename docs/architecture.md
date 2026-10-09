@@ -26,6 +26,7 @@ FastAPI
     ├── Authentication / user context
     ├── Chat / conversation routes
     ├── Transaction APIs
+    ├── Budget CRUD API
     ├── Portfolio APIs
     └── Invoice APIs
     │
@@ -65,6 +66,7 @@ FinMate separates deterministic financial work from natural-language generation.
 The application should rely on code and stored data for operations such as:
 
 - transaction aggregation
+- budget CRUD, period validation and user ownership checks
 - portfolio valuation
 - invoice totals and structured artifacts
 - routing safeguards

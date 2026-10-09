@@ -55,7 +55,7 @@ Financial transaction data:
 
 ### Budget
 
-Category limits and budget periods. The model exists, but a complete budget CRUD API is not currently exposed.
+Category limits and budget periods, managed through an authenticated CRUD API. Every operation scopes queries to the authenticated owner; request validation enforces positive amounts, a non-empty category, and valid date periods.
 
 ### InvestmentHolding
 
@@ -146,6 +146,18 @@ GET  /api/transactions/summary/monthly
 POST /api/transactions/import/csv
 GET  /api/transactions/export/csv
 ```
+
+### Budgets
+
+```text
+POST   /api/budgets
+GET    /api/budgets
+GET    /api/budgets/{budget_id}
+PATCH  /api/budgets/{budget_id}
+DELETE /api/budgets/{budget_id}
+```
+
+Updates are partial, reject explicit `null` values for supplied fields, and revalidate that the end date is not before the start date.
 
 ### Portfolio
 
