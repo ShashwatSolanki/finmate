@@ -37,8 +37,7 @@ router = APIRouter()
 
 
 def _auth_rate_key(request: Request, action: str, email: str) -> str:
-    client_ip = request.client.host if request.client else "unknown"
-    return f"{action}:account:{client_ip}:{email.lower().strip()}"
+    return f"{action}:account:{email.lower().strip()}"
 
 
 def _auth_ip_key(request: Request, action: str) -> str:
@@ -350,7 +349,7 @@ def reset_password(body: ResetPasswordBody, request: Request, db: Session = Depe
 @router.post("/login", response_model=TokenOut)
 def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> TokenOut:
     client_ip = request.client.host if request.client else "unknown"
-    rate_key = f"login:account:{client_ip}:{body.email.lower().strip()}"
+    rate_key = f"login:account:{body.email.lower().strip()}"
     ip_rate_key = f"login:ip:{client_ip}"
 
     # Rate limiting protection against brute-force attacks
