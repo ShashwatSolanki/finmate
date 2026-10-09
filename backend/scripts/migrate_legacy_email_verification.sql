@@ -1,13 +1,15 @@
 -- One-time rollout aid for deployments that already have local accounts.
--- IMPORTANT: Replace the timestamp below with the exact UTC cutover time for this release.
--- Only accounts created before that cutoff are treated as legacy accounts.
--- Run once against the production database after reviewing the selected row count.
+-- Run this with psql and enter the exact UTC cutover timestamp for this release.
+-- Only accounts created before the cutover are treated as legacy accounts.
+-- Review the selected row count before running against production.
+\prompt 'Cutover timestamp in UTC (example: 2026-10-10 12:00:00+00): ' verification_cutoff
+
 BEGIN;
 
 UPDATE users
 SET is_verified = TRUE
 WHERE auth_provider = 'local'
   AND is_verified = FALSE
-  AND created_at < TIMESTAMPTZ '2026-10-10 00:00:00+00';
+  AND created_at < :'verification_cutoff'::timestamptz;
 
 COMMIT;
