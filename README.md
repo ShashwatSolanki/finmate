@@ -177,7 +177,7 @@ Training assets live under `training/`. The detailed notebooks and scripts remai
 - Invoice responses preserve structured artifacts for PDF/CSV export.
 - Confidence is an explainable heuristic, not a calibrated probability.
 - Authentication supports JWT with refresh tokens, email verification, password reset, and Google OAuth.
-- The Budget model exists, but a complete budget CRUD API is not currently exposed.
+- Budgets support authenticated CRUD through `/api/budgets`, with category, positive-amount, date-period, and user-ownership validation.
 
 ## Source-of-truth rule
 
