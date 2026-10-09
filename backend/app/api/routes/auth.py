@@ -209,8 +209,8 @@ def verify_email(body: VerifyEmailBody, request: Request, db: Session = Depends(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code")
 
     if user.is_verified:
-        _reset_auth_attempt(rate_key, ip_rate_key)
-        return _issue_tokens_for_user(user, db)
+        _record_auth_attempt(rate_key, ip_rate_key)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code")
 
     now = datetime.now(timezone.utc)
     token_rec = (
