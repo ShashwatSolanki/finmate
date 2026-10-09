@@ -4,10 +4,10 @@ import io
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -73,6 +73,7 @@ def list_transactions(
 class MonthlySummary(BaseModel):
     year: int
     month: int
+    currency: str
     total_expenses: Decimal
 
 
@@ -80,17 +81,38 @@ class MonthlySummary(BaseModel):
 def monthly_summary(
     year: int = Query(..., ge=2000, le=2100),
     month: int = Query(..., ge=1, le=12),
+    currency: str | None = Query(default=None, min_length=3, max_length=8),
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> MonthlySummary:
+    filters = (
+        Transaction.user_id == current.id,
+        func.extract("year", Transaction.occurred_on) == year,
+        func.extract("month", Transaction.occurred_on) == month,
+    )
+    if currency:
+        resolved_currency = currency.strip().upper()
+    else:
+        currencies = db.scalars(select(Transaction.currency).where(*filters).distinct()).all()
+        if len(currencies) > 1:
+            raise HTTPException(
+                status_code=422,
+                detail="Transactions use multiple currencies. Specify the currency query parameter.",
+            )
+        resolved_currency = (currencies[0] if currencies else "USD").upper()
+
     total = db.scalar(
-        select(func.coalesce(func.sum(Transaction.amount), 0)).where(
-            Transaction.user_id == current.id,
-            func.extract("year", Transaction.occurred_on) == year,
-            func.extract("month", Transaction.occurred_on) == month,
+        select(func.coalesce(func.sum(case((Transaction.amount < 0, -Transaction.amount), else_=0)), 0)).where(
+            *filters,
+            Transaction.currency == resolved_currency,
         )
     )
-    return MonthlySummary(year=year, month=month, total_expenses=Decimal(str(total or 0)))
+    return MonthlySummary(
+        year=year,
+        month=month,
+        currency=resolved_currency,
+        total_expenses=Decimal(str(total or 0)),
+    )
 
 
 class CsvImportBody(BaseModel):
@@ -256,6 +278,14 @@ def import_transactions_csv(
 
 
 @router.get("/export/csv")
+def _safe_csv_cell(value: object) -> str:
+    """Prevent spreadsheet software from evaluating user-controlled CSV cells as formulas."""
+    text_value = "" if value is None else str(value)
+    if text_value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
+        return "'" + text_value
+    return text_value
+
+
 def export_transactions_csv(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
@@ -274,9 +304,9 @@ def export_transactions_csv(
             [
                 row.occurred_on.isoformat(),
                 str(row.amount),
-                row.category or "",
-                row.description or "",
-                row.currency,
+                _safe_csv_cell(row.category or ""),
+                _safe_csv_cell(row.description or ""),
+                _safe_csv_cell(row.currency),
             ]
         )
 
