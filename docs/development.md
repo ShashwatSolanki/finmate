@@ -25,16 +25,28 @@ docker compose ps
 
 ## 3. Start the backend
 
+Run these commands from the repository root, then keep the backend terminal open.
+
 ```bash
 cd backend
 python -m venv .venv
 ```
 
-Windows:
+Windows (PowerShell):
+
+```powershell
+.venv\\Scripts\\python -m pip install -r requirements.txt
+copy .env.example .env
+.venv\\Scripts\\python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+macOS / Linux:
 
 ```bash
-.venv\\Scripts\\pip install -r requirements.txt
-.venv\\Scripts\\uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 The backend serves Swagger at:
