@@ -123,7 +123,7 @@ def _structured_from_message(message: str) -> StructuredInvoice | None:
     if simple:
         line_items = [ParsedLineItem(description=x["description"], amount=Decimal(x["amount"])) for x in simple]
         total = sum((i.amount for i in line_items), start=Decimal("0"))
-        return StructuredInvoice(line_items=line_items, total=total, currency=result.invoice.currency)
+        return StructuredInvoice(line_items=line_items, total=total, currency=_detect_currency(message) if _detect_currency(message) != "USD" else result.invoice.currency)
     return None
 
 
