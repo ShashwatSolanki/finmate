@@ -65,26 +65,59 @@ The current agentic workflow is **bounded**, not a recursive AutoGPT loop.
 
 ## Quick start
 
-From the repo root:
+### 1. Start PostgreSQL
+
+From the repository root:
 
 ```bash
 docker compose up -d
+```
 
+### 2. Start the FastAPI backend
+
+Open a terminal in the repository root:
+
+```bash
 cd backend
 python -m venv .venv
-# Windows:
-.venv\\Scripts\\pip install -r requirements.txt
-copy .env.example .env
+```
 
-cd ..
+Install dependencies and create the local environment file.
+
+**Windows (PowerShell):**
+
+```powershell
+.venv\\Scripts\\python -m pip install -r requirements.txt
+copy .env.example .env
+.venv\\Scripts\\python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+**macOS / Linux:**
+
+```bash
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+cp .env.example .env
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Keep this terminal running.
+
+### 3. Start the React frontend
+
+Open a **second terminal** from the repository root:
+
+```bash
+cd frontend
 npm install
 npm run dev
 ```
 
-- API docs: http://127.0.0.1:8000/docs
 - Frontend: http://127.0.0.1:5173
+- Backend API: http://127.0.0.1:8000
+- Interactive API docs: http://127.0.0.1:8000/docs
 
-For separate backend/frontend startup and troubleshooting, see [Development](docs/development.md).
+Both the backend and frontend must be running. For configuration and troubleshooting, see [Development](docs/development.md).
 
 ## Local LLM
 
