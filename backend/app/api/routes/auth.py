@@ -269,7 +269,7 @@ def resend_verification(body: ResendVerificationBody, request: Request, db: Sess
     db.commit()
 
     send_verification_email(user.email, otp)
-    return MessageOut(message="Verification code sent successfully.")
+    return MessageOut(message="If the email is registered and unverified, a verification code has been sent.")
 
 
 @router.post("/forgot-password", response_model=MessageOut)
