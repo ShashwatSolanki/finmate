@@ -352,8 +352,8 @@ def reset_password(body: ResetPasswordBody, request: Request, db: Session = Depe
 @router.post("/login", response_model=TokenOut)
 def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> TokenOut:
     client_ip = request.client.host if request.client else "unknown"
-    rate_key = f"login:account:{hashlib.sha256(body.email.lower().strip().encode("utf-8")).hexdigest()}"
-    ip_rate_key = f"login:ip:{hashlib.sha256(client_ip.encode("utf-8")).hexdigest()}"
+    rate_key = f"login:account:{hashlib.sha256(body.email.lower().strip().encode('utf-8')).hexdigest()}"
+    ip_rate_key = f"login:ip:{hashlib.sha256(client_ip.encode('utf-8')).hexdigest()}"
 
     # Rate limiting protection against brute-force attacks
     if auth_rate_limiter.is_rate_limited(rate_key) or auth_rate_limiter.is_rate_limited(ip_rate_key):
