@@ -54,13 +54,11 @@ The Settings page provides:
 
 ## 6. Authentication state
 
-The frontend stores the JWT access token in browser `localStorage` under:
+The frontend stores the short-lived access token (`finmate_token`) and rotating refresh token (`finmate_refresh_token`) in browser `localStorage`. Authenticated API calls go through the shared `apiFetch` helper.
 
-```text
-finmate_token
-```
+When an authenticated request returns HTTP 401, `apiFetch` coordinates a single in-flight `POST /api/auth/refresh` request, persists the rotated token pair, and retries the original request once. This single-flight behavior matters because the backend revokes each refresh token after use. If the refresh token is definitively invalid or expired, the helper clears stored auth and the protected route returns to login; transient network failures do not automatically clear the session.
 
-Authenticated API requests send it as a bearer token.
+**Security limitation:** tokens in `localStorage` are readable by JavaScript and can be exfiltrated by a successful XSS attack. Before production use with real financial accounts, consider migrating the refresh token to a `Secure`, `HttpOnly`, appropriately `SameSite` cookie and adding the required CSRF/origin protections. The current flow improves expiration handling but does not eliminate this XSS risk.
 
 ## 7. Backend integration
 
