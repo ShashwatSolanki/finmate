@@ -93,18 +93,21 @@ def monthly_summary(
     if currency:
         resolved_currency = currency.strip().upper()
     else:
-        currencies = db.scalars(select(Transaction.currency).where(*filters).distinct()).all()
+        currencies = {
+            str(value or "USD").upper()
+            for value in db.scalars(select(Transaction.currency).where(*filters).distinct()).all()
+        }
         if len(currencies) > 1:
             raise HTTPException(
                 status_code=422,
                 detail="Transactions use multiple currencies. Specify the currency query parameter.",
             )
-        resolved_currency = (currencies[0] if currencies else "USD").upper()
+        resolved_currency = next(iter(currencies), "USD")
 
     total = db.scalar(
         select(func.coalesce(func.sum(case((Transaction.amount < 0, -Transaction.amount), else_=0)), 0)).where(
             *filters,
-            Transaction.currency == resolved_currency,
+            func.upper(func.coalesce(Transaction.currency, "USD")) == resolved_currency,
         )
     )
     return MonthlySummary(
