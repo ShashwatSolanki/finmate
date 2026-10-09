@@ -11,7 +11,7 @@ FinMate uses multiple levels of validation:
 
 These should be kept separate because they measure different things.
 
-GitHub Actions runs the backend pytest suite plus frontend Vitest tests and the Vite production build for pull requests and pushes to `main` / `deploy/free-staging-setup`. See [the CI workflow](../.github/workflows/backend-tests.yml). The Resend and staging-settings tests use mocked HTTP/config values; they do not require cloud credentials or provision hosted services.
+Frontend Vitest coverage includes API URL construction, auth header helpers, refresh-token rotation after a 401, single-flight refresh for concurrent failures, invalid-refresh cleanup, and public requests not triggering refresh. GitHub Actions runs the backend pytest suite plus frontend Vitest tests and the Vite production build for pull requests and pushes to `main` / `deploy/free-staging-setup`. See [the CI workflow](../.github/workflows/backend-tests.yml). The Resend and staging-settings tests use mocked HTTP/config values; they do not require cloud credentials or provision hosted services.
 
 ## 2. Unit tests
 
