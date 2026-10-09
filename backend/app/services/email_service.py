@@ -21,15 +21,21 @@ def generate_otp(length: int = 6) -> str:
 
 def _send_email(to_email: str, subject: str, text_content: str, html_content: str) -> bool:
     """Internal helper to dispatch emails via SMTP or log to console in mock mode."""
-    if settings.email_mock_mode or not settings.smtp_user or not settings.smtp_password:
+    if settings.email_mock_mode:
+        if settings.app_env.lower() == "production":
+            logger.error("Email mock mode is forbidden in production.")
+            return False
         logger.info(
-            f"[EMAIL SERVICE - MOCK MODE]\n"
+            "[EMAIL SERVICE - MOCK MODE]\n"
             f"  To: {to_email}\n"
             f"  Subject: {subject}\n"
             f"  Message: {text_content}\n"
         )
-        print(f"[EMAIL SERVICE] Simulated email sent to {to_email}: {subject}")
         return True
+
+    if not settings.smtp_user or not settings.smtp_password:
+        logger.error("SMTP credentials are required when email mock mode is disabled.")
+        return False
 
     try:
         msg = MIMEMultipart("alternative")
