@@ -36,6 +36,19 @@ from app.services.email_service import (
 router = APIRouter()
 
 
+def _auth_rate_key(request: Request, action: str, email: str) -> str:
+    client_ip = request.client.host if request.client else "unknown"
+    return f"{action}:{client_ip}:{email.lower().strip()}"
+
+
+def _check_rate_limit(key: str) -> None:
+    if auth_rate_limiter.is_rate_limited(key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many attempts. Please try again later.",
+        )
+
+
 class RegisterBody(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
@@ -62,7 +75,7 @@ class RefreshTokenBody(BaseModel):
 
 
 class GoogleAuthBody(BaseModel):
-    credential: str = Field(..., description="Google ID Token (JWT) or test token")
+    credential: str = Field(..., description="Google ID token")
 
 
 class VerifyEmailBody(BaseModel):
@@ -153,8 +166,13 @@ def register(body: RegisterBody, db: Session = Depends(get_db)) -> TokenOut:
     db.add(verification_token)
     db.commit()
 
-    send_verification_email(user.email, otp)
-    code_preview = otp if settings.email_mock_mode else None
+    sent = send_verification_email(user.email, otp)
+    if not sent and not settings.email_mock_mode:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Unable to send verification email. Please try again later.",
+        )
+    code_preview = otp if settings.email_mock_mode and settings.app_env.lower() != "production" else None
 
     return _issue_tokens_for_user(
         user,
@@ -165,10 +183,17 @@ def register(body: RegisterBody, db: Session = Depends(get_db)) -> TokenOut:
 
 
 @router.post("/verify-email", response_model=TokenOut)
-def verify_email(body: VerifyEmailBody, db: Session = Depends(get_db)) -> TokenOut:
+def verify_email(body: VerifyEmailBody, request: Request, db: Session = Depends(get_db)) -> TokenOut:
+    rate_key = _auth_rate_key(request, "verify-email", body.email)
+    _check_rate_limit(rate_key)
     user = db.query(User).filter(User.email == body.email.lower().strip()).first()
     if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        auth_rate_limiter.record_attempt(rate_key)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code")
+
+    if user.is_verified:
+        auth_rate_limiter.reset(rate_key)
+        return _issue_tokens_for_user(user, db)
 
     now = datetime.now(timezone.utc)
     token_rec = (
@@ -182,14 +207,17 @@ def verify_email(body: VerifyEmailBody, db: Session = Depends(get_db)) -> TokenO
         .first()
     )
     if not token_rec:
+        auth_rate_limiter.record_attempt(rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code")
 
     exp = token_rec.expires_at
     if exp.tzinfo is None:
         exp = exp.replace(tzinfo=timezone.utc)
     if exp < now:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification code has expired")
+        auth_rate_limiter.record_attempt(rate_key)
+        raise HTTPException(status_code=status.HTTP_400_BAD_BAD_REQUEST, detail="Verification code has expired")
 
+    auth_rate_limiter.reset(rate_key)
     token_rec.used = True
     user.is_verified = True
     db.commit()
@@ -199,7 +227,10 @@ def verify_email(body: VerifyEmailBody, db: Session = Depends(get_db)) -> TokenO
 
 
 @router.post("/resend-verification", response_model=MessageOut)
-def resend_verification(body: ResendVerificationBody, db: Session = Depends(get_db)) -> MessageOut:
+def resend_verification(body: ResendVerificationBody, request: Request, db: Session = Depends(get_db)) -> MessageOut:
+    rate_key = _auth_rate_key(request, "resend-verification", body.email)
+    _check_rate_limit(rate_key)
+    auth_rate_limiter.record_attempt(rate_key)
     user = db.query(User).filter(User.email == body.email.lower().strip()).first()
     if not user:
         return MessageOut(message="If the email is registered, a new verification code has been sent.")
@@ -223,7 +254,10 @@ def resend_verification(body: ResendVerificationBody, db: Session = Depends(get_
 
 
 @router.post("/forgot-password", response_model=MessageOut)
-def forgot_password(body: ForgotPasswordBody, db: Session = Depends(get_db)) -> MessageOut:
+def forgot_password(body: ForgotPasswordBody, request: Request, db: Session = Depends(get_db)) -> MessageOut:
+    rate_key = _auth_rate_key(request, "forgot-password", body.email)
+    _check_rate_limit(rate_key)
+    auth_rate_limiter.record_attempt(rate_key)
     user = db.query(User).filter(User.email == body.email.lower().strip()).first()
     if not user:
         return MessageOut(message="If the email exists in our system, a password reset code has been sent.")
@@ -244,7 +278,9 @@ def forgot_password(body: ForgotPasswordBody, db: Session = Depends(get_db)) -> 
 
 
 @router.post("/reset-password", response_model=MessageOut)
-def reset_password(body: ResetPasswordBody, db: Session = Depends(get_db)) -> MessageOut:
+def reset_password(body: ResetPasswordBody, request: Request, db: Session = Depends(get_db)) -> MessageOut:
+    rate_key = _auth_rate_key(request, "reset-password", body.email)
+    _check_rate_limit(rate_key)
     # Enforce password strength
     is_valid_pwd, pwd_error = validate_password_strength(body.new_password)
     if not is_valid_pwd:
@@ -252,6 +288,7 @@ def reset_password(body: ResetPasswordBody, db: Session = Depends(get_db)) -> Me
 
     user = db.query(User).filter(User.email == body.email.lower().strip()).first()
     if not user:
+        auth_rate_limiter.record_attempt(rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email or reset code")
 
     now = datetime.now(timezone.utc)
@@ -266,14 +303,17 @@ def reset_password(body: ResetPasswordBody, db: Session = Depends(get_db)) -> Me
         .first()
     )
     if not reset_rec:
+        auth_rate_limiter.record_attempt(rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code")
 
     exp = reset_rec.expires_at
     if exp.tzinfo is None:
         exp = exp.replace(tzinfo=timezone.utc)
     if exp < now:
+        auth_rate_limiter.record_attempt(rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code")
 
+    auth_rate_limiter.reset(rate_key)
     # Update password and mark verified
     user.password_hash = hash_password(body.new_password)
     user.is_verified = True
@@ -310,6 +350,11 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> T
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is deactivated. Please contact support.",
+        )
+    if getattr(user, "auth_provider", "local") == "local" and not getattr(user, "is_verified", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required before signing in.",
         )
 
     auth_rate_limiter.reset(rate_key)
@@ -371,36 +416,54 @@ def logout(body: RefreshTokenBody, db: Session = Depends(get_db)) -> MessageOut:
 
 
 def _verify_google_credential(credential: str) -> dict:
-    """Verify Google token via Google API tokeninfo or mock test payload for offline test suites."""
-    # Test/mock support for unit and integration testing without network calls
-    if credential.startswith("mock-google-token:") or credential.startswith("test-google:"):
-        parts = credential.split(":")
-        email = parts[1] if len(parts) > 1 else "google_user@example.com"
-        google_id = parts[2] if len(parts) > 2 else "google-sub-123456"
-        name = parts[3] if len(parts) > 3 else "Google Test User"
-        return {"email": email.lower().strip(), "sub": google_id, "name": name, "email_verified": True}
+    """Verify a Google ID token and its intended audience before trusting claims."""
+    if settings.app_env.lower() == "test" and settings.auth_allow_mock_google:
+        if credential.startswith(("mock-google-token:", "test-google:")):
+            parts = credential.split(":")
+            if len(parts) < 3 or "@" not in parts[1] or not parts[2].strip():
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid test Google token")
+            return {
+                "email": parts[1].lower().strip(),
+                "sub": parts[2].strip(),
+                "name": parts[3] if len(parts) > 3 else "Google Test User",
+                "email_verified": True,
+                "aud": settings.google_client_id,
+                "iss": "https://accounts.google.com",
+            }
 
-    # Production Google ID Token verification via Google tokeninfo
+    if not settings.google_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Google sign-in is not configured",
+        )
     try:
-        url = f"https://oauth2.googleapis.com/tokeninfo?id_token={credential}"
-        response = httpx.get(url, timeout=5.0)
+        response = httpx.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"id_token": credential},
+            timeout=5.0,
+        )
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid Google OAuth token",
-            )
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Google OAuth token")
         data = response.json()
-        if "email" not in data or "sub" not in data:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Google token missing required claims",
-            )
-        return data
-    except httpx.RequestError:
+    except httpx.RequestError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to contact Google OAuth servers",
+        ) from exc
+    issuer = data.get("iss")
+    email_verified = data.get("email_verified") in (True, "true", "True", "1", 1)
+    if (
+        not data.get("email")
+        or not data.get("sub")
+        or data.get("aud") != settings.google_client_id
+        or issuer not in ("accounts.google.com", "https://accounts.google.com")
+        or not email_verified
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Google token claims are invalid for this application",
         )
+    return data
 
 
 @router.post("/google", response_model=TokenOut)
