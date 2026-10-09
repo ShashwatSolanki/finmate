@@ -1,5 +1,5 @@
 import pytesseract
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -54,6 +54,19 @@ class Settings(BaseSettings):
 
     # Path to tesseract.exe when not on PATH (common on Windows after installer)
     tesseract_cmd: str | None = None
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if self.app_env.lower() in {"production", "prod"}:
+            if self.jwt_secret == "change-me-in-production-use-openssl-rand-hex-32":
+                raise ValueError("JWT_SECRET must be replaced with a strong secret in production")
+            if self.email_mock_mode:
+                raise ValueError("EMAIL_MOCK_MODE must be false in production")
+            if not self.smtp_user or not self.smtp_password:
+                raise ValueError("SMTP_USER and SMTP_PASSWORD are required in production")
+            if self.auth_allow_mock_google:
+                raise ValueError("AUTH_ALLOW_MOCK_GOOGLE must be false in production")
+        return self
 
 
 settings = Settings()
