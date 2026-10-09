@@ -33,6 +33,11 @@ def get_current_user(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     if not getattr(user, "is_active", True):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is deactivated")
+    if getattr(user, "auth_provider", "local") == "local" and not getattr(user, "is_verified", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email verification required",
+        )
     if not user.password_hash and not getattr(user, "google_id", None):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
