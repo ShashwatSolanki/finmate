@@ -6,7 +6,7 @@ import MessageMetadata from "../components/MessageMetadata";
 import InvoiceExportActions from "../components/InvoiceExportActions";
 import { useAuth } from "../lib/auth";
 import {
-  apiUrl,
+  apiFetch,
   authHeaders,
   cleanAssistantText,
   type ChatMessage,
@@ -39,7 +39,7 @@ export default function ChatPage() {
 
   const loadConversations = useCallback(async () => {
     if (!token) return;
-    const res = await fetch(apiUrl("/api/conversations"), { headers: authHeaders(token) });
+    const res = await apiFetch("/api/conversations"), { headers: authHeaders(token) });
     if (!res.ok) return;
     const data = (await res.json()) as Conversation[];
     setConversations(data);
@@ -48,7 +48,7 @@ export default function ChatPage() {
   const loadMessages = useCallback(
     async (sessionId: string) => {
       if (!token) return;
-      const res = await fetch(apiUrl(`/api/conversations/${sessionId}/messages`), {
+      const res = await apiFetch(`/api/conversations/${sessionId}/messages`), {
         headers: authHeaders(token),
       });
       if (!res.ok) return;
@@ -103,7 +103,7 @@ export default function ChatPage() {
 
   async function deleteConversation(id: string) {
     if (!token) return;
-    await fetch(apiUrl(`/api/conversations/${id}`), {
+    await apiFetch(`/api/conversations/${id}`), {
       method: "DELETE",
       headers: authHeaders(token),
     });
@@ -137,7 +137,7 @@ export default function ChatPage() {
       if (chosenAgent) payload.agent = chosenAgent;
       if (activeSessionId) payload.session_id = activeSessionId;
 
-      const res = await fetch(apiUrl("/api/chat/message"), {
+      const res = await apiFetch("/api/chat/message"), {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify(payload),
