@@ -35,3 +35,6 @@ backend/data/
 
 # Training build intermediates (merged file kept)
 training/data/_part_*.jsonl
+
+# Local shell crash diagnostics
+bash.exe.stackdump
