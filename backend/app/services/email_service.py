@@ -5,6 +5,8 @@ Supports offline mock mode for testing/development and production SMTP delivery.
 import logging
 import secrets
 import smtplib
+
+import httpx
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -32,6 +34,32 @@ def _send_email(to_email: str, subject: str, text_content: str, html_content: st
             f"  Message: {text_content}\n"
         )
         return True
+
+    if settings.email_provider.lower() == "resend":
+        if not settings.resend_api_key:
+            logger.error("RESEND_API_KEY is required when EMAIL_PROVIDER=resend.")
+            return False
+        try:
+            response = httpx.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {settings.resend_api_key}"},
+                json={
+                    "from": settings.resend_from_email,
+                    "to": [to_email],
+                    "subject": subject,
+                    "text": text_content,
+                    "html": html_content,
+                },
+                timeout=10.0,
+            )
+            if response.is_success:
+                logger.info("Email accepted by Resend for %s", to_email)
+                return True
+            logger.error("Resend rejected email request with HTTP %s", response.status_code)
+            return False
+        except httpx.HTTPError as exc:
+            logger.error("Resend email request failed: %s", type(exc).__name__)
+            return False
 
     if not settings.smtp_user or not settings.smtp_password:
         logger.error("SMTP credentials are required when email mock mode is disabled.")

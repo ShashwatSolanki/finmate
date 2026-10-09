@@ -124,6 +124,9 @@ def classify_agent(user_message: str) -> AgentName:
     if budget_hits >= 1 and budget_hits > invest_hits:
         return AgentName.BUDGET_PLANNER
 
+    if not settings.finmate_use_embeddings:
+        return max(kw, key=kw.get)
+
     emb = _embedding_vector(t)
     w = settings.intent_embedding_weight
     combined = {a: (1.0 - w) * kw[a] + w * emb[a] for a in AgentName}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../lib/auth";
 import {
+  apiUrl,
   authHeaders,
   authHeadersMultipart,
   type ParseInvoiceResult,
@@ -55,7 +56,7 @@ export default function InvoiceImportPanel({ onStatus, onError }: Props) {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/invoices/parse", {
+      const res = await fetch(apiUrl("/api/invoices/parse"), {
         method: "POST",
         headers: authHeadersMultipart(token),
         body: form,
@@ -79,7 +80,7 @@ export default function InvoiceImportPanel({ onStatus, onError }: Props) {
     onError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/invoices/pdf/structured", {
+      const res = await fetch(apiUrl("/api/invoices/pdf/structured"), {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({ ...invoice, subtotal: subtotal.toFixed(2), total: total.toFixed(2) }),

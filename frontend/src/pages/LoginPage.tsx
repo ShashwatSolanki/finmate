@@ -1,3 +1,4 @@
+import { apiUrl } from "../lib/api";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
@@ -26,7 +27,7 @@ export default function LoginPage() {
       setError(null);
       setLoading(true);
       try {
-        const res = await fetch("/api/auth/google", {
+        const res = await fetch(apiUrl("/api/auth/google"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ credential: response.credential }),
@@ -80,7 +81,7 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetch(apiUrl("/api/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
@@ -112,7 +113,7 @@ export default function LoginPage() {
       // Deterministic, isolated Google Sub based on email to ensure consistent session isolation
       const safeId = targetEmail.replace(/[^a-zA-Z0-9]/g, "_");
       const mockCredential = `mock-google-token:${targetEmail}:google-sub-${safeId}:${targetEmail.split("@")[0]}`;
-      const res = await fetch("/api/auth/google", {
+      const res = await fetch(apiUrl("/api/auth/google"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ credential: mockCredential }),

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { authHeaders, authHeadersMultipart, cleanAssistantText } from "./api";
+import { API_BASE_URL, apiUrl, authHeaders, authHeadersMultipart, cleanAssistantText } from "./api";
 
 describe("API helpers", () => {
+  it("builds API URLs for local and separately hosted deployments", () => {
+    expect(apiUrl("/api/health")).toBe(API_BASE_URL + "/api/health");
+    expect(apiUrl("api/health")).toBe(API_BASE_URL + "/api/health");
+  });
+
   it("builds JSON headers with optional bearer authentication", () => {
     expect(authHeaders(null)).toEqual({ "Content-Type": "application/json" });
     expect(authHeaders("token")).toEqual({

@@ -103,7 +103,9 @@ Login:
 3. check verification status
 4. issue JWT
 
-The implementation provides dual-token authentication (short-lived access tokens + long-lived rotating refresh tokens), Google OAuth integration, email verification & password reset, account linking/unlinking, and brute-force rate limiting.
+The implementation provides dual-token authentication (short-lived access tokens + long-lived rotating refresh tokens), Google OAuth integration, email verification & password reset, account linking/unlinking, and brute-force rate limiting. Authentication attempt limits use a shared Redis store when `AUTH_RATE_LIMIT_REDIS_URL` is configured; deployment/staging should require Redis rather than falling back to per-process memory.
+
+Verification and reset messages can be sent through SMTP (`EMAIL_PROVIDER=smtp`) or the Resend HTTPS API (`EMAIL_PROVIDER=resend`). Real environments must use real delivery with `EMAIL_MOCK_MODE=false`; Resend requires `RESEND_API_KEY` and an authorized sender address. See [Free-tier staging](free-staging.md) for the Render-compatible HTTPS setup and sender restrictions.
 
 ## 5. Main API groups
 
