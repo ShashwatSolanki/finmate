@@ -284,7 +284,7 @@ def import_transactions_csv(
 def _safe_csv_cell(value: object) -> str:
     """Prevent spreadsheet software from evaluating user-controlled CSV cells as formulas."""
     text_value = "" if value is None else str(value)
-    if text_value.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")):
+    if text_value.lstrip("\ufeff \t\r\n").startswith(("=", "+", "-", "@")):
         return "'" + text_value
     return text_value
 
