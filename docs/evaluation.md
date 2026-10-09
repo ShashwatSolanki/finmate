@@ -25,7 +25,7 @@ Tests cover important isolated behaviors including:
 - invoice artifact preservation
 - routing edge cases
 
-The current Member 2 development cycle reached 29 backend unit tests passing locally.
+The backend suite covers authentication, budget validation, financial API behavior, data-backed agents, invoices, orchestration, and retrieval. Use the CI run as the current source of truth for test count and pass/fail status.
 
 ## 3. RAG evaluation
 
