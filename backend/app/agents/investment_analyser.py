@@ -119,6 +119,7 @@ def _portfolio_history_reply(db: Session, user_id: UUID) -> AgentResult:
 
     lines: list[str] = []
     total_cost = Decimal("0")
+    valued_cost = Decimal("0")
     total_value = Decimal("0")
     valued_count = 0
     currency = holdings[0].currency
@@ -135,6 +136,7 @@ def _portfolio_history_reply(db: Session, user_id: UUID) -> AgentResult:
             price = Decimal(str(raw))
             value = holding.quantity * price
             profit = value - cost
+            valued_cost += cost
             total_value += value
             valued_count += 1
             pct = (profit / cost * 100) if cost else Decimal("0")
@@ -158,10 +160,10 @@ def _portfolio_history_reply(db: Session, user_id: UUID) -> AgentResult:
             "Convert all holdings to one reporting currency before aggregating."
         )
     elif valued_count:
-        total_profit = total_value - total_cost
-        total_pct = (total_profit / total_cost * 100) if total_cost else Decimal("0")
+        total_profit = total_value - valued_cost
+        total_pct = (total_profit / valued_cost * 100) if valued_cost else Decimal("0")
         summary = (
-            f"Total invested: {total_cost:,.2f} {currency}\n"
+            f"Total invested (valued holdings): {valued_cost:,.2f} {currency}\n"
             f"Current value: {total_value:,.2f} {currency}\n"
             f"Unrealized P/L: {total_profit:+,.2f} {currency} ({total_pct:+.2f}%)\n"
             f"Holdings valued: {valued_count}/{len(holdings)}"
