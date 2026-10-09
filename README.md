@@ -26,6 +26,7 @@ FastAPI API
    ├── Authentication / user context
    ├── Chat / conversations
    ├── Transactions
+   ├── Budgets
    ├── Portfolio
    └── Invoices
    │
