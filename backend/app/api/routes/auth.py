@@ -38,15 +38,32 @@ router = APIRouter()
 
 def _auth_rate_key(request: Request, action: str, email: str) -> str:
     client_ip = request.client.host if request.client else "unknown"
-    return f"{action}:{client_ip}:{email.lower().strip()}"
+    return f"{action}:account:{client_ip}:{email.lower().strip()}"
 
 
-def _check_rate_limit(key: str) -> None:
-    if auth_rate_limiter.is_rate_limited(key):
+def _auth_ip_key(request: Request, action: str) -> str:
+    client_ip = request.client.host if request.client else "unknown"
+    return f"{action}:ip:{client_ip}"
+
+
+def _check_rate_limit(key: str, ip_key: str | None = None) -> None:
+    if auth_rate_limiter.is_rate_limited(key) or (ip_key and auth_rate_limiter.is_rate_limited(ip_key)):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many attempts. Please try again later.",
         )
+
+
+def _record_auth_attempt(key: str, ip_key: str | None = None) -> None:
+    auth_rate_limiter.record_attempt(key)
+    if ip_key:
+        auth_rate_limiter.record_attempt(ip_key)
+
+
+def _reset_auth_attempt(key: str, ip_key: str | None = None) -> None:
+    auth_rate_limiter.reset(key)
+    if ip_key:
+        auth_rate_limiter.reset(ip_key)
 
 
 class RegisterBody(BaseModel):
@@ -185,14 +202,15 @@ def register(body: RegisterBody, db: Session = Depends(get_db)) -> TokenOut:
 @router.post("/verify-email", response_model=TokenOut)
 def verify_email(body: VerifyEmailBody, request: Request, db: Session = Depends(get_db)) -> TokenOut:
     rate_key = _auth_rate_key(request, "verify-email", body.email)
-    _check_rate_limit(rate_key)
+    ip_rate_key = _auth_ip_key(request, "verify-email")
+    _check_rate_limit(rate_key, ip_rate_key)
     user = db.query(User).filter(User.email == body.email.lower().strip()).first()
     if not user:
-        auth_rate_limiter.record_attempt(rate_key)
+        _record_auth_attempt(rate_key, ip_rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code")
 
     if user.is_verified:
-        auth_rate_limiter.reset(rate_key)
+        _reset_auth_attempt(rate_key, ip_rate_key)
         return _issue_tokens_for_user(user, db)
 
     now = datetime.now(timezone.utc)
@@ -207,17 +225,17 @@ def verify_email(body: VerifyEmailBody, request: Request, db: Session = Depends(
         .first()
     )
     if not token_rec:
-        auth_rate_limiter.record_attempt(rate_key)
+        _record_auth_attempt(rate_key, ip_rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code")
 
     exp = token_rec.expires_at
     if exp.tzinfo is None:
         exp = exp.replace(tzinfo=timezone.utc)
     if exp < now:
-        auth_rate_limiter.record_attempt(rate_key)
+        _record_auth_attempt(rate_key, ip_rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification code has expired")
 
-    auth_rate_limiter.reset(rate_key)
+    _reset_auth_attempt(rate_key, ip_rate_key)
     token_rec.used = True
     user.is_verified = True
     db.commit()
@@ -229,8 +247,9 @@ def verify_email(body: VerifyEmailBody, request: Request, db: Session = Depends(
 @router.post("/resend-verification", response_model=MessageOut)
 def resend_verification(body: ResendVerificationBody, request: Request, db: Session = Depends(get_db)) -> MessageOut:
     rate_key = _auth_rate_key(request, "resend-verification", body.email)
-    _check_rate_limit(rate_key)
-    auth_rate_limiter.record_attempt(rate_key)
+    ip_rate_key = _auth_ip_key(request, "resend-verification")
+    _check_rate_limit(rate_key, ip_rate_key)
+    _record_auth_attempt(rate_key, ip_rate_key)
     user = db.query(User).filter(User.email == body.email.lower().strip()).first()
     if not user:
         return MessageOut(message="If the email is registered, a new verification code has been sent.")
@@ -256,8 +275,9 @@ def resend_verification(body: ResendVerificationBody, request: Request, db: Sess
 @router.post("/forgot-password", response_model=MessageOut)
 def forgot_password(body: ForgotPasswordBody, request: Request, db: Session = Depends(get_db)) -> MessageOut:
     rate_key = _auth_rate_key(request, "forgot-password", body.email)
-    _check_rate_limit(rate_key)
-    auth_rate_limiter.record_attempt(rate_key)
+    ip_rate_key = _auth_ip_key(request, "forgot-password")
+    _check_rate_limit(rate_key, ip_rate_key)
+    _record_auth_attempt(rate_key, ip_rate_key)
     user = db.query(User).filter(User.email == body.email.lower().strip()).first()
     if not user:
         return MessageOut(message="If the email exists in our system, a password reset code has been sent.")
@@ -280,15 +300,11 @@ def forgot_password(body: ForgotPasswordBody, request: Request, db: Session = De
 @router.post("/reset-password", response_model=MessageOut)
 def reset_password(body: ResetPasswordBody, request: Request, db: Session = Depends(get_db)) -> MessageOut:
     rate_key = _auth_rate_key(request, "reset-password", body.email)
-    _check_rate_limit(rate_key)
-    # Enforce password strength
-    is_valid_pwd, pwd_error = validate_password_strength(body.new_password)
-    if not is_valid_pwd:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=pwd_error)
-
+    ip_rate_key = _auth_ip_key(request, "reset-password")
+    _check_rate_limit(rate_key, ip_rate_key)
     user = db.query(User).filter(User.email == body.email.lower().strip()).first()
     if not user:
-        auth_rate_limiter.record_attempt(rate_key)
+        _record_auth_attempt(rate_key, ip_rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email or reset code")
 
     now = datetime.now(timezone.utc)
@@ -303,17 +319,22 @@ def reset_password(body: ResetPasswordBody, request: Request, db: Session = Depe
         .first()
     )
     if not reset_rec:
-        auth_rate_limiter.record_attempt(rate_key)
+        _record_auth_attempt(rate_key, ip_rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code")
 
     exp = reset_rec.expires_at
     if exp.tzinfo is None:
         exp = exp.replace(tzinfo=timezone.utc)
     if exp < now:
-        auth_rate_limiter.record_attempt(rate_key)
+        _record_auth_attempt(rate_key, ip_rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code")
 
-    auth_rate_limiter.reset(rate_key)
+    _reset_auth_attempt(rate_key, ip_rate_key)
+    # Invalid OTP submissions are counted even if the proposed password is weak.
+    is_valid_pwd, pwd_error = validate_password_strength(body.new_password)
+    if not is_valid_pwd:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=pwd_error)
+
     # Update password and mark verified
     user.password_hash = hash_password(body.new_password)
     user.is_verified = True
@@ -329,10 +350,11 @@ def reset_password(body: ResetPasswordBody, request: Request, db: Session = Depe
 @router.post("/login", response_model=TokenOut)
 def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> TokenOut:
     client_ip = request.client.host if request.client else "unknown"
-    rate_key = f"{client_ip}:{body.email.lower().strip()}"
+    rate_key = f"login:account:{client_ip}:{body.email.lower().strip()}"
+    ip_rate_key = f"login:ip:{client_ip}"
 
     # Rate limiting protection against brute-force attacks
-    if auth_rate_limiter.is_rate_limited(rate_key):
+    if auth_rate_limiter.is_rate_limited(rate_key) or auth_rate_limiter.is_rate_limited(ip_rate_key):
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many failed login attempts. Please try again later.",
@@ -340,7 +362,7 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> T
 
     user = db.query(User).filter(User.email == body.email.lower().strip()).first()
     if not user or not user.password_hash or not verify_password(body.password, user.password_hash):
-        auth_rate_limiter.record_attempt(rate_key)
+        _record_auth_attempt(rate_key, ip_rate_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
@@ -357,7 +379,7 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> T
             detail="Email verification required before signing in.",
         )
 
-    auth_rate_limiter.reset(rate_key)
+    _reset_auth_attempt(rate_key, ip_rate_key)
     return _issue_tokens_for_user(user, db)
 
 
