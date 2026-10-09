@@ -1,3 +1,4 @@
+import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 import httpx
@@ -37,12 +38,14 @@ router = APIRouter()
 
 
 def _auth_rate_key(request: Request, action: str, email: str) -> str:
-    return f"{action}:account:{email.lower().strip()}"
+    account_hash = hashlib.sha256(email.lower().strip().encode("utf-8")).hexdigest()
+    return f"{action}:account:{account_hash}"
 
 
 def _auth_ip_key(request: Request, action: str) -> str:
     client_ip = request.client.host if request.client else "unknown"
-    return f"{action}:ip:{client_ip}"
+    ip_hash = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
+    return f"{action}:ip:{ip_hash}"
 
 
 def _check_rate_limit(key: str, ip_key: str | None = None) -> None:
@@ -349,8 +352,8 @@ def reset_password(body: ResetPasswordBody, request: Request, db: Session = Depe
 @router.post("/login", response_model=TokenOut)
 def login(body: LoginBody, request: Request, db: Session = Depends(get_db)) -> TokenOut:
     client_ip = request.client.host if request.client else "unknown"
-    rate_key = f"login:account:{body.email.lower().strip()}"
-    ip_rate_key = f"login:ip:{client_ip}"
+    rate_key = f"login:account:{hashlib.sha256(body.email.lower().strip().encode("utf-8")).hexdigest()}"
+    ip_rate_key = f"login:ip:{hashlib.sha256(client_ip.encode("utf-8")).hexdigest()}"
 
     # Rate limiting protection against brute-force attacks
     if auth_rate_limiter.is_rate_limited(rate_key) or auth_rate_limiter.is_rate_limited(ip_rate_key):
