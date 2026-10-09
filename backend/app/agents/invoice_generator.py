@@ -164,7 +164,12 @@ def _expense_invoice_from_transactions(db: Session, user_id: UUID) -> Structured
         line_items=items,
         subtotal=subtotal,
         total=subtotal,
-        notes="Generated from the user's recent available transactions.",
+        notes=(
+            f"Generated from expense transactions in {currency} over the last 30 days. "
+            "Transactions in other currencies were excluded to avoid mixing currencies."
+            if len({(row.currency or "USD").upper() for row in rows}) > 1
+            else "Generated from expense transactions in this currency over the last 30 days."
+        ),
     )
 
 
