@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "FinMate API"
+    app_env: str = "development"
     database_url: str = "postgresql+psycopg2://finmate:finmate@localhost:5433/finmate"
 
     jwt_secret: str = Field(
@@ -20,6 +21,7 @@ class Settings(BaseSettings):
 
     google_client_id: str | None = None
     google_client_secret: str | None = None
+    auth_allow_mock_google: bool = False
 
     auth_rate_limit_max_attempts: int = 5
     auth_rate_limit_window_seconds: int = 60
@@ -30,7 +32,7 @@ class Settings(BaseSettings):
     smtp_user: str | None = None
     smtp_password: str | None = None
     smtp_from_email: str = "noreply@finmate.com"
-    email_mock_mode: bool = True  # Logs to console and returns code in development/tests
+    email_mock_mode: bool = False  # Enable explicitly only in isolated development/test environments
     verification_code_expire_minutes: int = 15
     password_reset_code_expire_minutes: int = 15
 
