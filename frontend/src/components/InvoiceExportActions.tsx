@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "../lib/auth";
-import { authHeaders, downloadBlob, type StructuredInvoice } from "../lib/api";
+import { apiUrl, authHeaders, downloadBlob, type StructuredInvoice } from "../lib/api";
 
 type Props = { metadata: Record<string, string> };
 
@@ -19,7 +19,7 @@ export default function InvoiceExportActions({ metadata }: Props) {
   async function downloadPdf() {
     setBusy(true);
     try {
-      const response = await fetch("/api/invoices/pdf/structured", {
+      const response = await fetch(apiUrl("/api/invoices/pdf/structured"), {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify(structured),

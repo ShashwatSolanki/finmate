@@ -1,3 +1,4 @@
+import { apiUrl } from "../lib/api";
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
@@ -32,7 +33,7 @@ export default function RegisterPage() {
     setInfo(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch(apiUrl("/api/auth/register"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -71,7 +72,7 @@ export default function RegisterPage() {
     setInfo(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/verify-email", {
+      const res = await fetch(apiUrl("/api/auth/verify-email"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -98,7 +99,7 @@ export default function RegisterPage() {
     setInfo(null);
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/resend-verification", {
+      const res = await fetch(apiUrl("/api/auth/resend-verification"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),

@@ -1,0 +1,56 @@
+# Free-tier staging only. Never point this blueprint at production data.
+# Create a Neon Postgres database, Upstash Redis database, and Resend API key
+# separately, then fill the protected sync:false values in the Render dashboard.
+services:
+  - type: web
+    name: finmate-shashwat-staging-api
+    runtime: python
+    plan: free
+    region: singapore
+    rootDir: backend
+    buildCommand: pip install -r requirements-staging.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_ENV
+        value: staging
+      - key: CORS_ORIGINS
+        value: https://finmate-shashwat-staging-web.onrender.com
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: AUTH_RATE_LIMIT_REDIS_URL
+        sync: false
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: EMAIL_MOCK_MODE
+        value: "false"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        value: onboarding@resend.dev
+      - key: AUTH_ALLOW_MOCK_GOOGLE
+        value: "false"
+      - key: FINMATE_USE_LLM
+        value: "false"
+      - key: FINMATE_USE_EMBEDDINGS
+        value: "false"
+      - key: FINMATE_AGENTIC_MODE
+        value: "false"
+
+  - type: web
+    name: finmate-shashwat-staging-web
+    runtime: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: finmate-shashwat-staging-api
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

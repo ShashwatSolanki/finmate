@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import MemoryChunk
+from app.config import settings
 from app.ml.embeddings import encode_texts
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,9 @@ def rank_memory(
     ).all()
     if not rows:
         return []
+
+    if not settings.finmate_use_embeddings:
+        return [(r.content, 0.0) for r in rows[:limit]]
 
     try:
         texts = [r.content for r in rows]
