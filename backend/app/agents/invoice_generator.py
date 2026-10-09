@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
@@ -56,6 +56,22 @@ def _wants_expense_invoice(request: str) -> bool:
     return has_invoice_signal and has_expense_signal
 
 
+def _detect_currency(message: str) -> str:
+    """Infer an explicit currency marker; default to USD only when none is supplied."""
+    text = message.upper()
+    if "₹" in message or re.search(r"\bINR\b|\bRS\.?\s*", text):
+        return "INR"
+    if "€" in message or re.search(r"\bEUR\b", text):
+        return "EUR"
+    if "£" in message or re.search(r"\bGBP\b", text):
+        return "GBP"
+    if "¥" in message or re.search(r"\bJPY\b", text):
+        return "JPY"
+    if "$" in message or re.search(r"\bUSD\b", text):
+        return "USD"
+    return "USD"
+
+
 def _parse_simple_lines(message: str) -> list[dict[str, str]]:
     """Parse compact natural-language invoice requests into line items."""
     cleaned = re.sub(
@@ -98,7 +114,7 @@ def _structured_from_message(message: str) -> StructuredInvoice | None:
     if simple and len(message.strip()) < 80:
         line_items = [ParsedLineItem(description=x["description"], amount=Decimal(x["amount"])) for x in simple]
         total = sum((i.amount for i in line_items), start=Decimal("0"))
-        return StructuredInvoice(line_items=line_items, total=total, currency="USD")
+        return StructuredInvoice(line_items=line_items, total=total, currency=_detect_currency(message))
 
     result = parse_invoice_text(message, source_type="text", filename="chat-message.txt")
     if result.invoice.line_items:
@@ -115,13 +131,18 @@ def _expense_invoice_from_transactions(db: Session, user_id: UUID) -> Structured
     """Build an exportable invoice-style expense summary from recent transactions."""
     rows = db.scalars(
         select(Transaction)
-        .where(Transaction.user_id == user_id)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.occurred_on >= date.today() - timedelta(days=30),
+            Transaction.amount < 0,
+        )
         .order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc())
         .limit(50)
     ).all()
     if not rows:
         return None
 
+    # An invoice has one currency. Never add amounts denominated in different currencies.
     currency = (rows[0].currency or "USD").upper()
     items = [
         ParsedLineItem(
@@ -129,7 +150,7 @@ def _expense_invoice_from_transactions(db: Session, user_id: UUID) -> Structured
             amount=abs(row.amount),
         )
         for row in rows
-        if row.amount != 0
+        if row.amount != 0 and (row.currency or "USD").upper() == currency
     ]
     if not items:
         return None
