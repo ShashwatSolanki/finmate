@@ -22,7 +22,7 @@ def generate_otp(length: int = 6) -> str:
 def _send_email(to_email: str, subject: str, text_content: str, html_content: str) -> bool:
     """Internal helper to dispatch emails via SMTP or log to console in mock mode."""
     if settings.email_mock_mode:
-        if settings.app_env.lower() == "production":
+        if settings.app_env.lower() in {"production", "prod"}:
             logger.error("Email mock mode is forbidden in production.")
             return False
         logger.info(
