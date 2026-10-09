@@ -88,7 +88,8 @@ This design prevents a model failure from making the application unusable.
 ## 4. End-to-end chat flow
 
 1. The frontend sends `POST /api/chat/message`.
-2. The JWT is authenticated.
+2. The shared frontend API client attaches the stored bearer token; if a protected request returns 401, it coordinates one refresh-token rotation and retries the request once.
+3. The JWT is authenticated.
 3. Relevant memory is retrieved.
 4. Recent conversation turns are loaded.
 5. The latest onboarding context is loaded.
