@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import date
 import uuid
 
 from fastapi import HTTPException
@@ -63,8 +64,8 @@ def test_monthly_summary_counts_only_expenses_and_respects_currency() -> None:
         user = User(id=uuid.uuid4(), email="summary@example.com", password_hash="hashed", is_verified=True)
         db.add(user)
         db.add_all([
-            Transaction(user_id=user.id, amount=Decimal("-500.00"), currency="INR", category="Food", occurred_on=__import__("datetime").date(2026, 10, 5)),
-            Transaction(user_id=user.id, amount=Decimal("2000.00"), currency="INR", category="Income", occurred_on=__import__("datetime").date(2026, 10, 6)),
+            Transaction(user_id=user.id, amount=Decimal("-500.00"), currency="INR", category="Food", occurred_on=date(2026, 10, 5)),
+            Transaction(user_id=user.id, amount=Decimal("2000.00"), currency="INR", category="Income", occurred_on=date(2026, 10, 6)),
         ])
         db.commit()
         result = monthly_summary(year=2026, month=10, currency=None, db=db, current=user)
