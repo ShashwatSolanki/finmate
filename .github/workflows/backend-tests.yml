@@ -2,8 +2,6 @@ name: Backend tests
 
 on:
   pull_request:
-  push:
-    branches: [main, "fix/**"]
 
 jobs:
   test:
@@ -17,6 +15,7 @@ jobs:
       AUTH_ALLOW_MOCK_GOOGLE: "true"
       JWT_SECRET: "ci-only-test-secret-not-for-production-0123456789abcdef"
       DATABASE_URL: "sqlite:///./ci.db"
+      PYTHONPATH: .
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
