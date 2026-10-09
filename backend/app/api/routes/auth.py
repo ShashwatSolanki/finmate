@@ -215,7 +215,7 @@ def verify_email(body: VerifyEmailBody, request: Request, db: Session = Depends(
         exp = exp.replace(tzinfo=timezone.utc)
     if exp < now:
         auth_rate_limiter.record_attempt(rate_key)
-        raise HTTPException(status_code=status.HTTP_400_BAD_BAD_REQUEST, detail="Verification code has expired")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification code has expired")
 
     auth_rate_limiter.reset(rate_key)
     token_rec.used = True
