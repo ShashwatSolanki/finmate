@@ -280,7 +280,6 @@ def import_transactions_csv(
     return CsvImportOut(imported_count=imported, skipped_count=skipped, sample_errors=errors, imported_preview=preview)
 
 
-@router.get("/export/csv")
 def _safe_csv_cell(value: object) -> str:
     """Prevent spreadsheet software from evaluating user-controlled CSV cells as formulas."""
     text_value = "" if value is None else str(value)
@@ -289,6 +288,7 @@ def _safe_csv_cell(value: object) -> str:
     return text_value
 
 
+@router.get("/export/csv")
 def export_transactions_csv(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
