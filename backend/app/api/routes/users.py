@@ -157,8 +157,9 @@ def change_password(
         )
 
     current.password_hash = hash_password(body.new_password)
+    db.query(RefreshToken).filter(RefreshToken.user_id == current.id).update({"revoked": True})
     db.commit()
-    return MessageOut(message="Password updated successfully.", success=True)
+    return MessageOut(message="Password updated successfully. Please sign in again on your devices.", success=True)
 
 
 @router.delete("/me", response_model=MessageOut)
