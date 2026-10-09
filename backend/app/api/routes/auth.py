@@ -254,7 +254,7 @@ def resend_verification(body: ResendVerificationBody, request: Request, db: Sess
         return MessageOut(message="If the email is registered, a new verification code has been sent.")
 
     if user.is_verified:
-        return MessageOut(message="Email is already verified.")
+        return MessageOut(message="If the email is registered and unverified, a verification code has been sent.")
 
     # Invalidate previous unused verification tokens
     db.query(EmailVerificationToken).filter(
