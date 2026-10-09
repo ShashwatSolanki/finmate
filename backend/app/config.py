@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     auth_rate_limit_max_attempts: int = 5
     auth_rate_limit_window_seconds: int = 60
+    auth_rate_limit_redis_url: str | None = None
 
     # Email & SMTP Settings
     smtp_host: str = "smtp.gmail.com"
@@ -64,6 +65,8 @@ class Settings(BaseSettings):
                 raise ValueError("EMAIL_MOCK_MODE must be false in production")
             if not self.smtp_user or not self.smtp_password:
                 raise ValueError("SMTP_USER and SMTP_PASSWORD are required in production")
+            if not self.auth_rate_limit_redis_url:
+                raise ValueError("AUTH_RATE_LIMIT_REDIS_URL is required for shared production rate limiting")
             if self.auth_allow_mock_google:
                 raise ValueError("AUTH_ALLOW_MOCK_GOOGLE must be false in production")
         return self
