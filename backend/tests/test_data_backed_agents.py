@@ -35,7 +35,7 @@ class DataBackedAgentTests(unittest.TestCase):
         self.db.scalars.return_value.all.return_value = [holding]
 
         ticker = MagicMock()
-        ticker.info = {"currentPrice": 125}
+        ticker.info = {"currentPrice": 125, "currency": "USD"}
 
         with patch("app.agents.investment_analyser.get_ticker", return_value=ticker):
             result = run_investment(

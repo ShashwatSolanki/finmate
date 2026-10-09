@@ -94,7 +94,7 @@ def test_investment_valuation_calculates_profit_and_percentage(database, monkeyp
 
     monkeypatch.setattr(
         "app.agents.investment_analyser.get_ticker",
-        lambda symbol: SimpleNamespace(info={"currentPrice": 125}),
+        lambda symbol: SimpleNamespace(info={"currentPrice": 125, "currency": "USD"}),
     )
     with database() as db:
         result = _portfolio_history_reply(db, user_id)

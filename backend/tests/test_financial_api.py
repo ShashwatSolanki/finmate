@@ -71,7 +71,7 @@ def test_transaction_api_crud_summary_and_csv_flow(financial_api_client) -> None
 
     summary = client.get("/api/transactions/summary/monthly?year=2026&month=1")
     assert summary.status_code == 200
-    assert summary.json() == {"year": 2026, "month": 1, "total_expenses": "-50.00"}
+    assert summary.json() == {"year": 2026, "month": 1, "currency": "USD", "total_expenses": "50.00"}
 
     imported = client.post(
         "/api/transactions/import/csv",
@@ -108,7 +108,7 @@ def test_transaction_api_validation_and_authentication(financial_api_client) -> 
 
 def test_portfolio_api_persists_holdings_and_returns_valuation(financial_api_client, monkeypatch) -> None:
     client, _, database = financial_api_client
-    monkeypatch.setattr("app.api.routes.portfolio.get_ticker", lambda symbol: SimpleNamespace(info={"currentPrice": 125}))
+    monkeypatch.setattr("app.api.routes.portfolio.get_ticker", lambda symbol: SimpleNamespace(info={"currentPrice": 125, "currency": "USD"}))
 
     created = client.post(
         "/api/portfolio/holdings",

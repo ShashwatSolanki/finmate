@@ -124,7 +124,8 @@ def portfolio_summary(
             ticker = get_ticker(holding.symbol)
             info = ticker.info or {}
             raw = info.get("currentPrice") or info.get("regularMarketPrice")
-            if raw is not None:
+            quote_currency = str(info.get("currency") or "").upper()
+            if raw is not None and quote_currency == holding.currency.upper():
                 last_price = Decimal(str(raw))
         except Exception:
             last_price = None

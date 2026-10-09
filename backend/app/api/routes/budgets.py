@@ -57,6 +57,9 @@ class BudgetUpdate(BaseModel):
 
     @model_validator(mode="after")
     def validate_period(self) -> "BudgetUpdate":
+        for field in self.model_fields_set:
+            if getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
         if self.period_start is not None and self.period_end is not None and self.period_end < self.period_start:
             raise ValueError("period_end must be on or after period_start")
         return self

@@ -60,6 +60,10 @@ def test_budget_rejects_invalid_amount_and_period(api_client) -> None:
         == 422
     )
 
+    created = client.post("/api/budgets", json=budget_payload()).json()
+    assert client.patch(f"/api/budgets/{created['id']}", json={"period_start": None}).status_code == 422
+    assert client.patch(f"/api/budgets/{created['id']}", json={"limit_amount": None}).status_code == 422
+
 
 def test_budget_isolation_and_unauthenticated_access(api_client) -> None:
     client, user, database = api_client
