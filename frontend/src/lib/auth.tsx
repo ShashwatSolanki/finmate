@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { TOKEN_KEY } from "./api";
+import { apiUrl, TOKEN_KEY } from "./api";
 
 export const REFRESH_TOKEN_KEY = "finmate_refresh_token";
 
@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const currentRf = localStorage.getItem(REFRESH_TOKEN_KEY);
     if (currentRf) {
       try {
-        await fetch("/api/auth/logout", {
+        await fetch(apiUrl("/api/auth/logout"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refresh_token: currentRf }),

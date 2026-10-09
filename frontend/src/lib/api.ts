@@ -1,5 +1,16 @@
 export const TOKEN_KEY = "finmate_token";
 
+const configuredApiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
+export const API_BASE_URL = configuredApiBase
+  ? (configuredApiBase.startsWith("http://") || configuredApiBase.startsWith("https://")
+      ? configuredApiBase
+      : "https://" + configuredApiBase).replace(/\/+$/, "")
+  : "";
+
+export function apiUrl(path: string): string {
+  return API_BASE_URL + (path.startsWith("/") ? path : "/" + path);
+}
+
 export type ChatResponse = {
   agent: string;
   reply: string;

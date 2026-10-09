@@ -77,7 +77,9 @@ Important backend settings include:
 - JWT secret
 - JWT algorithm
 - token lifetime
-- optional SMTP settings for email delivery
+- email provider (`EMAIL_PROVIDER=smtp` or `resend`) and SMTP/Resend credentials
+- CORS allowlist (`CORS_ORIGINS`)
+- shared auth rate limiting (`AUTH_RATE_LIMIT_REDIS_URL`)
 - optional Google OAuth client ID
 - embedding model
 - routing embedding weight
@@ -88,7 +90,11 @@ Important backend settings include:
 - maximum agentic steps
 - optional Tesseract executable path
 
-Secrets should be supplied through environment variables rather than committed to Git.
+Secrets should be supplied through environment variables rather than committed to Git. The checked-in `.env.example` enables mock email for local development so registration can be exercised without SMTP; it is not for real users. Never enable mock email or mock Google authentication outside isolated tests/development. Production and staging require a non-placeholder JWT secret of at least 32 characters, real email delivery, shared Redis rate limiting, an explicit HTTPS-only `CORS_ORIGINS` allowlist, and mock Google auth disabled. Startup validation rejects incomplete staging/production configuration.
+
+### Deploying a free staging environment
+
+See [Free-tier staging](free-staging.md) for the Render Blueprint, Neon/PostgreSQL and Upstash/Redis setup, Resend configuration, cost limitations, and isolated regression checklist. The staging profile intentionally disables local Qwen and semantic embeddings to fit free-instance memory limits; it is not feature-equivalent to the full local AI configuration.
 
 ## 6. Local LLM
 

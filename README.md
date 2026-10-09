@@ -155,6 +155,7 @@ The README is the single entry point. Detailed technical material is organized b
 | [Frontend](docs/frontend.md) | React/Vite pages, components and API integration |
 | [Evaluation & Testing](docs/evaluation.md) | Unit/integration tests, RAG evaluation and AI regression |
 | [Development](docs/development.md) | Local setup, configuration and troubleshooting |
+| [Free-tier staging](docs/free-staging.md) | Isolated Render + Neon + Upstash + Resend staging setup, cost limits and validation checklist |
 
 ### Recommended reading order
 
@@ -222,7 +223,9 @@ finmate/
 │   ├── invoice-system.md
 │   ├── frontend.md
 │   ├── evaluation.md
-│   └── development.md
+│   ├── development.md
+│   └── free-staging.md
+├── render.yaml
 ├── docker-compose.yml
 ├── package.json
 └── README.md

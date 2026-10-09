@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../lib/auth";
 import {
+  apiUrl,
   authHeaders,
   authHeadersMultipart,
   downloadBlob,
@@ -63,7 +64,7 @@ export default function ChatComposerMenu({
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/invoices/parse", {
+      const res = await fetch(apiUrl("/api/invoices/parse"), {
         method: "POST",
         headers: authHeadersMultipart(token),
         body: form,
@@ -96,7 +97,7 @@ export default function ChatComposerMenu({
       if (header.includes("invoice_no") && header.includes("item") && header.includes("amount")) {
         const form = new FormData();
         form.append("file", file);
-        const invoiceResponse = await fetch("/api/invoices/parse/csv", {
+        const invoiceResponse = await fetch(apiUrl("/api/invoices/parse/csv"), {
           method: "POST",
           headers: authHeadersMultipart(token),
           body: form,
@@ -108,7 +109,7 @@ export default function ChatComposerMenu({
         onImportStatus(`Imported invoice CSV — ${invoiceData.invoice.line_items.length} line items. Ready to export or edit in Invoice Studio.`);
         return;
       }
-      const res = await fetch("/api/transactions/import/csv", {
+      const res = await fetch(apiUrl("/api/transactions/import/csv"), {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({ csv_text: csvText }),
@@ -140,7 +141,7 @@ export default function ChatComposerMenu({
     setBusy(true);
     onImportError(null);
     try {
-      const res = await fetch("/api/transactions/export/csv", { headers: authHeaders(token) });
+      const res = await fetch(apiUrl("/api/transactions/export/csv"), { headers: authHeaders(token) });
       if (!res.ok) throw new Error(await res.text());
       const blob = await res.blob();
       downloadBlob(blob, "finmate-transactions.csv");

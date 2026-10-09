@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     app_name: str = "FinMate API"
     app_env: str = "development"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     database_url: str = "postgresql+psycopg2://finmate:finmate@localhost:5433/finmate"
 
     jwt_secret: str = Field(
@@ -33,11 +34,15 @@ class Settings(BaseSettings):
     smtp_user: str | None = None
     smtp_password: str | None = None
     smtp_from_email: str = "noreply@finmate.com"
+    email_provider: str = "smtp"
+    resend_api_key: str | None = None
+    resend_from_email: str = "onboarding@resend.dev"
     email_mock_mode: bool = False  # Enable explicitly only in isolated development/test environments
     verification_code_expire_minutes: int = 15
     password_reset_code_expire_minutes: int = 15
 
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
+    finmate_use_embeddings: bool = True
     intent_embedding_weight: float = 0.25
 
     alpha_vantage_api_key: str | None = None
@@ -57,18 +62,29 @@ class Settings(BaseSettings):
     tesseract_cmd: str | None = None
 
     @model_validator(mode="after")
-    def validate_production_security(self) -> "Settings":
-        if self.app_env.lower() in {"production", "prod"}:
-            if self.jwt_secret == "change-me-in-production-use-openssl-rand-hex-32":
-                raise ValueError("JWT_SECRET must be replaced with a strong secret in production")
+    def validate_deployment_security(self) -> "Settings":
+        environment = self.app_env.lower()
+        if environment in {"production", "prod", "staging"}:
+            target = "staging" if environment == "staging" else "production"
+            if (
+                self.jwt_secret == "change-me-in-production-use-openssl-rand-hex-32"
+                or len(self.jwt_secret.strip()) < 32
+            ):
+                raise ValueError(f"JWT_SECRET must be at least 32 characters and non-placeholder in {target}")
             if self.email_mock_mode:
-                raise ValueError("EMAIL_MOCK_MODE must be false in production")
-            if not self.smtp_user or not self.smtp_password:
-                raise ValueError("SMTP_USER and SMTP_PASSWORD are required in production")
+                raise ValueError(f"EMAIL_MOCK_MODE must be false in {target}")
+            if self.email_provider.lower() == "resend":
+                if not self.resend_api_key:
+                    raise ValueError("RESEND_API_KEY is required when EMAIL_PROVIDER=resend")
+            elif not self.smtp_user or not self.smtp_password:
+                raise ValueError(f"SMTP_USER and SMTP_PASSWORD are required in {target}")
             if not self.auth_rate_limit_redis_url:
-                raise ValueError("AUTH_RATE_LIMIT_REDIS_URL is required for shared production rate limiting")
+                raise ValueError(f"AUTH_RATE_LIMIT_REDIS_URL is required for shared {target} rate limiting")
+            origins = [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+            if not origins or any(not origin.startswith("https://") for origin in origins):
+                raise ValueError(f"CORS_ORIGINS must contain only explicit HTTPS origins in {target}")
             if self.auth_allow_mock_google:
-                raise ValueError("AUTH_ALLOW_MOCK_GOOGLE must be false in production")
+                raise ValueError(f"AUTH_ALLOW_MOCK_GOOGLE must be false in {target}")
         return self
 
 
