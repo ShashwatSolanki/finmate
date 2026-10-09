@@ -97,6 +97,14 @@ class AuthIntegrationTests(unittest.TestCase):
         self.assertEqual(verified.status_code, 200)
         self.assertTrue(verified.json()["is_verified"])
 
+        # A verified account must never receive tokens from an arbitrary OTP request.
+        repeated_verify = self.client.post(
+            "/api/auth/verify-email",
+            json={"email": "testuser@finmate.com", "code": "000000"},
+        )
+        self.assertEqual(repeated_verify.status_code, 400)
+        self.assertNotIn("access_token", repeated_verify.json())
+
         # Duplicate email registration must return 409
         dup_res = self.client.post(
             "/api/auth/register",
