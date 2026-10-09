@@ -1,5 +1,5 @@
 import pytesseract
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "FinMate API"
+    app_env: str = "development"
     database_url: str = "postgresql+psycopg2://finmate:finmate@localhost:5433/finmate"
 
     jwt_secret: str = Field(
@@ -20,9 +21,11 @@ class Settings(BaseSettings):
 
     google_client_id: str | None = None
     google_client_secret: str | None = None
+    auth_allow_mock_google: bool = False
 
     auth_rate_limit_max_attempts: int = 5
     auth_rate_limit_window_seconds: int = 60
+    auth_rate_limit_redis_url: str | None = None
 
     # Email & SMTP Settings
     smtp_host: str = "smtp.gmail.com"
@@ -30,7 +33,7 @@ class Settings(BaseSettings):
     smtp_user: str | None = None
     smtp_password: str | None = None
     smtp_from_email: str = "noreply@finmate.com"
-    email_mock_mode: bool = True  # Logs to console and returns code in development/tests
+    email_mock_mode: bool = False  # Enable explicitly only in isolated development/test environments
     verification_code_expire_minutes: int = 15
     password_reset_code_expire_minutes: int = 15
 
@@ -52,6 +55,21 @@ class Settings(BaseSettings):
 
     # Path to tesseract.exe when not on PATH (common on Windows after installer)
     tesseract_cmd: str | None = None
+
+    @model_validator(mode="after")
+    def validate_production_security(self) -> "Settings":
+        if self.app_env.lower() in {"production", "prod"}:
+            if self.jwt_secret == "change-me-in-production-use-openssl-rand-hex-32":
+                raise ValueError("JWT_SECRET must be replaced with a strong secret in production")
+            if self.email_mock_mode:
+                raise ValueError("EMAIL_MOCK_MODE must be false in production")
+            if not self.smtp_user or not self.smtp_password:
+                raise ValueError("SMTP_USER and SMTP_PASSWORD are required in production")
+            if not self.auth_rate_limit_redis_url:
+                raise ValueError("AUTH_RATE_LIMIT_REDIS_URL is required for shared production rate limiting")
+            if self.auth_allow_mock_google:
+                raise ValueError("AUTH_ALLOW_MOCK_GOOGLE must be false in production")
+        return self
 
 
 settings = Settings()

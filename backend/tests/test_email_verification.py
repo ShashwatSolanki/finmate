@@ -18,6 +18,7 @@ from app.db.models import (
     User,
 )
 from app.main import app
+from app.security.rate_limiter import auth_rate_limiter
 
 # In-memory SQLite database for isolated testing
 TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -38,6 +39,9 @@ def override_get_db():
 
 
 class EmailVerificationAndResetTests(unittest.TestCase):
+    def setUp(self):
+        auth_rate_limiter.clear()
+
     @classmethod
     def setUpClass(cls):
         from app.config import settings

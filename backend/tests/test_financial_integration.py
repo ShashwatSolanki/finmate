@@ -108,7 +108,7 @@ def test_investment_creation_to_mocked_valuation_flow(integration_client, monkey
     client, user, database = integration_client
     monkeypatch.setattr(
         "app.api.routes.portfolio.get_ticker",
-        lambda symbol: SimpleNamespace(info={"currentPrice": 125}),
+        lambda symbol: SimpleNamespace(info={"currentPrice": 125, "currency": "USD"}),
     )
 
     created = client.post(

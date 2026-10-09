@@ -11,6 +11,8 @@ from app.api.deps import get_db
 from app.db.base import Base
 from app.db.models import User, RefreshToken, OAuthAccount
 from app.main import app
+from app.config import settings
+from app.security.rate_limiter import auth_rate_limiter
 
 # In-memory SQLite database for test isolation
 TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -33,14 +35,26 @@ def override_get_db():
 class AuthIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls._orig_app_env = settings.app_env
+        cls._orig_mock_email = settings.email_mock_mode
+        cls._orig_mock_google = settings.auth_allow_mock_google
+        settings.app_env = "test"
+        settings.email_mock_mode = True
+        settings.auth_allow_mock_google = True
         Base.metadata.create_all(bind=engine)
         app.dependency_overrides[get_db] = override_get_db
         cls.client = TestClient(app)
 
     @classmethod
     def tearDownClass(cls):
+        settings.app_env = cls._orig_app_env
+        settings.email_mock_mode = cls._orig_mock_email
+        settings.auth_allow_mock_google = cls._orig_mock_google
         app.dependency_overrides.pop(get_db, None)
         Base.metadata.drop_all(bind=engine)
+
+    def setUp(self):
+        auth_rate_limiter.clear()
 
     def test_01_registration_password_complexity(self):
         # Weak password must fail validation
@@ -64,6 +78,32 @@ class AuthIntegrationTests(unittest.TestCase):
         self.assertIn("access_token", data)
         self.assertIn("refresh_token", data)
         self.assertEqual(data["token_type"], "bearer")
+        self.assertFalse(data["is_verified"])
+        self.assertTrue(data["requires_verification"])
+        self.assertIsNotNone(data["verification_code_preview"])
+
+        # Tokens issued during registration must not access protected resources.
+        blocked = self.client.get(
+            "/api/users/me",
+            headers={"Authorization": f"Bearer {data['access_token']}"},
+        )
+        self.assertEqual(blocked.status_code, 403)
+
+        # Verify email, then the account becomes eligible to use protected routes.
+        verified = self.client.post(
+            "/api/auth/verify-email",
+            json={"email": "testuser@finmate.com", "code": data["verification_code_preview"]},
+        )
+        self.assertEqual(verified.status_code, 200)
+        self.assertTrue(verified.json()["is_verified"])
+
+        # A verified account must never receive tokens from an arbitrary OTP request.
+        repeated_verify = self.client.post(
+            "/api/auth/verify-email",
+            json={"email": "testuser@finmate.com", "code": "000000"},
+        )
+        self.assertEqual(repeated_verify.status_code, 400)
+        self.assertNotIn("access_token", repeated_verify.json())
 
         # Duplicate email registration must return 409
         dup_res = self.client.post(
