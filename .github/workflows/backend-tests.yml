@@ -1,0 +1,42 @@
+name: Backend tests
+
+on:
+  pull_request:
+  push:
+    branches: [main, "fix/**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      APP_ENV: test
+      EMAIL_MOCK_MODE: "true"
+      AUTH_ALLOW_MOCK_GOOGLE: "true"
+      JWT_SECRET: "ci-only-test-secret-not-for-production-0123456789abcdef"
+      DATABASE_URL: "sqlite:///./ci.db"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install OCR dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tesseract-ocr
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Run backend test suite
+        run: pytest -q
