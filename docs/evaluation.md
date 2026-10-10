@@ -148,6 +148,8 @@ When the budget planner has no recent transaction categories, it uses its determ
 
 Income and investment amount extraction must require explicit semantic labels. An arbitrary currency amount (for example, a client invoice value) must not be interpreted as monthly income or investable capital; the agentic smoke test exposed this cross-domain parsing risk, so regression tests cover it.
 
+Natural-language invoice requests with conjunctions such as "configuration INR 400 plus support INR 500" must preserve each separately stated line item and derive the INR 900 subtotal/total. Validate the structured payload itself rather than treating HTTP success or artifact presence as proof of invoice correctness. When risk preference is absent from retrieved context, allocation wording must identify any moderate-risk split as illustrative and must not claim that it is the user's saved profile.
+
 For a controlled agentic-latency experiment, `FINMATE_AGENTIC_SYNTHESIS=false` bypasses only the final LLM synthesis call after specialist execution. The default remains `true`; compare both settings on the same stratified cases and manually review response quality before changing the default.
 
 The `FINMATE_USE_RAG` switch exists to support a semantic-retrieval ablation; it is enabled by default. The old `backend/scripts/evaluate_rag.py` fixture uses mocked embeddings and remains an implementation sanity check—not a live retrieval-quality result. Likewise, `backend/scripts/evaluate_ai.py` checks the response contract and routing metadata, but does not establish financial answer correctness.
