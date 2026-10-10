@@ -11,6 +11,16 @@ class ScoreTests(unittest.TestCase):
     def test_grouping_number_format(self): self.assertTrue(runner.contains_number("Balance INR 30,000.00",30000,.01))
     def test_not_partial_numeric_token(self): self.assertFalse(runner.contains_number("13000",3000,.01))
     def test_decimal_invoice_total(self): self.assertTrue(runner.contains_number("Subtotal 153.00",153,.01))
+
+    def test_memory_numeric_answer_accepts_grouped_number_format(self):
+        self.assertTrue(runner.memory_answer_matches("Your saved monthly income is INR 46,500.", "46500", .01))
+        self.assertTrue(runner.memory_answer_matches("Your saved monthly savings goal is INR 8,800.", "8800", .01))
+
+    def test_memory_numeric_answer_is_not_a_substring_match(self):
+        self.assertFalse(runner.memory_answer_matches("Your saved amount is INR 146,500.", "46500", .01))
+
+    def test_memory_text_answer_matches_case_insensitively(self):
+        self.assertTrue(runner.memory_answer_matches("Your risk tolerance is Conservative.", "conservative", .01))
     def test_invoice_payload_correct(self):
         meta={"invoice_payload":'{"currency":"INR","subtotal":"153.00","line_items":[{"amount":"49.00"},{"amount":"79.00"},{"amount":"25.00"}]}'}
         self.assertTrue(runner.invoice_payload_correct(meta,{"currency":"INR","subtotal":153,"line_amounts":[49,79,25]}))
