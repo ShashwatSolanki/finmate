@@ -32,6 +32,7 @@ From the repository root:
 cd backend
 python -m pip install -r requirements.txt pip-audit
 pip-audit -r requirements.txt
+pip-audit -r requirements-staging.txt
 ```
 
 For frontend production dependencies:
@@ -44,7 +45,7 @@ npm test
 npm run build
 ```
 
-The CI workflow performs the dependency audits on pull requests. Advisory databases change over time, so a clean audit is only a point-in-time result.
+The CI workflow performs dependency audits for both `requirements.txt` and `requirements-staging.txt`, plus production frontend dependencies, on pull requests. Advisory databases change over time, so a clean audit is only a point-in-time result.
 
 ## Remaining risks / follow-up work
 

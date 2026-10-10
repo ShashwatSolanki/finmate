@@ -31,7 +31,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-staging.txt
 
       - name: Install Python dependencies
         run: |
@@ -40,6 +42,9 @@ jobs:
 
       - name: Audit Python dependencies
         run: pip-audit -r requirements.txt
+
+      - name: Audit staging Python dependencies
+        run: pip-audit -r requirements-staging.txt
 
       - name: Run backend test suite
         run: pytest -q
