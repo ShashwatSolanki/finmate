@@ -95,7 +95,7 @@ def _extract_balance_remainder(message: str) -> tuple[Decimal, Decimal, dict[str
     # an overstated remainder. Unrelated numerals (such as a time horizon) can also
     # trigger the fallback, which is safer than guessing.
     amount_mentions = list(
-        re.finditer(rf"(?<![A-Za-z0-9,.]){_AMOUNT}(?!\\d|,\\d)", message, re.I)
+        re.finditer(rf"(?<![A-Za-z0-9,.]){_AMOUNT}(?!\d|,\d)", message, re.I)
     )
     if len(amount_mentions) > 1 + len(expenses):
         return None
