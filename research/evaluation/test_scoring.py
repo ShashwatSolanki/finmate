@@ -89,6 +89,11 @@ class ScoreTests(unittest.TestCase):
         meta={"invoice_payload":'{"currency":"INR","subtotal":"153","total":"153","line_items":[{"description":"hosting","amount":"49"},{"description":"SEO","amount":"79"},{"description":"domain","amount":"25"}]}'}
         gold={"currency":"INR","subtotal":153,"total":153,"line_amounts":[49,79,25],"line_descriptions":["maintenance","SEO","domain"]}
         self.assertFalse(runner.invoice_payload_correct(meta,gold))
+
+    def test_invoice_payload_wrong_description_amount_pair_is_rejected(self):
+        meta={"invoice_payload":'{"currency":"INR","subtotal":"153","total":"153","line_items":[{"description":"maintenance","amount":"79"},{"description":"SEO","amount":"49"},{"description":"domain","amount":"25"}]}'}
+        gold={"currency":"INR","subtotal":153,"total":153,"line_amounts":[49,79,25],"line_descriptions":["maintenance","SEO","domain"]}
+        self.assertFalse(runner.invoice_payload_correct(meta,gold))
     def test_float_binary_retrieval_scores_included(self):
         score=summary.rate([{"retrieval_hit_at_5":1.0},{"retrieval_hit_at_5":0.0},{"retrieval_hit_at_5":None}],"retrieval_hit_at_5")
         self.assertEqual((score["n"],score["successes"]),(2,1))
