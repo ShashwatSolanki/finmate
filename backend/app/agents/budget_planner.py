@@ -248,7 +248,9 @@ def run(
         )
 
     source = "db_aggregate_fallback"
-    if settings.finmate_use_llm and llm_available():
+    # Empty transaction history already has a deterministic fallback; avoid
+    # invoking local generation when there is no transaction data to explain.
+    if lines and settings.finmate_use_llm and llm_available():
         enriched_message = (
             f"{message}\n\n"
             f"[User financial data]\n{data_summary}{rag_block}"
