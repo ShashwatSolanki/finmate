@@ -17,7 +17,7 @@ from app.db.models import Transaction
 from app.ml.finmate import finalize_llm_reply, generate, llm_available
 from app.services.spending_insights import category_delta_vs_prior_month
 
-_AMOUNT = r"((?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?)"
+_AMOUNT = r"((?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?)(?:\s*(k|m|thousands?|millions?|lakhs?|crores?))?"
 
 
 def _parse_labeled_amount(message: str, labels: str) -> Decimal | None:
@@ -27,7 +27,18 @@ def _parse_labeled_amount(message: str, labels: str) -> Decimal | None:
         re.I,
     )
     match = pattern.search(message)
-    return Decimal(match.group(1).replace(",", "")) if match else None
+    if not match:
+        return None
+    amount = Decimal(match.group(1).replace(",", ""))
+    magnitude = (match.group(2) or "").lower()
+    multiplier = (
+        Decimal("1000") if magnitude in {"k", "thousand", "thousands"} else
+        Decimal("1000000") if magnitude in {"m", "million", "millions"} else
+        Decimal("100000") if magnitude in {"lakh", "lakhs"} else
+        Decimal("10000000") if magnitude in {"crore", "crores"} else
+        Decimal("1")
+    )
+    return amount * multiplier
 
 
 def _currency_codes(message: str) -> set[str]:
