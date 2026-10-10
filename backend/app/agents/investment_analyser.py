@@ -66,7 +66,8 @@ def _extract_lump_sum(message: str) -> Decimal | None:
     currency_pattern = r"(?:₹|\$|€|£|\bINR\b|\bUSD\b|\bEUR\b|\bGBP\b)?\s*"
     investment_label = (
         r"\b(?:invest(?:ing)?|investment(?:\s+amount)?|lump[ -]?sum(?:\s+investment)?|"
-        r"deposit|investable\s+(?:amount|surplus)|amount)\b"
+        r"investable\s+(?:amount|surplus)|(?:fixed|term)[ -]?deposit)\b"
+    )
     )
     match = re.search(
         investment_label
