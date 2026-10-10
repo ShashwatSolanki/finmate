@@ -89,6 +89,18 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(invoice.subtotal, Decimal("900.00"))
         self.assertEqual(invoice.total, Decimal("900.00"))
 
+    def test_explicit_invoice_with_spending_context_keeps_text_source(self):
+        result = run_invoice(
+            self.user_id,
+            "Summarize my monthly spending and prepare an invoice for "
+            "configuration INR 400 plus support INR 500.",
+            self.db,
+        )
+
+        self.assertEqual(result.metadata["source"], "structured_parse")
+        self.assertIn('"notes":"parsed from message text"', result.reply)
+        self.assertNotIn('"notes":"generated from recent user transactions"', result.reply)
+
     def test_client_invoice_clause_in_multi_agent_request_keeps_clean_item_name(self):
         invoice = _structured_from_message(
             "Review my budget, estimate investable surplus, and invoice a client "

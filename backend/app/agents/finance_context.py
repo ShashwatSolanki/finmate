@@ -9,7 +9,10 @@ _AMOUNT_TOKEN = r"(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?(
 _CURRENCY_TOKEN = r"(?:INR|USD|EUR|GBP|AUD|CAD|SGD|JPY|CHF|NZD|CNY|HKD|KRW|SEK|NOK|DKK|ZAR|AED|SAR|Rs\.?|₹|\$|€|£)"
 _ONBOARDING_INCOME = re.compile(rf"monthly income:\s*({_AMOUNT_TOKEN})(?!\d|,\d)\s*({_CURRENCY_TOKEN})?(?![A-Za-z])", re.I)
 _SALARY_INCOME = re.compile(
-    rf"(?:salary|income)(?:\s+is|\s+of)?\s*(?:rs\.?|inr|₹|usd|\$|€|eur)?\s*({_AMOUNT_TOKEN})(?!\d|,\d)",
+    rf"(?:salary|income)(?:\s+is|\s+of)?\s*"
+    rf"(?:(?P<prefix>{_CURRENCY_TOKEN})\s*)?"
+    rf"(?P<amount>{_AMOUNT_TOKEN})(?!\d|,\d)"
+    rf"\s*(?P<suffix>{_CURRENCY_TOKEN})?(?![A-Za-z])",
     re.I,
 )
 
@@ -30,15 +33,32 @@ def _parse_amount(raw: str) -> Decimal:
     return amount * multiplier
 
 
+def _normalize_currency(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    marker = raw.strip().upper().replace(".", "")
+    aliases = {
+        "₹": "INR", "RS": "INR", "INR": "INR",
+        "$": "USD", "USD": "USD",
+        "€": "EUR", "EUR": "EUR",
+        "£": "GBP", "GBP": "GBP",
+        "¥": "JPY", "JPY": "JPY",
+    }
+    return aliases.get(marker, marker)
+
+
 def _currency_near_match(text: str, match: re.Match[str]) -> str | None:
-    window = text[max(0, match.start() - 12) : match.end() + 8].lower()
-    if re.search(r"\b(rs\.?|inr|₹)\b", window):
-        return "INR"
-    if re.search(r"\b(usd|\$)\b", window):
-        return "USD"
-    if re.search(r"\b(eur|€)\b", window):
-        return "EUR"
-    return None
+    """Return only the currency token attached to the parsed income amount."""
+    _ = text  # Retain the existing helper signature for callers/tests.
+    markers = [
+        _normalize_currency(match.group(name))
+        for name in ("prefix", "suffix")
+        if match.groupdict().get(name)
+    ]
+    if len(set(markers)) > 1:
+        # Conflicting currency labels make the amount ambiguous.
+        return None
+    return markers[0] if markers else None
 
 
 def extract_monthly_income(message: str, rag_context: str | None = None) -> tuple[Decimal | None, str | None]:
@@ -50,15 +70,14 @@ def extract_monthly_income(message: str, rag_context: str | None = None) -> tupl
     for text in sources:
         m = _ONBOARDING_INCOME.search(text)
         if m:
-            currency = (m.group(2) or "").strip().upper() or None
-            currency = {"RS": "INR", "RS.": "INR", "₹": "INR", "$": "USD", "€": "EUR", "£": "GBP"}.get(currency, currency)
+            currency = _normalize_currency(m.group(2))
             return _parse_amount(m.group(1)), currency
 
     for text in sources:
         m = _SALARY_INCOME.search(text)
         if m:
             currency = _currency_near_match(text, m)
-            return _parse_amount(m.group(1)), currency
+            return _parse_amount(m.group("amount")), currency
 
     # Do not infer income from an unlabeled currency amount: it may be an invoice,
     # expense, investment amount, or another domain-specific value.

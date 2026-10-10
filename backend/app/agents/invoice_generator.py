@@ -310,8 +310,10 @@ def run(
     invoice = _structured_from_message(request_text)
     request = request_text.lower()
     wants_expense_invoice = _wants_expense_invoice(request)
+    invoice_from_transactions = False
     if invoice is None and wants_expense_invoice:
         invoice = _expense_invoice_from_transactions(db, user_id)
+        invoice_from_transactions = invoice is not None
 
     rag_block = ""
     if rag_context and rag_context.strip():
@@ -326,11 +328,11 @@ def run(
             inv_id,
             source_note=(
                 "generated from recent user transactions"
-                if wants_expense_invoice
+                if invoice_from_transactions
                 else "parsed from message text"
             ),
         )
-        source = "transaction_summary" if wants_expense_invoice else "structured_parse"
+        source = "transaction_summary" if invoice_from_transactions else "structured_parse"
 
         total = invoice.total or sum((i.amount for i in invoice.line_items), start=Decimal("0"))
         return AgentResult(
