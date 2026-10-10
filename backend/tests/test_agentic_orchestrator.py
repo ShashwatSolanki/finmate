@@ -25,6 +25,21 @@ class AgenticPlannerTests(unittest.TestCase):
     def test_planner_does_not_match_investigate_as_investment(self):
         self.assertIsNone(build_plan("Investigate my recent transactions."))
 
+    def test_investable_surplus_triggers_investment_specialist(self):
+        plan = build_plan(
+            "Review my budget, estimate investable surplus, and invoice a client for development INR 3600."
+        )
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(
+            [step.agent for step in plan.steps],
+            [
+                AgentName.BUDGET_PLANNER,
+                AgentName.INVESTMENT_ANALYSER,
+                AgentName.INVOICE_GENERATOR,
+            ],
+        )
+
     def test_investment_agent_strips_agentic_observations_from_request(self):
         message = (
             "Analyze my spending and tell me how much I can invest this month."
