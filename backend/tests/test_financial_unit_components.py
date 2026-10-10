@@ -39,6 +39,7 @@ from app.services.spending_insights import category_delta_vs_prior_month
         ("salary £4,200", (Decimal("4200"), "GBP")),
         ("salary AUD 4,200", (Decimal("4200"), "AUD")),
         ("salary USD 4,200", (Decimal("4200"), "USD")),
+        ("salary $4,200 INR", (None, None)),
         ("I earn 3,500 every month", (None, None)),
         ("Nothing about income here", (None, None)),
         ("Review my budget, estimate investable surplus, and invoice a client for development INR 3600.", (None, None)),

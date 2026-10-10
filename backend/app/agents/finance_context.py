@@ -47,6 +47,9 @@ def _normalize_currency(raw: str | None) -> str | None:
     return aliases.get(marker, marker)
 
 
+_CURRENCY_CONFLICT = "__conflicting_currency_markers__"
+
+
 def _currency_near_match(text: str, match: re.Match[str]) -> str | None:
     """Return only the currency token attached to the parsed income amount."""
     _ = text  # Retain the existing helper signature for callers/tests.
@@ -56,8 +59,7 @@ def _currency_near_match(text: str, match: re.Match[str]) -> str | None:
         if match.groupdict().get(name)
     ]
     if len(set(markers)) > 1:
-        # Conflicting currency labels make the amount ambiguous.
-        return None
+        return _CURRENCY_CONFLICT
     return markers[0] if markers else None
 
 
@@ -77,6 +79,8 @@ def extract_monthly_income(message: str, rag_context: str | None = None) -> tupl
         m = _SALARY_INCOME.search(text)
         if m:
             currency = _currency_near_match(text, m)
+            if currency == _CURRENCY_CONFLICT:
+                continue
             return _parse_amount(m.group("amount")), currency
 
     # Do not infer income from an unlabeled currency amount: it may be an invoice,
