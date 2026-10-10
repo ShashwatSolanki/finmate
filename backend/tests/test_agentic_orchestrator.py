@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from app.agents.agentic_orchestrator import _synthesize, build_plan
@@ -12,13 +12,13 @@ class AgenticPlannerTests(unittest.TestCase):
         observations = [
             AgentResult(
                 agent=AgentName.BUDGET_PLANNER,
-                reply="[AGENT: BUDGET]\\nVerified budget observation",
+                reply="[AGENT: BUDGET]\nVerified budget observation",
                 planned_steps=[],
                 metadata={},
             ),
             AgentResult(
                 agent=AgentName.INVESTMENT_ANALYSER,
-                reply="[AGENT: INVESTMENT]\\nVerified investment observation",
+                reply="[AGENT: INVESTMENT]\nVerified investment observation",
                 planned_steps=[],
                 metadata={},
             ),
