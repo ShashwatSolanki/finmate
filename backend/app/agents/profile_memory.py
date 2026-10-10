@@ -7,6 +7,7 @@ profile value; unresolved memory questions receive an explicit abstention.
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 
 
 _PROFILE_INTENT = re.compile(
