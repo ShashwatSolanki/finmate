@@ -88,12 +88,16 @@ def _extract_balance_remainder(message: str) -> tuple[Decimal, Decimal, dict[str
         if amount is not None:
             expenses[label] = amount
 
-    # Do not silently ignore a currency-denominated item just because its label
-    # is outside the supported expense vocabulary (for example, a credit-card bill).
-    # One currency amount belongs to income; every additional amount must map to a
-    # supported expense before returning a deterministic remainder.
-    currency_amounts = list(_CURRENCY_AMOUNT.finditer(message))
-    if len(currency_amounts) > 1 + len(expenses):
+    # Do not silently ignore an amount just because its label is outside the
+    # supported expense vocabulary (for example, a credit-card bill). Require each
+    # numeric amount in the request to map to income or one supported expense.
+    # This deliberately falls back on more ambiguous requests rather than reporting
+    # an overstated remainder. Unrelated numerals (such as a time horizon) can also
+    # trigger the fallback, which is safer than guessing.
+    amount_mentions = list(
+        re.finditer(rf"(?<![A-Za-z0-9,.]){_AMOUNT}(?!\\d|,\\d)", message, re.I)
+    )
+    if len(amount_mentions) > 1 + len(expenses):
         return None
     if not expenses:
         return None
