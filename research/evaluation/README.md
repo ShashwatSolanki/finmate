@@ -1,81 +1,80 @@
 # FinMate reproducible evaluation package
 
-This package is for a research study, not financial advice. Use only an isolated development database and a dedicated synthetic test account. Never run the reset option against production or a user's real account.
+This directory is for research evaluation, not financial advice. Use a disposable local PostgreSQL database and a dedicated synthetic user only. Never use \`--reset-test-user-state\` against production or a real account.
 
-## Included
-- `benchmark.jsonl`: generated 120-case synthetic pilot dataset: 40 numerical/data-grounded, 40 memory-dependent, and 40 routing/orchestration tasks.
-- `generate_benchmark.py`: deterministic task generator.
-- `run_benchmark.py`: live-API or direct local Qwen2.5+LoRA runner with per-case scores and raw response capture.
-- `summarize_results.py`: descriptive scores, 95% bootstrap intervals, paired differences, and a human annotation CSV for factual-support review.
+## Files
+- Run \`python research/evaluation/generate_benchmark.py\` to create \`benchmark.jsonl\`: 120 synthetic pilot tasks (40 numerical, 40 memory—including 8 absent-memory abstention cases—and 40 routing/orchestration).
+- \`run_benchmark.py\`: API and direct-local-Qwen runner, saves raw case-level outputs and a \`.manifest.json\`.
+- \`summarize_results.py\`: rates, bootstrap confidence intervals, paired comparisons and human unsupported-claim annotation template.
+- \`test_*.py\`: unit tests for scoring helpers and generated case integrity.
 
-The generated case templates are a starting pilot, not independently validated ground truth. The team must review all labels and expected values, freeze the benchmark before the final runs, and record the exact code commit, runtime setup and model/adapter details.
+The generated corpus is a pilot, not a validated gold-standard benchmark. Manually review all labels and expected values, freeze it before final runs, and record commit/model/hardware details.
 
-## What existing tests measure
-`backend/scripts/evaluate_ai.py` primarily measures routing, response-contract compliance, confidence metadata, retrieval-use metadata, bounded agent execution and invoice-artifact presence. It does not directly judge financial answer correctness. `backend/scripts/evaluate_rag.py` uses mocked embeddings to validate a small retrieval fixture; its scores must not be reported as real retrieval performance. This package adds gold-answer scoring and retrieval rank measurement using the configured embedding implementation.
+## Existing tests versus research metrics
+The existing \`backend/scripts/evaluate_ai.py\` mainly checks response format, routing, confidence metadata, RAG metadata, bounded specialist order and invoice-artifact presence. It does not grade financial answer correctness. The prior \`backend/scripts/evaluate_rag.py\` uses mocked embeddings and must not be presented as production retrieval performance. This package adds gold-number scoring, structured invoice checks for the 10 synthetic invoice-subtotal cases, relevant-memory rank, absent-memory abstention, and latency.
 
-## Ablation settings
-Set variables before restarting the API for each condition:
-- Full FinMate: `FINMATE_USE_RAG=true`, `FINMATE_AGENTIC_MODE=true`, `FINMATE_USE_LLM=true`
-- No semantic RAG: `FINMATE_USE_RAG=false`, keep other values as full
-- No multi-agent planning: `FINMATE_USE_RAG=true`, `FINMATE_AGENTIC_MODE=false`, `FINMATE_USE_LLM=true`
-- No LLM (deterministic/fallback path): `FINMATE_USE_RAG=true`, `FINMATE_AGENTIC_MODE=true`, `FINMATE_USE_LLM=false`
-- Direct model baseline: `--condition llm_only` invokes `app.ml.finmate.generate()` without API tools, memory or orchestration.
+## Ablation conditions
+Set these variables before restarting the API:
+- Full: \`FINMATE_USE_RAG=true FINMATE_AGENTIC_MODE=true FINMATE_USE_LLM=true\`
+- No semantic retrieval: \`FINMATE_USE_RAG=false\`
+- No multi-agent planner: \`FINMATE_AGENTIC_MODE=false\`
+- No LLM generation: \`FINMATE_USE_LLM=false\`
+- Direct local model: \`--condition llm_only\`, which bypasses API tools, memory and specialist orchestration.
 
-Restart the backend after changing flags. The runner records the requested condition label but cannot inspect the flags in a separately running API process. Save the exact environment flag snapshot with each run.
+The branch introduces \`FINMATE_USE_RAG\`, defaulting to true. Disabling it does not disable recent-conversation or onboarding context by itself. The runner clears test-user state and seeds memory rows with source \`research_eval\`; use only a disposable user and local database. The direct-model baseline is not equivalent to an external general-purpose LLM, and this limitation should be stated.
 
-## Safe setup and run
-1. Use a disposable local PostgreSQL database created specifically for evaluation.
-2. Create a synthetic evaluation user; obtain its UUID and valid API access token.
-3. Install backend dependencies and confirm the model adapter exists for model runs.
-4. Ensure the API and runner point at the same isolated database.
-5. From `backend/`, run an API condition:
-```bash
-python ../research/evaluation/run_benchmark.py --condition full \
-  --token "$FINMATE_TEST_TOKEN" --user-id "$FINMATE_TEST_USER_ID" \
-  --reset-test-user-state --output ../research/evaluation/results/full.jsonl
-```
-On PowerShell, use `$env:FINMATE_TEST_TOKEN` and `$env:FINMATE_TEST_USER_ID`.
+## Safe setup and commands
+1. Use an isolated development database, not staging/production.
+2. Create a synthetic evaluation user on that DB and obtain its UUID and valid access token.
+3. Install backend requirements. Model conditions need the local Qwen adapter files.
+4. From \`backend/\`, run an API condition:
+\`\`\`bash
+python ../research/evaluation/generate_benchmark.py
+python ../research/evaluation/run_benchmark.py --condition full \\
+  --token "$FINMATE_TEST_TOKEN" --user-id "$FINMATE_TEST_USER_ID" \\
+  --reset-test-user-state --commit "<tested-git-sha>" \\
+  --environment-notes "backend flags: FINMATE_USE_RAG=true, FINMATE_AGENTIC_MODE=true, FINMATE_USE_LLM=true; API host/hardware: <details>" \\
+  --output ../research/evaluation/results/full.jsonl
+\`\`\`
+For PowerShell, use \`$env:FINMATE_TEST_TOKEN\` and \`$env:FINMATE_TEST_USER_ID\`.
 
-**Destructive reset:** `--reset-test-user-state` deletes that user's chat sessions, memory, transactions, budgets and investment holdings before every case, then seeds the case's synthetic fixtures. Use it only with a disposable test account/database.
+**Destructive warning:** before every case, the runner deletes the selected user's chat sessions, memory, transactions, budgets and investment holdings, then seeds synthetic fixtures. This is required for isolation and must only be used on a dedicated disposable test account and database. Do not put tokens or database credentials in reports.
 
-Direct local model baseline:
-```bash
-python ../research/evaluation/run_benchmark.py --condition llm_only \
+Direct Qwen baseline:
+\`\`\`bash
+python ../research/evaluation/run_benchmark.py --condition llm_only \\
+  --commit "<tested-git-sha>" --environment-notes "adapter revision and hardware" \\
   --output ../research/evaluation/results/llm_only.jsonl
-```
-Use `--limit 20` only for debugging the pilot—not as final results.
+\`\`\`
+Use \`--limit 20\` only for a pipeline/debug pilot, not final results.
 
-## Summarize and compare
-```bash
-python ../research/evaluation/summarize_results.py \
-  ../research/evaluation/results/full.jsonl \
-  ../research/evaluation/results/no_rag.jsonl \
-  ../research/evaluation/results/no_agentic.jsonl \
-  ../research/evaluation/results/no_llm.jsonl \
-  ../research/evaluation/results/llm_only.jsonl \
-  --compare --out-dir ../research/evaluation/summary
-```
-Outputs: `summary.md`, `summary.json`, and `claims_annotation_template.csv`. Bootstrap intervals quantify test-set sampling variation; they do not remove dataset bias or imply real-world representativeness.
+## Summarize
+Supply every completed condition in a stable order; the first file is the reference condition:
+\`\`\`bash
+python ../research/evaluation/summarize_results.py \\
+  research/evaluation/results/full.jsonl \\
+  research/evaluation/results/no_rag.jsonl \\
+  research/evaluation/results/no_agentic.jsonl \\
+  research/evaluation/results/no_llm.jsonl \\
+  research/evaluation/results/llm_only.jsonl \\
+  --compare --out-dir research/evaluation/summary
+\`\`\`
+For those paths, run the summarizer from repository root, or adjust paths consistently. Outputs are \`summary.md\`, \`summary.json\`, and \`claims_annotation_template.csv\`.
 
 ## Metrics
-- Request success and failure rate
-- Specialist routing accuracy
-- Gold-number accuracy with a predeclared tolerance
-- Correct use of memory-dependent facts
-- Correct specialist sequence for multi-domain tasks
-- Presence of invoice artifacts (inspect the structured payload and totals separately before publication)
-- Task completion, for all applicable checks
-- Retrieval Hit@5 and MRR, computed with the real embedding model against labelled relevant chunks
-- Mean/median/p95 latency
-- Unsupported factual claims using an independent human annotation rubric, not fabricated automatic scores
+- Request success/failure, specialist routing and agent-sequence correctness
+- Gold-number accuracy, transaction total correctness, structured invoice currency/line amounts/subtotal
+- Personal-memory correctness and appropriate abstention when the fact is not stored
+- Task completion (all applicable checks must pass)
+- Retrieval Hit@5 and MRR with actual runtime embeddings
+- Mean/median/p95 latency and per-group results
+- Unsupported factual-claim rate: requires independent human annotation with a defined rubric; the script makes a blank annotation template rather than inventing a score.
 
-For every metric report its eligible denominator. Preserve raw results and record git commit, Python/runtime version, model/adapter id, OS/hardware, environment flags, timestamps and external-data snapshots. Avoid live Yahoo Finance quotes in the main accuracy benchmark unless the returned responses and timestamps are cached.
+Report denominators for each metric. Preserve JSONL results and manifests. For API conditions, the manifest cannot inspect the separate backend process; record actual server settings and machine details in \`--environment-notes\`. Keep live market data out of gold correctness cases unless results are timestamped and cached.
 
 ## Before publication
-1. Manually validate every synthetic case and gold label; deterministic generation does not establish independent annotation.
-2. Verify the transaction category fixture behavior against the actual checked-out backend and re-run the pilot after any changes.
-3. Score invoice line items and subtotal/tax values from `invoice_payload`, not just artifact metadata.
-4. Freeze market-data snapshots or constrain the primary benchmark to requests that do not require live quotes.
-5. Treat FinMate confidence as a heuristic—not a calibrated probability—unless separately calibrated.
-6. Independently annotate unsupported claims; double-review a subset and report agreement.
-7. The direct local-model baseline shares the model adapter but not necessarily the exact prompt budget or task tools. State this limitation clearly.
+1. Independently validate every generated task and gold label; 120 templates are a pilot, not a representative user study.
+2. Confirm category and amount conventions against the tested commit and inspect the actual payload format.
+3. Consider external FinQA/ConvFinQA/FinanceBench evaluation only as complementary tasks with separate metrics/licence checks.
+4. Have two reviewers annotate a subset of factual claims and report agreement.
+5. Do not claim calibrated confidence from FinMate's heuristic without a separate calibration test.
