@@ -49,6 +49,16 @@ class BudgetNumericPathTests(unittest.TestCase):
         assert parsed is not None
         self.assertEqual(parsed[0], Decimal("65000"))
 
+    def test_balance_remainder_scales_lakh_suffix(self):
+        parsed = _extract_balance_remainder(
+            "Monthly income is INR 1 lakh, rent is INR 25,000, EMI is INR 10,000. "
+            "How much remains after these expenses?"
+        )
+        self.assertIsNotNone(parsed)
+        assert parsed is not None
+        self.assertEqual(parsed[1], Decimal("100000"))
+        self.assertEqual(parsed[0], Decimal("65000"))
+
     def test_balance_remainder_rejects_mixed_currency_arithmetic(self):
         self.assertIsNone(
             _extract_balance_remainder(
