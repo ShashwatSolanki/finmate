@@ -356,11 +356,12 @@ def reset_password(body: ResetPasswordBody, request: Request, db: Session = Depe
         _record_auth_attempt(rate_key, ip_rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code")
 
-    _reset_auth_attempt(rate_key, ip_rate_key)
-    # Invalid OTP submissions are counted even if the proposed password is weak.
+    # Do not clear the rate-limit window until the new password is valid as well.
     is_valid_pwd, pwd_error = validate_password_strength(body.new_password)
     if not is_valid_pwd:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=pwd_error)
+
+    _reset_auth_attempt(rate_key, ip_rate_key)
 
     # Update password and mark verified
     user.password_hash = hash_password(body.new_password)
@@ -424,7 +425,13 @@ def refresh_token_endpoint(body: RefreshTokenBody, db: Session = Depends(get_db)
     if not jti or not sub:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Malformed refresh token")
 
-    token_row = db.query(RefreshToken).filter(RefreshToken.token_jti == jti).first()
+    # Serialize refresh-token rotation so concurrent requests cannot both mint a new session.
+    token_row = (
+        db.query(RefreshToken)
+        .filter(RefreshToken.token_jti == jti)
+        .with_for_update()
+        .first()
+    )
     if not token_row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token not recognized")
 
