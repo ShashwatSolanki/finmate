@@ -7,7 +7,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.agents.finance_context import extract_monthly_income
@@ -17,22 +17,38 @@ from app.db.models import Transaction
 from app.ml.finmate import finalize_llm_reply, generate, llm_available
 from app.services.spending_insights import category_delta_vs_prior_month
 
-_AMOUNT = r"(\d+(?:,\d{3})*(?:\.\d+)?)"
+_AMOUNT = r"((?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?)"
 
 
 def _parse_labeled_amount(message: str, labels: str) -> Decimal | None:
     pattern = re.compile(
         rf"\b(?:{labels})\b\s*(?:is|are|of|equals|:|=)?\s*"
-        rf"(?:(?:INR|Rs\.?|₹|USD|\$|EUR|€|GBP|£)\s*)?{_AMOUNT}",
+        rf"(?:(?:INR|Rs\.?|₹|USD|\$|EUR|€|GBP|£)\s*)?{_AMOUNT}(?![\d,])",
         re.I,
     )
     match = pattern.search(message)
     return Decimal(match.group(1).replace(",", "")) if match else None
 
 
+def _currency_codes(message: str) -> set[str]:
+    """Return normalized explicit currency markers present in an arithmetic request."""
+    markers = re.findall(r"\\b(?:INR|USD|EUR|GBP|Rs\\.?)\\b|[₹$€£]", message, re.I)
+    aliases = {
+        "INR": "INR", "RS": "INR", "RS.": "INR", "₹": "INR",
+        "USD": "USD", "$": "USD",
+        "EUR": "EUR", "€": "EUR",
+        "GBP": "GBP", "£": "GBP",
+    }
+    return {aliases.get(marker.upper(), aliases.get(marker, marker.upper())) for marker in markers}
+
+
 def _extract_balance_remainder(message: str) -> tuple[Decimal, Decimal, dict[str, Decimal]] | None:
     """Calculate explicitly itemized income-minus-expenses questions without an LLM."""
     if not re.search(r"\b(remain(?:s|ing)?|left|surplus)\b", message, re.I):
+        return None
+
+    # Subtraction across currencies is undefined without an exchange-rate conversion.
+    if len(_currency_codes(message)) > 1:
         return None
 
     income = _parse_labeled_amount(message, r"(?:monthly\s+)?(?:income|salary)")
@@ -146,7 +162,13 @@ def run(
     requested_category = _requested_transaction_category(message, by_cat)
     if requested_category is not None:
         matching_rows = db.execute(
-            select(Transaction.currency, func.coalesce(func.sum(Transaction.amount), 0))
+            select(
+                Transaction.currency,
+                func.coalesce(
+                    func.sum(case((Transaction.amount < 0, -Transaction.amount), else_=0)),
+                    0,
+                ),
+            )
             .where(
                 Transaction.user_id == user_id,
                 Transaction.occurred_on >= start,
