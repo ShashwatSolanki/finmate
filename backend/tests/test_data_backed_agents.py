@@ -7,11 +7,19 @@ from uuid import uuid4
 
 from app.agents.agentic_orchestrator import run_agentic_turn
 from app.agents.invoice_generator import run as run_invoice
-from app.agents.investment_analyser import run as run_investment
+from app.agents.investment_analyser import _extract_risk_from_context, run as run_investment
 from app.agents.types import AgentName, AgentResult
 
 
 class DataBackedAgentTests(unittest.TestCase):
+    def test_risk_profile_parser_accepts_sentence_form_from_memory(self):
+        self.assertEqual(
+            _extract_risk_from_context(
+                "The synthetic user's investment risk tolerance is conservative."
+            ),
+            "conservative",
+        )
+
     def setUp(self):
         self.db = MagicMock()
         self.user_id = uuid4()
