@@ -28,7 +28,7 @@ for i in range(10):
     cases.append({"case_id":f"NUM-INV-{i+1:02d}","group":"numerical","subgroup":"invoice_subtotal",
       "message":f"Create invoice maintenance INR {a}, SEO INR {b}, domain INR {c}.",
       "expected_agent":"invoice_generator","gold_numeric_values":[total],"tolerance":0.01,
-      "requires_invoice_artifacts":True,"gold_invoice":{"currency":"INR","subtotal":total,"line_amounts":[a,b,c]}})
+      "requires_invoice_artifacts":True,"gold_invoice":{"currency":"INR","subtotal":total,"total":total,"line_descriptions":["maintenance","SEO","domain"],"line_amounts":[a,b,c]}})
 for i in range(10):
     income,rent,emi,food,utilities=38000+2750*i,9000+375*i,2500+125*i,3000+110*i,1000+45*i
     remain=income-rent-emi-food-utilities
