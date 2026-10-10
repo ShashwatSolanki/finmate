@@ -4,7 +4,7 @@ Multi-agent personal finance assistant: **FastAPI + PostgreSQL** backend, **Reac
 
 ## What it does
 
-- **Auth** — register/login with bcrypt + JWT
+- **Auth** — register/login with bcrypt + JWT, email verification, password reset, Google OAuth, and automatic access-token refresh
 - **Onboarding** — income, goals, risk, location stored as retrievable memory
 - **Transactions** — CRUD, monthly summaries, flexible bank/export CSV import with an in-chat preview
 - **Chat** — routes to Budget Planner, Investment Analyser, or Invoice Generator
@@ -152,6 +152,7 @@ The README is the single entry point. Detailed technical material is organized b
 | [Agents](docs/agents.md) | Budget, Investment, Invoice, routing, orchestration and confidence |
 | [RAG & Memory](docs/rag.md) | Embeddings, retrieval, context construction and memory |
 | [Backend](docs/backend.md) | FastAPI, PostgreSQL, authentication, services and APIs |
+| [Security](docs/security.md) | Dependency audits, upload limits, OTP handling, deployment security and known residual risks |
 | [Invoice System](docs/invoice-system.md) | Invoice parsing, OCR, Invoice Studio and PDF/CSV exports |
 | [Frontend](docs/frontend.md) | React/Vite pages, components and API integration |
 | [Evaluation & Testing](docs/evaluation.md) | Unit/integration tests, RAG evaluation and AI regression |
@@ -177,7 +178,9 @@ Training assets live under `training/`. The detailed notebooks and scripts remai
 - Portfolio analysis is grounded in stored holdings and market-data services.
 - Invoice responses preserve structured artifacts for PDF/CSV export.
 - Confidence is an explainable heuristic, not a calibrated probability.
-- Authentication supports JWT with refresh tokens, email verification, password reset, and Google OAuth.
+- Authentication supports JWT access/refresh tokens, automatic refresh-token rotation after expiry, email verification, password reset, and Google OAuth.
+- Invoice uploads are bounded to 12 MiB and validated from file contents; images above 25 megapixels are rejected before OCR.
+- See [Security](docs/security.md) for dependency-audit instructions and security configuration notes.
 - Budgets support authenticated CRUD through `/api/budgets`, with category, positive-amount, date-period, and user-ownership validation.
 
 ## Source-of-truth rule
