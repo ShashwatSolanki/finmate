@@ -42,8 +42,8 @@ class FinanceRoutingRegressionTests(unittest.TestCase):
 
         model_reply = (
             "[AGENT: INVESTMENT]\n\n"
-            "Compound interest earns returns on prior returns.\n\n"
-            '{"intent":"investment_info","steps":["Explain compounding"],'
+            "Risk tolerance describes willingness to accept losses; time horizon is how long money can remain invested.\n\n"
+            '{"intent":"investment_info","steps":["Explain risk tolerance and time horizon"],'
             '"tools_needed":[],"notes":"educational answer"}'
         )
         with (
@@ -55,14 +55,14 @@ class FinanceRoutingRegressionTests(unittest.TestCase):
         ):
             result = run_turn(
                 self.user_id,
-                "Explain compound interest in simple terms.",
+                "Explain the difference between risk tolerance and investment time horizon.",
                 self.db,
             )
 
         generate.assert_called_once()
         budget_run.assert_not_called()
         self.assertEqual(result.metadata["source"], "llm")
-        self.assertIn("Compound interest earns returns", result.reply)
+        self.assertIn("Risk tolerance describes willingness", result.reply)
 
     def test_saved_profile_fact_bypasses_free_form_generation(self):
         context = "[Retrieved memory]\nThe synthetic user's monthly after-tax income is INR 46500."
