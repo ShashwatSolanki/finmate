@@ -26,8 +26,9 @@ class DatasetTests(unittest.TestCase):
     def test_transaction_gold_values(self):
         rows=[r for r in self.rows if r.get("subgroup")=="transaction_aggregation"]
         for r in rows:
-            recent=sum(x["amount"] for x in r["transactions_fixture"] if x["category"]=="food" and x["days_ago"]<=30)
+            recent=sum(abs(x["amount"]) for x in r["transactions_fixture"] if x["category"]=="food" and x["days_ago"]<=30)
             self.assertEqual(recent,r["gold_numeric_values"][0])
+            self.assertTrue(all(x["amount"] < 0 for x in r["transactions_fixture"]))
     def test_absent_memory_abstention(self):
         rows=[r for r in self.rows if r.get("expected_abstention")]
         self.assertEqual(len(rows),8)
