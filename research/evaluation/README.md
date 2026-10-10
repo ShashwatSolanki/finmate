@@ -13,7 +13,7 @@ The generated corpus is a pilot, not a validated gold-standard benchmark. Manual
 
 ## Existing tests versus research metrics
 
-The existing backend/scripts/evaluate_ai.py mainly checks response format, routing, confidence metadata, RAG metadata, bounded specialist order, and invoice-artifact presence. It does not grade financial answer correctness. The prior backend/scripts/evaluate_rag.py uses mocked embeddings and must not be presented as production retrieval performance. This package adds gold-number scoring, structured invoice checks for the 10 synthetic invoice-subtotal cases, relevant-memory rank, absent-memory abstention, and latency.
+The existing backend/scripts/evaluate_ai.py mainly checks response format, routing, confidence metadata, RAG metadata, bounded specialist order, and invoice-artifact presence. It does not grade financial answer correctness. The prior backend/scripts/evaluate_rag.py uses mocked embeddings and must not be presented as production retrieval performance. This package adds gold-number scoring from visible answer prose, structured invoice checks for currency/line amounts/subtotal/final total, relevant-memory rank, absent-memory abstention, and latency. Transaction-spending fixtures use negative debit amounts in line with the transactions API convention; category spend is computed from negative expense entries as positive magnitudes.
 
 ## Ablation conditions
 
