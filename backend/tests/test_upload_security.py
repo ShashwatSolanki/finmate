@@ -84,7 +84,7 @@ class UploadSecurityTests(unittest.IsolatedAsyncioTestCase):
 
         fake_fitz = SimpleNamespace(open=lambda **kwargs: FakeDoc())
         with patch.dict(sys.modules, {"fitz": fake_fitz}):
-            with self.assertRaisesRegex(ValueError, str(_MAX_PDF_RENDER_PIXELS)):
+            with self.assertRaisesRegex(ValueError, "rendering limit"):
                 _pdf_ocr_fallback(b"%PDF-1.7 test")
 
     def test_ocr_timeout_is_bounded_and_reported_as_input_error(self):
