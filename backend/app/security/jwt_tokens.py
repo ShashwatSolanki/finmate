@@ -2,7 +2,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 
 from app.config import settings
 
@@ -52,7 +53,7 @@ def decode_token(token: str, expected_type: str | None = None) -> dict | None:
             if not token_type and expected_type != "access":
                 return None
         return payload
-    except (JWTError, ValueError):
+    except (PyJWTError, ValueError, TypeError):
         return None
 
 
