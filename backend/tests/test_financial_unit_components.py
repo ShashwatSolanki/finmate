@@ -32,6 +32,7 @@ from app.services.spending_insights import category_delta_vs_prior_month
         ("My monthly income is INR 1,00,000", (Decimal("100000"), "INR")),
         ("My monthly income is INR 1 lakh", (Decimal("100000"), "INR")),
         ("My monthly income is INR 1,00,00", (None, None)),
+        ("My monthly income is INR 50,0000", (None, None)),
         ("salary $4,200", (Decimal("4200"), None)),
         ("I earn 3,500 every month", (None, None)),
         ("Nothing about income here", (None, None)),
@@ -57,6 +58,9 @@ def test_onboarding_income_supports_lakh_and_rejects_malformed_grouping() -> Non
     [
         ("Invest INR 50,000 as a lump sum.", Decimal("50000")),
         ("How should I invest in 5 years?", None),
+        ("Invest INR 1,00,000 as a lump sum.", Decimal("100000")),
+        ("Invest INR 50,0000 as a lump sum.", None),
+        ("Invest INR 1,00,00 as a lump sum.", None),
         ("Should I invest for 5 years?", None),
         ("I plan to invest INR 50,000 for 5 years.", Decimal("50000")),
         ("How should I allocate an investment of ₹1,25,000?", Decimal("125000")),
