@@ -16,7 +16,26 @@ from app.invoice.text_extract import extract_invoice_text
 
 router = APIRouter()
 
-_MAX_UPLOAD_BYTES = 12 * 1024 * 1024  # 12 MB
+_MAX_UPLOAD_BYTES = 12 * 1024 * 1024  # 12 MiB
+_UPLOAD_CHUNK_BYTES = 1024 * 1024
+
+
+async def _read_upload_limited(file: UploadFile, limit: int = _MAX_UPLOAD_BYTES) -> bytes:
+    """Read upload data incrementally and reject it before buffering beyond the limit."""
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(min(_UPLOAD_CHUNK_BYTES, limit + 1 - total))
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > limit:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="File too large (max 12 MiB).",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 class LineItem(BaseModel):
