@@ -150,7 +150,9 @@ class EmailVerificationToken(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
-    code: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
+    # Existing plaintext codes are nulled by the startup migration; new codes are hashed.
+    code: Mapped[str | None] = mapped_column(String(16), index=True, nullable=True)
+    code_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -163,7 +165,9 @@ class PasswordResetToken(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
-    code: Mapped[str] = mapped_column(String(16), index=True, nullable=False)
+    # Existing plaintext codes are nulled by the startup migration; new codes are hashed.
+    code: Mapped[str | None] = mapped_column(String(16), index=True, nullable=True)
+    code_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

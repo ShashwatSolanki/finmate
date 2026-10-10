@@ -1,4 +1,4 @@
-import { apiUrl } from "../lib/api";
+import { apiFetch } from "../lib/api";
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
@@ -33,7 +33,7 @@ export default function RegisterPage() {
     setInfo(null);
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/auth/register"), {
+      const res = await apiFetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -72,7 +72,7 @@ export default function RegisterPage() {
     setInfo(null);
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/auth/verify-email"), {
+      const res = await apiFetch("/api/auth/verify-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -99,7 +99,7 @@ export default function RegisterPage() {
     setInfo(null);
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/auth/resend-verification"), {
+      const res = await apiFetch("/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
@@ -108,7 +108,9 @@ export default function RegisterPage() {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || "Failed to resend code");
       }
-      setInfo("A new verification code has been sent to your email.");
+      const data = (await res.json()) as { verification_code_preview?: string | null };
+      setCodePreview(data.verification_code_preview ?? null);
+      setInfo("If this is local mock-email mode, use the demo code shown below; otherwise check your inbox.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to resend code");
     } finally {

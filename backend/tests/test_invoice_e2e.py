@@ -64,18 +64,14 @@ class InvoicePdfEndpointE2ETests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.content.startswith(b"%PDF-"))
 
-    def test_pdf_structured_endpoint_raises_on_empty_line_items(self):
-        # Unlike /pdf (which validates line_items via LineItem's min_length=1),
-        # /pdf/structured accepts a raw StructuredInvoice with no such
-        # constraint, so an empty list passes request validation and then
-        # build_invoice_pdf_from_structured raises a plain ValueError that
-        # the route does not catch -- it surfaces as an unhandled exception
-        # (a 500 in production) instead of a clean 4xx. This test documents
-        # that current behavior; consider catching ValueError in the route
-        # and returning HTTPException(422, ...) to match /pdf's behavior.
+    def test_pdf_structured_endpoint_rejects_empty_line_items(self):
+        # The structured endpoint must return a clean client validation response,
+        # not leak an unhandled ValueError as a server error.
         body = {"bill_to": "Acme Corp", "currency": "USD", "line_items": []}
-        with self.assertRaises(ValueError):
-            self.client.post("/api/invoices/pdf/structured", json=body)
+        response = self.client.post("/api/invoices/pdf/structured", json=body)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("line item", response.json()["detail"].lower())
 
 
 class InvoiceCsvParseEndpointE2ETests(unittest.TestCase):

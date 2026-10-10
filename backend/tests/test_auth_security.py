@@ -3,7 +3,7 @@
 import unittest
 import uuid
 from datetime import datetime, timedelta, timezone
-from jose import jwt
+import jwt
 
 from app.config import settings
 from app.security.jwt_tokens import (

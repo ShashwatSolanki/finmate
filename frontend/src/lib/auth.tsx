@@ -1,7 +1,5 @@
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { apiUrl, TOKEN_KEY } from "./api";
-
-export const REFRESH_TOKEN_KEY = "finmate_refresh_token";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { AUTH_EXPIRED_EVENT, AUTH_REFRESHED_EVENT, apiUrl, REFRESH_TOKEN_KEY, TOKEN_KEY } from "./api";
 
 type AuthContextValue = {
   token: string | null;
@@ -15,6 +13,24 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const [refreshToken, setRefreshTokenState] = useState<string | null>(() => localStorage.getItem(REFRESH_TOKEN_KEY));
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      setTokenState(localStorage.getItem(TOKEN_KEY));
+      setRefreshTokenState(localStorage.getItem(REFRESH_TOKEN_KEY));
+    };
+    const handleExpired = () => {
+      setTokenState(null);
+      setRefreshTokenState(null);
+    };
+
+    window.addEventListener(AUTH_REFRESHED_EVENT, handleRefresh);
+    window.addEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+    return () => {
+      window.removeEventListener(AUTH_REFRESHED_EVENT, handleRefresh);
+      window.removeEventListener(AUTH_EXPIRED_EVENT, handleExpired);
+    };
+  }, []);
 
   const setToken = useCallback((value: string | null, rfValue?: string | null) => {
     if (value) {

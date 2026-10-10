@@ -134,7 +134,13 @@ Invoice Studio supports:
 
 Chat-created invoices can also expose PDF/CSV export actions directly in the conversation.
 
-## 11. Important boundary
+## 11. Upload safeguards
+
+Invoice parsing endpoints read request files incrementally and reject uploads exceeding 12 MiB. Supported file type is determined from file contents rather than trusting the supplied filename or MIME type. Image processing rejects files above 25 megapixels before OCR. These limits reduce memory and decompression-bomb risk, but deployments should also enforce request-body limits and time/concurrency limits at the proxy or hosting layer.
+
+The structured PDF endpoint returns HTTP 422 for invalid structured input such as an invoice without line items, rather than exposing an unhandled server error.
+
+## 12. Important boundary
 
 The invoice agent prepares structured invoice information and user-facing guidance.
 

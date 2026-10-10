@@ -1,4 +1,4 @@
-import { apiUrl } from "../lib/api";
+import { apiFetch } from "../lib/api";
 import { FormEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -7,6 +7,7 @@ export default function ForgotPasswordPage() {
   const [step, setStep] = useState<"request" | "reset" | "complete">("request");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [codePreview, setCodePreview] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -19,7 +20,7 @@ export default function ForgotPasswordPage() {
     setInfo(null);
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/auth/forgot-password"), {
+      const res = await apiFetch("/api/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
@@ -28,6 +29,8 @@ export default function ForgotPasswordPage() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.detail || "Failed to request password reset code");
       }
+      const data = (await res.json()) as { verification_code_preview?: string | null };
+      setCodePreview(data.verification_code_preview ?? null);
       setStep("reset");
       setInfo("If an account exists for this email, a reset code has been sent.");
     } catch (err) {
@@ -54,7 +57,7 @@ export default function ForgotPasswordPage() {
 
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/auth/reset-password"), {
+      const res = await apiFetch("/api/auth/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -129,6 +132,11 @@ export default function ForgotPasswordPage() {
             <label htmlFor="emailDisplay">Email address</label>
             <input id="emailDisplay" type="email" value={email} disabled style={{ background: "#f8fafc" }} />
 
+            {codePreview && (
+              <div className="status-text" role="status">
+                <strong>Local mock-email code:</strong> {codePreview}
+              </div>
+            )}
             <label htmlFor="code">Verification / Reset Code</label>
             <input
               id="code"
@@ -171,6 +179,7 @@ export default function ForgotPasswordPage() {
               className="btn-secondary"
               onClick={() => {
                 setStep("request");
+                setCodePreview(null);
                 setError(null);
                 setInfo(null);
               }}

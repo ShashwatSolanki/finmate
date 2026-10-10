@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../lib/auth";
-import { apiUrl, authHeaders, type OnboardingProfile } from "../lib/api";
+import { apiFetch, authHeaders, type OnboardingProfile } from "../lib/api";
 import InvoiceImportPanel from "../components/InvoiceImportPanel";
 
 export default function SettingsPage() {
@@ -35,7 +35,7 @@ export default function SettingsPage() {
 
   const loadProfile = useCallback(async () => {
     if (!token) return;
-    const res = await fetch(apiUrl("/api/users/onboarding/profile"), { headers: authHeaders(token) });
+    const res = await apiFetch("/api/users/onboarding/profile", { headers: authHeaders(token) });
     if (!res.ok) return;
     const data = (await res.json()) as OnboardingProfile;
     if (!data.saved) return;
@@ -52,7 +52,7 @@ export default function SettingsPage() {
 
   async function loadPortfolio() {
     if (!token) return;
-    const res = await fetch(apiUrl("/api/portfolio/summary"), { headers: authHeaders(token) });
+    const res = await apiFetch("/api/portfolio/summary", { headers: authHeaders(token) });
     if (!res.ok) return;
     setHoldings(await res.json());
   }
@@ -73,7 +73,7 @@ export default function SettingsPage() {
     setStatus(null);
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/portfolio/holdings"), {
+      const res = await apiFetch("/api/portfolio/holdings", {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({
@@ -99,7 +99,7 @@ export default function SettingsPage() {
   async function deleteHolding(symbol: string) {
     if (!token) return;
     setError(null);
-    const res = await fetch(apiUrl(`/api/portfolio/holdings/${encodeURIComponent(symbol)}`), {
+    const res = await apiFetch(`/api/portfolio/holdings/${encodeURIComponent(symbol)}`, {
       method: "DELETE",
       headers: authHeaders(token),
     });
@@ -134,7 +134,7 @@ export default function SettingsPage() {
         .split(",")
         .map((g) => g.trim())
         .filter(Boolean);
-      const res = await fetch(apiUrl("/api/users/onboarding"), {
+      const res = await apiFetch("/api/users/onboarding", {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({
@@ -169,7 +169,7 @@ export default function SettingsPage() {
     setStatus(null);
     setLoading(true);
     try {
-      const res = await fetch(apiUrl("/api/transactions/import/csv"), {
+      const res = await apiFetch("/api/transactions/import/csv", {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({ csv_text: csvText }),
@@ -195,7 +195,7 @@ export default function SettingsPage() {
     if (!token) return;
     setError(null);
     try {
-      const res = await fetch(apiUrl("/api/invoices/pdf"), {
+      const res = await apiFetch("/api/invoices/pdf", {
         method: "POST",
         headers: authHeaders(token),
         body: JSON.stringify({

@@ -9,9 +9,9 @@ FinMate uses multiple levels of validation:
 3. deterministic RAG evaluation
 4. end-to-end AI regression evaluation
 
-These should be kept separate because they measure different things.
+These should be kept separate because they measure different things. Security regression coverage includes OTP hashing, upload-size enforcement, and rejection of files whose contents do not match their supplied type.
 
-GitHub Actions runs the backend pytest suite plus frontend Vitest tests and the Vite production build for pull requests and pushes to `main` / `deploy/free-staging-setup`. See [the CI workflow](../.github/workflows/backend-tests.yml). The Resend and staging-settings tests use mocked HTTP/config values; they do not require cloud credentials or provision hosted services.
+GitHub Actions runs Python dependency auditing, backend pytest, the production-dependency npm audit, frontend Vitest tests, and the Vite production build for pull requests and pushes to `main` / `deploy/free-staging-setup`. See [the CI workflow](../.github/workflows/backend-tests.yml). The Resend and staging-settings tests use mocked HTTP/config values; they do not require cloud credentials or provision hosted services.
 
 ## 2. Unit tests
 
