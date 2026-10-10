@@ -2,16 +2,26 @@
 import json
 from collections import Counter
 from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 HERE=Path(__file__).resolve().parent
 class DatasetTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        path=HERE/"benchmark.jsonl"
-        if not path.exists():
-            import subprocess,sys
-            subprocess.run([sys.executable,str(HERE/"generate_benchmark.py")],check=True)
+        # Never overwrite a developer's untracked benchmark or preserved results.
+        cls._tempdir = tempfile.TemporaryDirectory(prefix="finmate-benchmark-tests-")
+        path = Path(cls._tempdir.name) / "benchmark.jsonl"
+        subprocess.run(
+            [sys.executable, str(HERE / "generate_benchmark.py"), "--output", str(path)],
+            check=True,
+        )
         cls.rows=[json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tempdir.cleanup()
     def test_120_case_balance(self):
         self.assertEqual(len(self.rows),120)
         self.assertEqual(len({r["case_id"] for r in self.rows}),120)
