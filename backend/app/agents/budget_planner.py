@@ -32,7 +32,7 @@ def _parse_labeled_amount(message: str, labels: str) -> Decimal | None:
 
 def _currency_codes(message: str) -> set[str]:
     """Return normalized explicit currency markers present in an arithmetic request."""
-    markers = re.findall(r"\\b(?:INR|USD|EUR|GBP|Rs\\.?)\\b|[₹$€£]", message, re.I)
+    markers = re.findall(r"\b(?:INR|USD|EUR|GBP|Rs\.?)\b|[₹$€£]", message, re.I)
     aliases = {
         "INR": "INR", "RS": "INR", "RS.": "INR", "₹": "INR",
         "USD": "USD", "$": "USD",
