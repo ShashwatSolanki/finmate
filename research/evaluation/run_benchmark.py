@@ -106,6 +106,17 @@ def is_synthetic_eval_user(user, user_id):
     )
 
 
+def access_token_matches_user_id(token, user_id):
+    """Require an API access token to belong to the synthetic eval principal."""
+    from uuid import UUID
+    from app.security.jwt_tokens import decode_token_subject
+    try:
+        expected_user_id = UUID(user_id)
+    except (TypeError, ValueError):
+        return False
+    return decode_token_subject(token) == expected_user_id
+
+
 def reset_and_seed(user_id,case):
     from uuid import UUID
     from app.db.models import Budget,ChatSession,InvestmentHolding,MemoryChunk,Transaction,User
@@ -196,11 +207,19 @@ def run():
         from app.config import settings
         try: require_evaluation_database(settings.database_url)
         except ValueError as exc: raise SystemExit(str(exc)) from exc
+        from uuid import UUID
+        from app.security.jwt_tokens import create_access_token
+        try:
+            eval_user_id = UUID(args.user_id)
+        except ValueError as exc:
+            raise SystemExit(f"Invalid --user-id UUID: {args.user_id}") from exc
         if not args.token:
-            from uuid import UUID
-            from app.security.jwt_tokens import create_access_token
-            try: args.token=create_access_token(UUID(args.user_id))
-            except ValueError as exc: raise SystemExit(f"Invalid --user-id UUID: {args.user_id}") from exc
+            args.token = create_access_token(eval_user_id)
+        elif not access_token_matches_user_id(args.token, args.user_id):
+            raise SystemExit(
+                "The supplied --token is not a valid access token for --user-id. "
+                "Use the local evaluation user's token and the same JWT_SECRET as the API."
+            )
     api=httpx.Client(base_url=args.base_url.rstrip("/"),headers={"Authorization":f"Bearer {args.token}","Content-Type":"application/json"},timeout=180.0) if api_mode else None
     rows=[]
     try:
