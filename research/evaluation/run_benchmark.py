@@ -82,6 +82,26 @@ def memory_answer_matches(text, expected, tol=0.01):
         )
     return expected.casefold() in visible.casefold()
 
+_ABSTENTION_CUES = (
+    "not stored",
+    "not in your profile",
+    "don't have",
+    "do not have",
+    "not available",
+    "can't determine",
+    "cannot determine",
+    "don't see",
+    "do not see",
+    "not found",
+    "not provided",
+    "unable to tell",
+)
+
+def abstention_answer_matches(reply):
+    """Credit abstention only when the visible answer itself abstains."""
+    visible = visible_answer_text(reply).lower()
+    return any(cue in visible for cue in _ABSTENTION_CUES)
+
 def invoice_payload_correct(meta,gold,tol=0.01):
     """Validate invoice currency, line items, subtotal, and final total."""
     raw=meta.get("invoice_payload")
@@ -265,9 +285,7 @@ def run():
             invoice_ok=invoice_payload_correct(meta,case["gold_invoice"],tol) if case.get("gold_invoice") else None
             abstention_ok=None
             if case.get("expected_abstention"):
-                low=reply.lower()
-                cues=("not stored","not in your profile","don't have","do not have","not available","can't determine","cannot determine","don't see","do not see","not found","not provided","unable to tell")
-                abstention_ok=any(cue in low for cue in cues)
+                abstention_ok=abstention_answer_matches(reply)
             checks=[]
             for val in (numeric_ok,memory_ok,route_ok,agentic_ok,artifacts_ok,invoice_ok,abstention_ok):
                 if val is not None: checks.append(val)
