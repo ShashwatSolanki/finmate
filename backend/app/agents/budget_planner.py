@@ -135,8 +135,11 @@ def run(
     ).all()
 
     by_cat: dict[str, Decimal] = {}
+    category_display: dict[str, str] = {}
     for cat, total in rows:
-        key = (cat or "uncategorized").strip().casefold()
+        display = (cat or "uncategorized").strip()
+        key = display.casefold()
+        category_display.setdefault(key, display)
         by_cat[key] = by_cat.get(key, Decimal("0")) + Decimal(str(total))
 
     # Category-specific totals are calculated by SQL, not inferred by the model.
@@ -185,7 +188,7 @@ def run(
 
     total_flow = sum(by_cat.values(), start=Decimal("0"))
     top = sorted(by_cat.items(), key=lambda x: abs(x[1]), reverse=True)[:8]
-    lines = [f"- {k}: {v} {currency}" for k, v in top]
+    lines = [f"- {category_display.get(k, k)}: {v} {currency}" for k, v in top]
 
     if not lines:
         data_summary = "No transactions found in the last 30 days."
