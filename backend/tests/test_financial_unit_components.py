@@ -48,6 +48,8 @@ def test_finance_context_prefers_onboarding_context() -> None:
 def test_onboarding_income_supports_lakh_and_rejects_malformed_grouping() -> None:
     assert extract_monthly_income("Help me budget", "monthly income: 1 lakh INR") == (Decimal("100000"), "INR")
     assert extract_monthly_income("Help me budget", "monthly income: 1,00,00 INR") == (None, None)
+    assert extract_monthly_income("Help me budget", "monthly income: 1 lakh and rent INR 25,000") == (Decimal("100000"), None)
+    assert extract_monthly_income("Help me budget", "monthly income: 1000 ₹") == (Decimal("1000"), "INR")
 
 
 @pytest.mark.parametrize(
