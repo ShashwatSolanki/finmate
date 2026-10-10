@@ -206,7 +206,19 @@ def extract_text_from_pdf(data: bytes) -> tuple[str, list[str]]:
 
 def extract_text_from_image(data: bytes) -> tuple[str, list[str]]:
     warnings: list[str] = []
-    img = Image.open(io.BytesIO(data))
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            if (image.format or "").upper() not in _SUPPORTED_IMAGE_FORMATS:
+                raise ValueError("Unsupported image format. Upload PNG, JPEG, WebP, TIFF, or BMP.")
+            if image.width <= 0 or image.height <= 0 or image.width * image.height > _MAX_IMAGE_PIXELS:
+                raise ValueError("Image dimensions exceed the supported limit of 25 megapixels.")
+            image.load()
+            img = image.copy()
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ValueError("Image dimensions exceed the supported processing limit.") from exc
+    except (OSError, SyntaxError) as exc:
+        raise ValueError("The uploaded file is not a valid supported image.") from exc
+
     text = _ocr_image(img)
     if len(text.strip()) < 10:
         warnings.append("OCR returned very little text — use a clearer, higher-resolution image.")
