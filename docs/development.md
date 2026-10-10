@@ -6,7 +6,7 @@ Typical local requirements:
 
 - Docker / Docker Compose
 - Python 3.11+
-- Node.js 20+
+- Node.js 22.12+ (required by the Vite 8 / Vitest 5 toolchain)
 - PostgreSQL through Docker Compose
 
 ## 2. Start the database
