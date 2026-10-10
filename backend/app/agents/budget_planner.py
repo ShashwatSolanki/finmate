@@ -72,12 +72,14 @@ def _requested_transaction_category(message: str, category_totals: dict[str, Dec
     if not asks_for_total:
         return None
 
-    for category in sorted(category_totals, key=len, reverse=True):
-        if category != "uncategorized" and re.search(
-            rf"(?<![a-z]){re.escape(category)}(?![a-z])", request
-        ):
-            return category
-    return None
+    matches = [
+        category
+        for category in sorted(category_totals, key=len, reverse=True)
+        if category != "uncategorized"
+        and re.search(rf"(?<![a-z]){re.escape(category)}(?![a-z])", request)
+    ]
+    # Do not silently answer a multi-category question with only one category.
+    return matches[0] if len(matches) == 1 else None
 
 
 def _format_amount(value: Decimal) -> str:
