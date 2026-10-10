@@ -157,3 +157,17 @@ The 2026-10-10 21-case pilot recorded 21/21 HTTP successes and automated task co
 The `FINMATE_USE_RAG` switch exists to support a semantic-retrieval ablation; it is enabled by default. The old `backend/scripts/evaluate_rag.py` fixture uses mocked embeddings and remains an implementation sanity check—not a live retrieval-quality result. Likewise, `backend/scripts/evaluate_ai.py` checks the response contract and routing metadata, but does not establish financial answer correctness.
 
 **Safety requirement:** use a disposable local evaluation database whose name includes `eval` or `test`, and a fresh synthetic user ID. The runner refuses destructive resets against other database names, bootstraps a non-login evaluation identity when needed, and mints a short-lived local access token if one is not supplied. This guard is a backstop, not a substitute for confirming the database is disposable. Save each run's raw JSONL output and environment settings, and never run the destructive reset option against staging/production or a real user's account. Read the research evaluation README for exact commands and limitations.
+
+
+## Latest validation run (2026-10-11)
+
+A fresh 21-case stratified API pilot was run against application commit `54b3fc0147637e91ff435857922a3e8031c3861a` using condition `full`, a fresh synthetic user, and the dedicated disposable `finmate_eval` PostgreSQL database. Server flags were `FINMATE_USE_RAG=true`, `FINMATE_AGENTIC_MODE=true`, `FINMATE_USE_LLM=true`, and `FINMATE_AGENTIC_SYNTHESIS=false`.
+
+- HTTP success: **21/21**
+- Automated task completion: **21/21**
+- Runner-reported failed cases: **0**
+- Dataset used: local `research/evaluation/benchmark-final-review.jsonl`
+- Raw results: local `research/evaluation/results/final-pilot-20261011-021636.jsonl`
+- Manifest: local `research/evaluation/results/final-pilot-20261011-021636.manifest.json`
+
+The raw results, manifest, and generated dataset are local evaluation artifacts and are not committed by this documentation update; preserve them for audit and reproducibility. This pilot exercised the scoring checks configured for its 21 selected cases. It is not a human audit of every claim and does not establish population-level financial correctness. Two non-fatal environment warnings appeared: a `RequestsDependencyWarning` about installed HTTP-related dependency versions and a Transformers warning that `TRANSFORMERS_CACHE` is deprecated in favor of `HF_HOME`. Neither stopped the run.
