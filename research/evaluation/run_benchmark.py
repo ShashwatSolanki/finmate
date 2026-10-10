@@ -16,7 +16,7 @@ def require_evaluation_database(database_url):
     """Reject destructive benchmark runs outside a dedicated eval/test database."""
     from sqlalchemy.engine import make_url
     database_name=(make_url(database_url).database or "").lower()
-    if "eval" not in database_name and "test" not in database_name:
+    if not re.search(r"(?:^|[^a-z0-9])(?:eval|test)(?:[^a-z0-9]|$)", database_name):
         raise ValueError(f"Refusing destructive evaluation: database name {database_name!r} must contain 'eval' or 'test'. Use a dedicated disposable database.")
     return database_name
 
