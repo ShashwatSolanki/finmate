@@ -136,3 +136,12 @@ AI regression
    ↓
 frontend build
 ```
+
+
+## 10. Research benchmark (separate from regression tests)
+
+The controlled research benchmark lives in [`research/evaluation/`](../research/evaluation/README.md). It includes a deterministic synthetic dataset generator, per-case API/direct-model runner, gold-number and memory scoring, retrieval Hit@5/MRR measurements, latency capture, and paired bootstrap summaries. It is deliberately separate from CI because the runner can reset a dedicated test account's chat history, memory, transactions, budgets, and holdings before each case.
+
+The `FINMATE_USE_RAG` switch exists to support a semantic-retrieval ablation; it is enabled by default. The old `backend/scripts/evaluate_rag.py` fixture uses mocked embeddings and remains an implementation sanity check—not a live retrieval-quality result. Likewise, `backend/scripts/evaluate_ai.py` checks the response contract and routing metadata, but does not establish financial answer correctness.
+
+**Safety requirement:** use a disposable local evaluation database and synthetic test user, save each run's raw JSONL output and environment settings, and never run the destructive reset option against staging/production or a real user's account. Read the research evaluation README for exact commands and limitations.
