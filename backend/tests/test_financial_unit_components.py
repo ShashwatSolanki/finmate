@@ -29,6 +29,9 @@ from app.services.spending_insights import category_delta_vs_prior_month
     ("message", "expected"),
     [
         ("My monthly income is INR 75,000", (Decimal("75000"), "INR")),
+        ("My monthly income is INR 1,00,000", (Decimal("100000"), "INR")),
+        ("My monthly income is INR 1 lakh", (Decimal("100000"), "INR")),
+        ("My monthly income is INR 1,00,00", (None, None)),
         ("salary $4,200", (Decimal("4200"), None)),
         ("I earn 3,500 every month", (None, None)),
         ("Nothing about income here", (None, None)),
@@ -41,6 +44,10 @@ def test_finance_context_extracts_income_and_currency(message: str, expected: tu
 
 def test_finance_context_prefers_onboarding_context() -> None:
     assert extract_monthly_income("Help me budget", "monthly income: 80000 INR") == (Decimal("80000"), "INR")
+
+def test_onboarding_income_supports_lakh_and_rejects_malformed_grouping() -> None:
+    assert extract_monthly_income("Help me budget", "monthly income: 1 lakh INR") == (Decimal("100000"), "INR")
+    assert extract_monthly_income("Help me budget", "monthly income: 1,00,00 INR") == (None, None)
 
 
 @pytest.mark.parametrize(
