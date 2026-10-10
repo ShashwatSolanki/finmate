@@ -4,7 +4,7 @@ This directory is for research evaluation, not financial advice. Use a dedicated
 
 ## Files
 
-- Run **generate_benchmark.py** to create **benchmark.jsonl**: 120 synthetic pilot tasks (40 numerical, 40 memory—including 8 absent-memory abstention cases—and 40 routing/orchestration).
+- Run **generate_benchmark.py** to create 120 synthetic pilot tasks (40 numerical, 40 memory—including 8 absent-memory abstention cases—and 40 routing/orchestration). If `benchmark.jsonl` already exists, the generator refuses to overwrite it unless you supply `--output`; use a distinct filename to preserve older local datasets and compare their SHA-256 manifests.
 - **run_benchmark.py**: API and direct-local-Qwen runner; saves raw case-level outputs and a manifest.
 - **summarize_results.py**: rates, bootstrap confidence intervals, paired comparisons, and a human unsupported-claim annotation template.
 - **test_*.py**: unit tests for scoring helpers, database-safety checks, and generated-case integrity.
@@ -69,7 +69,7 @@ Outputs are summary.md, summary.json, and claims_annotation_template.csv.
 
 The full API pilot exposed cases where the general LLM path answered budget questions without calling the data-backed budget specialist. Budget classification now routes through the specialist, and explicitly itemized income-minus-expenses questions plus category-specific transaction totals use deterministic calculations. This prevents model-generated guesses from being scored as account data. Other budget requests may still use the LLM to explain database-derived summaries.
 
-Income and investment amount parsers must require explicit labels instead of treating every currency-prefixed number as salary or investable capital. This is particularly important for multi-domain prompts containing invoice line amounts alongside budget or investment requests; a currency amount alone does not establish what the amount represents.
+Income and investment amount parsers must require explicit labels instead of treating every currency-prefixed number as salary or investable capital. Deterministic balance arithmetic must also abstain when any additional numeric amount cannot be mapped to a supported expense label, even when that amount has no currency marker. This is particularly important for multi-domain prompts containing invoice line amounts alongside budget or investment requests; an amount alone does not establish what the amount represents.
 
 Natural-language invoice requests can contain multiple line items joined by "plus". Regression coverage verifies that "configuration INR 400 plus support INR 500" is represented as two line items totaling INR 900, even when the invoice is requested in a longer multi-domain prompt. The answer's HTTP success or presence of an invoice export payload is not enough: item descriptions, amounts, currency, subtotal, and total must match the requested invoice.
 
