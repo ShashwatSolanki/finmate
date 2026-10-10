@@ -146,6 +146,8 @@ For local latency investigations, FinMate logs model-load/cache, prompt-preparat
 
 When the budget planner has no recent transaction categories, it uses its deterministic no-data response instead of invoking local generation to repeat that there is no transaction history. The LLM path remains enabled when transaction data exists.
 
+Income and investment amount extraction must require explicit semantic labels. An arbitrary currency amount (for example, a client invoice value) must not be interpreted as monthly income or investable capital; the agentic smoke test exposed this cross-domain parsing risk, so regression tests cover it.
+
 For a controlled agentic-latency experiment, `FINMATE_AGENTIC_SYNTHESIS=false` bypasses only the final LLM synthesis call after specialist execution. The default remains `true`; compare both settings on the same stratified cases and manually review response quality before changing the default.
 
 The `FINMATE_USE_RAG` switch exists to support a semantic-retrieval ablation; it is enabled by default. The old `backend/scripts/evaluate_rag.py` fixture uses mocked embeddings and remains an implementation sanity check—not a live retrieval-quality result. Likewise, `backend/scripts/evaluate_ai.py` checks the response contract and routing metadata, but does not establish financial answer correctness.
