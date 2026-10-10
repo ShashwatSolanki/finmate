@@ -87,6 +87,16 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(sum(row["group"] == "memory" for row in selected), 5)
         self.assertEqual(sum(row["group"] == "routing" for row in selected), 10)
 
+    def test_token_must_match_selected_eval_user(self):
+        from uuid import uuid4
+        from app.security.jwt_tokens import create_access_token
+
+        user_id = uuid4()
+        token = create_access_token(user_id)
+        self.assertTrue(runner.access_token_matches_user_id(token, str(user_id)))
+        self.assertFalse(runner.access_token_matches_user_id(token, str(uuid4())))
+        self.assertFalse(runner.access_token_matches_user_id("not-a-token", str(user_id)))
+
     def test_synthetic_eval_identity_guard(self):
         from types import SimpleNamespace
         from uuid import uuid4
