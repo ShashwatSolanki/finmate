@@ -39,6 +39,51 @@ class AgenticPlannerTests(unittest.TestCase):
         self.assertIn("Verified investment observation", reply)
         self.assertIn("deterministic synthesis fallback", reply)
 
+    def test_synthesis_prompt_matches_all_specialist_tag_validation(self):
+        from app.ml import finmate
+
+        observations = [
+            AgentResult(
+                agent=AgentName.BUDGET_PLANNER,
+                reply="[AGENT: BUDGET]\nVerified budget observation",
+                planned_steps=[],
+                metadata={},
+            ),
+            AgentResult(
+                agent=AgentName.INVESTMENT_ANALYSER,
+                reply="[AGENT: INVESTMENT]\nIllustrative investment allocation",
+                planned_steps=[],
+                metadata={},
+            ),
+        ]
+        synthesized = (
+            "[AGENT: BUDGET]\n\n"
+            "Budget summary: no transactions are available.\n\n"
+            "[AGENT: INVESTMENT]\n"
+            "The moderate-risk allocation is illustrative, not personalized.\n\n"
+            '{"intent":"multi_agent_finance_task","steps":["Review budget","Review allocation"],'
+            '"tools_needed":["specialist_agents"],"notes":"synthesized verified observations"}'
+        )
+
+        with (
+            patch("app.agents.agentic_orchestrator.settings.finmate_use_llm", True),
+            patch("app.agents.agentic_orchestrator.settings.finmate_agentic_synthesis", True),
+            patch.object(finmate, "llm_available", return_value=True),
+            patch.object(finmate, "generate", return_value=synthesized) as generate,
+        ):
+            reply = _synthesize(
+                "Review my budget and suggest investments.",
+                observations,
+                AgentName.BUDGET_PLANNER,
+            )
+
+        prompt = generate.call_args.args[0]
+        self.assertEqual(generate.call_args.kwargs["max_new_tokens"], 256)
+        self.assertIn("clearly labelled section for every specialist", prompt)
+        self.assertIn("[AGENT: INVESTMENT]", reply)
+        self.assertIn("illustrative, not personalized", reply)
+        self.assertNotIn("deterministic synthesis fallback", reply)
+
     def test_single_domain_request_stays_on_existing_router(self):
         self.assertIsNone(build_plan("How much did I spend on groceries?"))
 
