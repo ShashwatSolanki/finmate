@@ -64,7 +64,7 @@ training/data/final_ai_eval.jsonl
 The evaluator checks:
 
 - HTTP success
-- expected specialist routing
+- expected specialist routing and actual execution-path metadata
 - reply-format compliance
 - confidence metadata
 - observed RAG usage
@@ -140,7 +140,7 @@ frontend build
 
 ## 10. Research benchmark (separate from regression tests)
 
-The controlled research benchmark lives in [`research/evaluation/`](../research/evaluation/README.md). It includes a deterministic synthetic dataset generator, per-case API/direct-model runner, gold-number and memory scoring, retrieval Hit@5/MRR measurements, latency capture, and paired bootstrap summaries. Numeric saved-memory answers are parsed from user-visible reply text with grouping-separator tolerance and numeric-token matching, rather than raw substring matching or metadata-only evidence. It is deliberately separate from CI because the runner can reset a dedicated test account's chat history, memory, transactions, budgets, and holdings before each case.
+The controlled research benchmark lives in [`research/evaluation/`](../research/evaluation/README.md). It includes a deterministic synthetic dataset generator, per-case API/direct-model runner, gold-number and memory scoring, retrieval Hit@5/MRR measurements, latency capture, and paired bootstrap summaries. The summary also scores actual execution path from trusted runtime metadata separately from the agent label returned in the response. Numeric saved-memory answers are parsed from user-visible reply text with grouping-separator tolerance and numeric-token matching, rather than raw substring matching or metadata-only evidence. It is deliberately separate from CI because the runner can reset a dedicated test account's chat history, memory, transactions, budgets, and holdings before each case.
 
 For local latency investigations, FinMate logs model-load/cache, prompt-preparation, generation, decode, and postprocessing timings, plus token counts and execution device at info level. These diagnostics omit prompt and financial content, leaving warning logs for actionable problems.
 

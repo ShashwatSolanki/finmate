@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse, csv, json, random, statistics
 from pathlib import Path
 
-METRICS=["http_ok","route_correct","numeric_correct","memory_correct","abstention_correct","agentic_correct","invoice_artifacts_present","invoice_payload_correct","task_completed","retrieval_hit_at_5"]
+METRICS=["http_ok","route_correct","execution_path_correct","numeric_correct","memory_correct","abstention_correct","agentic_correct","invoice_artifacts_present","invoice_payload_correct","task_completed","retrieval_hit_at_5"]
 
 def load(path): return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 def binval(v): return isinstance(v,bool) or (isinstance(v,(int,float)) and not isinstance(v,bool) and v in (0,1))
@@ -27,7 +27,7 @@ def summarize(rows):
     out["by_group"]={}
     for group in sorted(set(r.get("group","unknown") for r in rows)):
         g=[r for r in rows if r.get("group")==group]
-        out["by_group"][group]={"cases":len(g),"task_completion":rate(g,"task_completed"),"numeric_accuracy":rate(g,"numeric_correct"),"memory_accuracy":rate(g,"memory_correct"),"route_accuracy":rate(g,"route_correct"),"agentic_accuracy":rate(g,"agentic_correct"),"abstention_accuracy":rate(g,"abstention_correct"),"invoice_payload_accuracy":rate(g,"invoice_payload_correct")}
+        out["by_group"][group]={"cases":len(g),"task_completion":rate(g,"task_completed"),"numeric_accuracy":rate(g,"numeric_correct"),"memory_accuracy":rate(g,"memory_correct"),"route_accuracy":rate(g,"route_correct"),"execution_path_accuracy":rate(g,"execution_path_correct"),"agentic_accuracy":rate(g,"agentic_correct"),"abstention_accuracy":rate(g,"abstention_correct"),"invoice_payload_accuracy":rate(g,"invoice_payload_correct")}
     return out
 def paired(a,b,key,n=10000,seed=20261011):
     ma={r["case_id"]:r.get(key) for r in a}; mb={r["case_id"]:r.get(key) for r in b}

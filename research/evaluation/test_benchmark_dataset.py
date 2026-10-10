@@ -79,4 +79,20 @@ class DatasetTests(unittest.TestCase):
         for r in self.rows:
             if r.get("expected_agent"): self.assertIn(r["expected_agent"],agents)
             self.assertLessEqual(len(r.get("expected_agents",[])),3)
+
+    def test_expected_execution_paths_match_case_intent(self):
+        numerical=[r for r in self.rows if r["group"]=="numerical"]
+        memory=[r for r in self.rows if r["group"]=="memory"]
+        general=[r for r in self.rows if r.get("subgroup")=="general_education"]
+        single=[r for r in self.rows if r.get("subgroup")=="single_specialist"]
+        multi=[r for r in self.rows if r.get("subgroup") in {"budget_investment","budget_invoice","three_domain"}]
+        self.assertTrue(all(r.get("expected_execution_path")=="specialist" for r in numerical))
+        self.assertTrue(all(r.get("expected_execution_path")=="profile_memory" for r in memory))
+        self.assertEqual(len(general),3)
+        self.assertTrue(all(r.get("expected_agent") is None for r in general))
+        self.assertTrue(all(r.get("expected_execution_path")=="general_llm" for r in general))
+        self.assertEqual(len(single),17)
+        self.assertTrue(all(r.get("expected_execution_path")=="specialist" for r in single))
+        self.assertEqual(len(multi),20)
+        self.assertTrue(all(r.get("expected_execution_path")=="agentic" for r in multi))
 if __name__=="__main__": unittest.main()
