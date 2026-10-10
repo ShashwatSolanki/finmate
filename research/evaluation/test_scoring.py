@@ -38,7 +38,32 @@ class ScoreTests(unittest.TestCase):
         self.assertFalse(runner.memory_answer_matches("Your saved amount is INR 146,500.", "46500", .01))
 
     def test_memory_text_answer_matches_case_insensitively(self):
-        self.assertTrue(runner.memory_answer_matches("Your risk tolerance is Conservative.", "conservative", .01))
+        self.assertTrue(
+            runner.memory_answer_matches(
+                "Your saved investment risk tolerance is Conservative.", "conservative", .01
+            )
+        )
+
+    def test_memory_risk_score_rejects_unverified_default(self):
+        self.assertFalse(
+            runner.memory_answer_matches(
+                "I couldn't verify your saved risk tolerance. The moderate-risk split is illustrative.",
+                "moderate",
+                .01,
+            )
+        )
+
+    def test_memory_horizon_score_requires_saved_horizon_context(self):
+        self.assertTrue(
+            runner.memory_answer_matches(
+                "Your saved investment time horizon is 5 years.", "5 years", .01
+            )
+        )
+        self.assertFalse(
+            runner.memory_answer_matches(
+                "A five-year time horizon may suit some investors.", "5 years", .01
+            )
+        )
     def test_invoice_payload_correct(self):
         meta={"invoice_payload":'{"currency":"INR","subtotal":"153.00","total":"153.00","line_items":[{"amount":"49.00"},{"amount":"79.00"},{"amount":"25.00"}]}'}
         self.assertTrue(runner.invoice_payload_correct(meta,{"currency":"INR","subtotal":153,"total":153,"line_amounts":[49,79,25]}))
