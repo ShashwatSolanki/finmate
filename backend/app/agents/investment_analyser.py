@@ -62,7 +62,7 @@ def _extract_original_request(message: str) -> str:
 
 def _extract_lump_sum(message: str) -> Decimal | None:
     """Extract an amount only when the wording ties it to investing."""
-    amount_pattern = r"(\d[\d,]*(?:\.\d{1,2})?)\s*(k|m|lakh|lakhs)?"
+    amount_pattern = r"((?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d{1,2})?)(?:\s*(k|m|lakh|lakhs)?)(?![\d,])"
     currency_pattern = r"(?:₹|\$|€|£|\bINR\b|\bUSD\b|\bEUR\b|\bGBP\b)?\s*"
     investment_label = (
         r"\b(?:invest(?:ing)?|investment(?:\s+amount)?|lump[ -]?sum(?:\s+investment)?|"
