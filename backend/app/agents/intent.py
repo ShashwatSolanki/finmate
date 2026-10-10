@@ -38,8 +38,8 @@ _GENERAL_EDUCATION = re.compile(
     re.I,
 )
 _PERSONAL_OR_ACTION = re.compile(
-    r"\b(?:my|our|saved|recorded|previously|recent|current|latest|show|review|"
-    r"analy[sz]e|compare|calculate|how much|track|buy|sell|investable|allocate|"
+    r"\b(?:i|me|my|our|saved|recorded|previously|recent|current|latest|show|review|"
+    r"create|make|plan|set|build|generate|draft|prepare|analy[sz]e|compare|calculate|how much|track|buy|sell|investable|allocate|"
     r"allocation|spend|spent|transactions?|holdings?|ticker|quote|price|surplus|"
     r"income|salary|rent|expenses?|budget cap|invoice amount)\b",
     re.I,
