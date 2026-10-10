@@ -109,8 +109,15 @@ def invoice_payload_correct(meta,gold,tol=0.01):
     try:
         payload=json.loads(raw) if isinstance(raw,str) else raw
         if not isinstance(payload,dict) or str(payload.get("currency","")).upper()!=str(gold.get("currency","")).upper(): return False
-        amounts=sorted(round(float(x.get("amount",0)),2) for x in payload.get("line_items",[]))
+        line_items=payload.get("line_items",[])
+        amounts=sorted(round(float(x.get("amount",0)),2) for x in line_items)
         expected=sorted(round(float(x),2) for x in gold.get("line_amounts",[]))
+        expected_descriptions=gold.get("line_descriptions")
+        if expected_descriptions is not None:
+            actual_descriptions=sorted(str(x.get("description","")).strip().casefold() for x in line_items)
+            expected_descriptions=sorted(str(x).strip().casefold() for x in expected_descriptions)
+            if actual_descriptions != expected_descriptions:
+                return False
         subtotal=payload.get("subtotal")
         actual_total=payload.get("total")
         expected_subtotal=gold.get("subtotal")
