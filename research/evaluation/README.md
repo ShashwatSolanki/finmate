@@ -23,7 +23,7 @@ Set these variables before restarting the API:
 - No semantic retrieval: FINMATE_USE_RAG=false
 - No multi-agent planner: FINMATE_AGENTIC_MODE=false
 - No LLM generation: FINMATE_USE_LLM=false
-- Deterministic agentic synthesis experiment: FINMATE_AGENTIC_SYNTHESIS=false. This disables only the final synthesis model call; specialist execution and their own applicable paths remain enabled. The default is true, preserving current behavior.
+- Deterministic agentic synthesis: FINMATE_AGENTIC_SYNTHESIS=false (default). This skips only the final synthesis model call; specialist execution and their own applicable paths remain enabled. Set FINMATE_AGENTIC_SYNTHESIS=true only when explicitly testing final synthesis.
 - Direct local model: --condition llm_only, which bypasses API tools, memory, and specialist orchestration.
 
 FINMATE_USE_RAG defaults to true. Disabling it does not disable recent-conversation or onboarding context by itself. The runner clears test-user state and seeds memory rows with source research_eval; use only a dedicated disposable database. The direct-model baseline is not equivalent to an external general-purpose LLM, and this limitation should be stated.
@@ -99,7 +99,7 @@ is present.
 
 On the 21-case stratified pilot, synthesis disabled and enabled both recorded 21/21 HTTP successes and 21/21 automated task completions. Invoice payload correctness was 2/2 in both result files. With synthesis disabled, multi-agent mean latency was 0.036 seconds (max 0.038 seconds); with synthesis enabled, it was 50.197 seconds (max 64.632 seconds), and p95 latency across all cases rose from 0.0543 seconds to 57.2059 seconds. In the reviewed multi-agent outputs, enabling synthesis did not materially change the returned answer: the deterministic fallback text was returned, while invoice references naturally differed between runs.
 
-The synthesis prompt previously requested only the primary agent tag on the first line, while the acceptance guard required a tag for every specialist. This mismatch could cause generated output to be rejected after paying local inference latency. The prompt has been aligned with the acceptance contract, and synthesis generation is now capped at 256 new tokens. Validate with a mocked regression test and a single live multi-agent smoke before repeating any pilot. Do not claim synthesis improves answer quality until the newly accepted generated replies have been inspected. Keep the default behavior unchanged until that validation is complete.
+The synthesis prompt previously requested only the primary agent tag on the first line, while the acceptance guard required a tag for every specialist. The prompt was aligned with the acceptance contract and a mocked regression test verifies the intended format, but the follow-up live three-agent smoke still took 44.351 seconds and returned the deterministic fallback. Both the synthesis-off and synthesis-on pilot had 21/21 HTTP successes and task completions, but synthesis-on multi-agent mean latency was 50.197 seconds versus 0.036 seconds off, with no material answer improvement in reviewed outputs. Therefore final synthesis is opt-in and defaults to false. Do not enable it by default until diagnostics show that generated replies are accepted and improve answer quality at an acceptable latency.
 
 ## Metrics
 
