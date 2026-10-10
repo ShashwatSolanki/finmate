@@ -69,6 +69,8 @@ Outputs are summary.md, summary.json, and claims_annotation_template.csv.
 
 The full API pilot exposed cases where the general LLM path answered budget questions without calling the data-backed budget specialist. Budget classification now routes through the specialist, and explicitly itemized income-minus-expenses questions plus category-specific transaction totals use deterministic calculations. This prevents model-generated guesses from being scored as account data. Other budget requests may still use the LLM to explain database-derived summaries.
 
+Income and investment amount parsers must require explicit labels instead of treating every currency-prefixed number as salary or investable capital. This is particularly important for multi-domain prompts containing invoice line amounts alongside budget or investment requests; a currency amount alone does not establish what the amount represents.
+
 Explicit saved-profile fact lookups are answered only when the requested value is present in retrieved profile context. If the requested value is absent, FinMate abstains rather than inventing it. This is a retrieval-grounded extraction path, not evidence that semantic retrieval always finds the correct memory; Hit@5/MRR must still be reported independently.
 
 The memory correctness scorer evaluates the user-visible reply, not metadata. Numeric saved facts are parsed as numeric tokens using the case tolerance, so grouped formatting such as `INR 46,500` matches gold value `46500` without accepting a partial substring in a different number. This corrects a scoring-format false negative; it does not change gold labels or relax the correctness requirement.
