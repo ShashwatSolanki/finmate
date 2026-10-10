@@ -20,7 +20,7 @@ from app.services.market_data import fetch_history, get_ticker
 def _extract_risk_from_context(ctx: str | None) -> str | None:
     if not ctx:
         return None
-    m = re.search(r"risk tolerance:\s*(low|conservative|moderate|medium|high|aggressive)", ctx, re.I)
+    m = re.search(r"risk tolerance\s*(?:is|:|=)\s*(low|conservative|moderate|medium|high|aggressive)", ctx, re.I)
     if not m:
         return None
     v = m.group(1).lower()
@@ -61,18 +61,28 @@ def _extract_original_request(message: str) -> str:
 
 
 def _extract_lump_sum(message: str) -> Decimal | None:
-    """Extract an investment amount without mistaking ages, dates, or percentages for money."""
+    """Extract an amount only when the wording ties it to investing."""
     amount_pattern = r"(\d[\d,]*(?:\.\d{1,2})?)\s*(k|m|lakh|lakhs)?"
-    currency_match = re.search(
-        r"(?:₹|\$|€|£|\bINR\b|\bUSD\b|\bEUR\b|\bGBP\b)\s*" + amount_pattern,
+    currency_pattern = r"(?:₹|\$|€|£|\bINR\b|\bUSD\b|\bEUR\b|\bGBP\b)?\s*"
+    investment_label = (
+        r"\b(?:invest(?:ing)?|investment(?:\s+amount)?|lump[ -]?sum(?:\s+investment)?|"
+        r"deposit|investable\s+(?:amount|surplus)|amount)\b"
+    )
+    match = re.search(
+        investment_label
+        + r"\s*(?:(?:of|about|around|approximately|is)\s+)?"
+        + currency_pattern
+        + amount_pattern,
         message,
         re.I,
     )
-    match = currency_match
     if not match:
+        # Also support a currency amount followed immediately by an explicit
+        # investment purpose, without matching unrelated invoice/expense amounts.
         match = re.search(
-            r"\b(?:invest(?:ing)?|investment of|lump[ -]?sum|deposit|amount of)\s*(?:about\s+|around\s+|of\s+)?"
-            + amount_pattern,
+            currency_pattern
+            + amount_pattern
+            + r"\s+(?:to invest|for investing|as (?:a )?(?:lump[ -]?sum )?investment)\b",
             message,
             re.I,
         )
@@ -270,31 +280,39 @@ def _analyze_symbol(symbol: str) -> _SymbolAnalysis:
 
 def _portfolio_plan_reply(message: str, rag_context: str | None) -> str:
     """Personalized allocation when no ticker — uses onboarding numbers, not boilerplate."""
-    risk = _extract_risk_from_context(rag_context) or "moderate"
+    saved_risk = _extract_risk_from_context(rag_context)
+    risk = saved_risk or "moderate"
     income = _extract_income_from_context(rag_context)
     location = _extract_location_from_context(rag_context)
     request = _extract_original_request(message)
     amount = _extract_lump_sum(request)
     eq, debt, cash = _allocation_for_risk(risk)
 
-    parts: list[str] = [f"Using your {risk} risk profile"]
+    parts: list[str] = (
+        [f"Your saved risk tolerance is {saved_risk}."]
+        if saved_risk
+        else [
+            "I couldn't verify your saved risk tolerance from the available context. "
+            "The moderate-risk allocation below is illustrative, not personalized."
+        ]
+    )
 
     if amount is not None:
         eq_amt = (amount * Decimal(eq) / Decimal("100")).quantize(Decimal("1.00"))
         debt_amt = (amount * Decimal(debt) / Decimal("100")).quantize(Decimal("1.00"))
         cash_amt = (amount * Decimal(cash) / Decimal("100")).quantize(Decimal("1.00"))
         parts.append(
-            f"for {amount:,.2f}: allocate ~{eq_amt:,.2f} to diversified equity, "
+            f"For {amount:,.2f}, allocate ~{eq_amt:,.2f} to diversified equity, "
             f"~{debt_amt:,.2f} to debt/stable assets, and ~{cash_amt:,.2f} as liquidity."
         )
     elif income is not None:
         monthly_sip = (income * Decimal("0.25")).quantize(Decimal("1.00"))
         parts.append(
-            f"with monthly income {income:,.2f}: target a {eq}/{debt}/{cash} equity/debt/cash split "
-            f"and automate ~{monthly_sip:,.2f}/month via SIP or recurring buys."
+            f"With monthly income of {income:,.2f}, consider a {eq}/{debt}/{cash} "
+            f"equity/debt/cash split and automate ~{monthly_sip:,.2f}/month via SIP or recurring buys."
         )
     else:
-        parts.append(f"target a {eq}/{debt}/{cash} equity/debt/cash split.")
+        parts.append(f"Consider a {eq}/{debt}/{cash} equity/debt/cash split.")
 
     if location and "india" in location.lower():
         parts.append(
@@ -319,13 +337,13 @@ def _portfolio_plan_reply(message: str, rag_context: str | None) -> str:
         "[AGENT: INVESTMENT]\n\n"
         f"{prose}\n\n"
         '{"intent":"portfolio_suggestion","steps":["Set allocation from risk profile","Use staggered entries","Rebalance quarterly"],'
-        '"tools_needed":["yfinance_lookup"],"notes":"personalized from onboarding; no ticker confirmed"}'
+        '"tools_needed":["yfinance_lookup"],"notes":"allocation is illustrative unless saved profile context is available; no ticker confirmed"}'
     )
 
 
 def _data_driven_market_reply(analyses: list[_SymbolAnalysis], rag_context: str | None) -> str:
     """Build prose strictly from fetched market fields — never generic investing advice."""
-    risk = _extract_risk_from_context(rag_context) or "moderate"
+    saved_risk = _extract_risk_from_context(rag_context)
     ok = [a for a in analyses if a.ok and a.last is not None]
     if not ok:
         failed = ", ".join(a.symbol for a in analyses)
@@ -357,8 +375,13 @@ def _data_driven_market_reply(analyses: list[_SymbolAnalysis], rag_context: str 
             actions.append(f"{a.symbol} moved {abs(a.pct):.2f}% {direction} vs the prior session — avoid chasing.")
 
     risk_note = (
-        f"Given your {risk} risk tolerance, keep position sizes modest relative to your total portfolio "
+        f"Given your saved {saved_risk} risk tolerance, keep position sizes modest relative to your total portfolio "
         "and maintain an emergency fund outside these names."
+        if saved_risk
+        else (
+            "Adjust position sizes to your own risk tolerance and maintain an emergency fund "
+            "outside these names."
+        )
     )
 
     prose = (
@@ -405,7 +428,19 @@ def run(
             agent=AgentName.INVESTMENT_ANALYSER,
             reply=reply,
             planned_steps=["resolve_tickers", "personalized_allocation"],
-            metadata={"tickers": "", "market_data": "none", "source": "onboarding_data"},
+            metadata={
+                "tickers": "",
+                "market_data": "none",
+                "source": (
+                    "saved_profile_context"
+                    if (
+                        _extract_risk_from_context(rag_context)
+                        or _extract_income_from_context(rag_context) is not None
+                        or _extract_location_from_context(rag_context)
+                    )
+                    else "illustrative_default"
+                ),
+            },
         )
 
     analyses = [_analyze_symbol(sym) for sym in tickers]

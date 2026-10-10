@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.agents.finance_context import extract_monthly_income
+from app.agents.investment_analyser import _extract_lump_sum
 from app.agents.intent import classify_agent
 from app.agents.ticker_utils import (
     extract_ticker_candidates,
@@ -31,6 +32,7 @@ from app.services.spending_insights import category_delta_vs_prior_month
         ("salary $4,200", (Decimal("4200"), None)),
         ("I earn 3,500 every month", (None, None)),
         ("Nothing about income here", (None, None)),
+        ("Review my budget, estimate investable surplus, and invoice a client for development INR 3600.", (None, None)),
     ],
 )
 def test_finance_context_extracts_income_and_currency(message: str, expected: tuple[Decimal | None, str | None]) -> None:
@@ -39,6 +41,25 @@ def test_finance_context_extracts_income_and_currency(message: str, expected: tu
 
 def test_finance_context_prefers_onboarding_context() -> None:
     assert extract_monthly_income("Help me budget", "monthly income: 80000 INR") == (Decimal("80000"), "INR")
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("Invest INR 50,000 as a lump sum.", Decimal("50000")),
+        ("How should I invest in 5 years?", None),
+        ("Should I invest for 5 years?", None),
+        ("I plan to invest INR 50,000 for 5 years.", Decimal("50000")),
+        ("How should I allocate an investment of ₹1,25,000?", Decimal("125000")),
+        ("INR 3600 is for a client development invoice; suggest an investment strategy.", None),
+        ("Review my budget, estimate investable surplus, and invoice a client for development INR 3600.", None),
+        ("INR 50,000", None),
+    ],
+)
+def test_investment_amount_requires_explicit_investment_context(
+    message: str, expected: Decimal | None
+) -> None:
+    assert _extract_lump_sum(message) == expected
 
 
 def test_ticker_extraction_handles_dollar_symbols_company_names_and_caps() -> None:

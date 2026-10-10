@@ -10,7 +10,6 @@ _SALARY_INCOME = re.compile(
     r"(?:salary|income)(?:\s+is|\s+of)?\s*(?:rs\.?|inr|₹|usd|\$|€|eur)?\s*([\d,]+(?:\.\d+)?)",
     re.I,
 )
-_CURRENCY_PREFIX = re.compile(r"(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d+)?)", re.I)
 
 
 def _parse_amount(raw: str) -> Decimal:
@@ -46,9 +45,6 @@ def extract_monthly_income(message: str, rag_context: str | None = None) -> tupl
             currency = _currency_near_match(text, m)
             return _parse_amount(m.group(1)), currency
 
-    for text in sources:
-        m = _CURRENCY_PREFIX.search(text)
-        if m:
-            return _parse_amount(m.group(1)), "INR"
-
+    # Do not infer income from an unlabeled currency amount: it may be an invoice,
+    # expense, investment amount, or another domain-specific value.
     return None, None

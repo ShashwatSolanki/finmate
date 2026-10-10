@@ -6,15 +6,37 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from app.agents.agentic_orchestrator import run_agentic_turn
-from app.agents.invoice_generator import run as run_invoice
-from app.agents.investment_analyser import run as run_investment
+from app.agents.budget_planner import run as run_budget
+from app.agents.invoice_generator import _structured_from_message, run as run_invoice
+from app.agents.investment_analyser import _extract_risk_from_context, run as run_investment
 from app.agents.types import AgentName, AgentResult
 
 
 class DataBackedAgentTests(unittest.TestCase):
+    def test_risk_profile_parser_accepts_sentence_form_from_memory(self):
+        self.assertEqual(
+            _extract_risk_from_context(
+                "The synthetic user's investment risk tolerance is conservative."
+            ),
+            "conservative",
+        )
+
     def setUp(self):
         self.db = MagicMock()
         self.user_id = uuid4()
+
+    def test_missing_risk_context_is_labelled_as_illustrative(self):
+        result = run_investment(
+            self.user_id,
+            "How should I invest my surplus?",
+            self.db,
+            rag_context=None,
+        )
+
+        self.assertIn("couldn't verify your saved risk tolerance", result.reply.lower())
+        self.assertIn("illustrative, not personalized", result.reply.lower())
+        self.assertNotIn("using your moderate risk profile", result.reply.lower())
+        self.assertEqual(result.metadata["source"], "illustrative_default")
 
     def test_investment_history_does_not_invent_portfolio(self):
         self.db.scalars.return_value.all.return_value = []
@@ -47,6 +69,25 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(result.metadata["source"], "portfolio_holdings")
         self.assertEqual(result.metadata["holdings_count"], "1")
         self.assertIn("Unrealized P/L: +250.00 USD (+25.00%)", result.reply)
+
+    def test_plus_separated_invoice_items_survive_multi_domain_prompt(self):
+        invoice = _structured_from_message(
+            "Summarize monthly spending and prepare an invoice for "
+            "configuration INR 400 plus support INR 500."
+        )
+
+        self.assertIsNotNone(invoice)
+        assert invoice is not None
+        self.assertEqual(invoice.currency, "INR")
+        self.assertEqual(
+            [(item.description, item.amount) for item in invoice.line_items],
+            [
+                ("configuration", Decimal("400.00")),
+                ("support", Decimal("500.00")),
+            ],
+        )
+        self.assertEqual(invoice.subtotal, Decimal("900.00"))
+        self.assertEqual(invoice.total, Decimal("900.00"))
 
     def test_expense_invoice_uses_recent_transactions(self):
         invoice = MagicMock()
@@ -122,6 +163,33 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(result.metadata["invoice_ref"], "EXP-20260920")
         self.assertIn("invoice_payload", result.metadata)
         self.assertEqual(result.metadata["invoice_actions"], "pdf,csv")
+
+    def test_budget_without_transactions_skips_llm_generation(self):
+        self.db.scalar.return_value = None
+        self.db.execute.return_value.all.return_value = []
+
+        with (
+            patch(
+                "app.agents.budget_planner.category_delta_vs_prior_month",
+                return_value=None,
+            ),
+            patch(
+                "app.agents.budget_planner.extract_monthly_income",
+                return_value=(None, None),
+            ),
+            patch("app.agents.budget_planner.settings.finmate_use_llm", True),
+            patch("app.agents.budget_planner.llm_available", return_value=True),
+            patch("app.agents.budget_planner.generate") as model_generate,
+        ):
+            result = run_budget(
+                self.user_id,
+                "Summarize my recent spending by category and suggest a budget cap.",
+                self.db,
+            )
+
+        self.assertEqual(result.metadata["source"], "db_aggregates")
+        self.assertIn("don't see any transactions", result.reply)
+        model_generate.assert_not_called()
 
 
 if __name__ == "__main__":
