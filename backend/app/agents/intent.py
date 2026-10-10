@@ -97,6 +97,22 @@ def _embedding_vector(text: str) -> dict[AgentName, float]:
     return {a: (s + 1.0) / 2.0 for a, s in sims.items()}
 
 
+
+def has_explicit_domain_signal(user_message: str) -> bool:
+    """Return whether the prompt contains an explicit finance-specialist signal.
+
+    This keeps broad educational/general questions on the trained model path while
+    leaving clear budget, invoice, and investment requests on specialist paths.
+    """
+    text = user_message.strip()
+    return bool(
+        _BUDGET.search(text)
+        or _INVOICE.search(text)
+        or _INVEST.search(text)
+        or _TICKER_IN_TEXT.search(text)
+        or extract_ticker_candidates(text)
+    )
+
 def classify_agent(user_message: str) -> AgentName:
     """Route to the best specialist using keywords, tickers, then embeddings."""
     t = user_message.strip()
