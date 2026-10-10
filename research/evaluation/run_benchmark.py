@@ -12,6 +12,14 @@ BACKEND=ROOT/"backend"
 if str(BACKEND) not in sys.path: sys.path.insert(0,str(BACKEND))
 NUM_RE=re.compile(r"(?<![A-Za-z])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?")
 
+def require_evaluation_database(database_url):
+    """Reject destructive benchmark runs outside a dedicated eval/test database."""
+    from sqlalchemy.engine import make_url
+    database_name=(make_url(database_url).database or "").lower()
+    if "eval" not in database_name and "test" not in database_name:
+        raise ValueError(f"Refusing destructive evaluation: database name {database_name!r} must contain 'eval' or 'test'. Use a dedicated disposable database.")
+    return database_name
+
 def load_jsonl(path):
     rows=[]
     for n,line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(),1):
@@ -50,11 +58,18 @@ def parse_agent(reply,api_agent=""):
 
 def reset_and_seed(user_id,case):
     from uuid import UUID
-    from app.db.models import Budget,ChatSession,InvestmentHolding,MemoryChunk,Transaction
+    from app.db.models import Budget,ChatSession,InvestmentHolding,MemoryChunk,Transaction,User
     from app.db.session import SessionLocal
     from app.rag.memory_store import rank_memory
     uid=UUID(user_id); db=SessionLocal()
     try:
+        # The isolated eval database may not have an application user yet. Create a
+        # non-login synthetic principal so API auth and fixture foreign keys work.
+        if db.get(User,uid) is None:
+            db.add(User(id=uid,email=f"research-eval-{uid}@example.invalid",
+              display_name="Research Evaluation User",is_active=True,is_verified=True,
+              auth_provider="google",google_id=f"research-eval-{uid}"))
+            db.flush()
         for session in db.query(ChatSession).filter(ChatSession.user_id==uid).all(): db.delete(session)
         db.query(MemoryChunk).filter(MemoryChunk.user_id==uid).delete(synchronize_session=False)
         db.query(Transaction).filter(Transaction.user_id==uid).delete(synchronize_session=False)
@@ -77,7 +92,7 @@ def run():
     p=argparse.ArgumentParser()
     p.add_argument("--condition",choices=["full","no_rag","no_agentic","no_llm","llm_only"],required=True)
     p.add_argument("--base-url",default="http://127.0.0.1:8000")
-    p.add_argument("--token",default="")
+    p.add_argument("--token",default="",help="Optional token override; by default the runner mints a fresh local access token for the synthetic test user.")
     p.add_argument("--user-id",default="")
     p.add_argument("--reset-test-user-state",action="store_true")
     p.add_argument("--dataset",type=Path,default=Path(__file__).with_name("benchmark.jsonl"))
@@ -109,8 +124,17 @@ def run():
     elif args.limit: cases=cases[:args.limit]
     if not cases: raise SystemExit("Dataset is empty.")
     api_mode=args.condition!="llm_only"
-    if api_mode and (not args.token or not args.user_id or not args.reset_test_user_state):
-        raise SystemExit("API conditions require --token, --user-id and --reset-test-user-state. Use a disposable synthetic test account/database only.")
+    if api_mode and (not args.user_id or not args.reset_test_user_state):
+        raise SystemExit("API conditions require --user-id and --reset-test-user-state. Use a dedicated local evaluation database only.")
+    if api_mode:
+        from app.config import settings
+        try: require_evaluation_database(settings.database_url)
+        except ValueError as exc: raise SystemExit(str(exc)) from exc
+        if not args.token:
+            from uuid import UUID
+            from app.security.jwt_tokens import create_access_token
+            try: args.token=create_access_token(UUID(args.user_id))
+            except ValueError as exc: raise SystemExit(f"Invalid --user-id UUID: {args.user_id}") from exc
     api=httpx.Client(base_url=args.base_url.rstrip("/"),headers={"Authorization":f"Bearer {args.token}","Content-Type":"application/json"},timeout=180.0) if api_mode else None
     rows=[]
     try:
