@@ -147,15 +147,21 @@ def _synthesize(
 
             if finmate.llm_available():
                 prompt = (
-                    "You are the final synthesis step of FinMate's bounded agentic workflow.\n"
-                    "Combine the verified observations below into one concise answer to the original request.\n"
-                    "Do not invent facts, prices, transactions, or actions not present in the observations.\n"
-                    f"Use exactly [AGENT: {('INVESTMENT' if primary == AgentName.INVESTMENT_ANALYSER else 'INVOICE' if primary == AgentName.INVOICE_GENERATOR else 'BUDGET')}] "
-                    "as the first line, then natural-language prose, then a final valid JSON object.\n\n"
+                    "You are the final synthesis step of FinMate's bounded agentic workflow.\\n"
+                    "Combine the verified observations below into one concise, unified answer to the original request.\\n"
+                    "Do not invent facts, prices, transactions, user preferences, available surplus, or actions absent from the observations.\\n"
+                    "Preserve all important facts and limitations from every specialist; do not silently drop a specialist's result.\\n"
+                    f"First line: [AGENT: {('INVESTMENT' if primary == AgentName.INVESTMENT_ANALYSER else 'INVOICE' if primary == AgentName.INVOICE_GENERATOR else 'BUDGET')}].\\n"
+                    "In the body, include a clearly labelled section for every specialist that appears in the observations, using the exact tags [AGENT: BUDGET], [AGENT: INVESTMENT], and/or [AGENT: INVOICE]. "
+                    "The first-line tag also labels the primary specialist's section; do not repeat that tag for the primary section. "
+                    "Only include tags for specialists that actually ran.\\n"
+                    "End with one valid JSON object. Keep the full answer concise enough to fit within 256 new tokens.\\n\\n"
                     f"Original request:\n{message}\n\n"
                     f"Verified observations:\n{observation_text}"
                 )
-                synthesized = finmate.finalize_llm_reply(finmate.generate(prompt))
+                synthesized = finmate.finalize_llm_reply(
+                    finmate.generate(prompt, max_new_tokens=256)
+                )
                 # A weak local model may collapse a multi-agent request into only
                 # the primary agent's answer. Reject that synthesis and preserve
                 # every specialist observation instead.
