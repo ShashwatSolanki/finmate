@@ -32,6 +32,19 @@ _INVEST = re.compile(
 )
 _TICKER_IN_TEXT = re.compile(r"\$[A-Za-z]{1,5}\b|\b(AAPL|MSFT|TSLA|GOOGL|AMZN|NVDA|META|NFLX|AMD|INTC)\b")
 
+_GENERAL_EDUCATION = re.compile(
+    r"\b(?:explain|define|what is|what are|difference between|meaning of|"
+    r"why does|why do|how does|how do)\b",
+    re.I,
+)
+_PERSONAL_OR_ACTION = re.compile(
+    r"\b(?:my|our|saved|recorded|previously|recent|current|latest|show|review|"
+    r"analy[sz]e|compare|calculate|how much|track|buy|sell|investable|allocate|"
+    r"allocation|spend|spent|transactions?|holdings?|ticker|quote|price|surplus|"
+    r"income|salary|rent|expenses?|budget cap|invoice amount)\b",
+    re.I,
+)
+
 PROTOTYPES: dict[AgentName, list[str]] = {
     AgentName.BUDGET_PLANNER: [
         "Help me reduce my monthly spending and stick to a budget.",
@@ -105,6 +118,12 @@ def has_explicit_domain_signal(user_message: str) -> bool:
     leaving clear budget, invoice, and investment requests on specialist paths.
     """
     text = user_message.strip()
+    if (
+        _GENERAL_EDUCATION.search(text)
+        and not _PERSONAL_OR_ACTION.search(text)
+        and not re.search(r"\d|[₹$€£]", text)
+    ):
+        return False
     return bool(
         _BUDGET.search(text)
         or _INVOICE.search(text)
