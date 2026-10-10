@@ -42,6 +42,11 @@ class BudgetNumericPathTests(unittest.TestCase):
             "food",
         )
         self.assertIsNone(_requested_transaction_category("Help me set a food budget.", categories))
+        self.assertIsNone(
+            _requested_transaction_category(
+                "How much did I spend on food and transport?", categories
+            )
+        )
 
 
 if __name__ == "__main__":
