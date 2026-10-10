@@ -20,7 +20,7 @@ from app.services.market_data import fetch_history, get_ticker
 def _extract_risk_from_context(ctx: str | None) -> str | None:
     if not ctx:
         return None
-    m = re.search(r"risk tolerance:\s*(low|conservative|moderate|medium|high|aggressive)", ctx, re.I)
+    m = re.search(r"risk tolerance\s*(?:is|:|=)\s*(low|conservative|moderate|medium|high|aggressive)", ctx, re.I)
     if not m:
         return None
     v = m.group(1).lower()
