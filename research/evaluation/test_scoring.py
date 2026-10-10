@@ -78,6 +78,24 @@ class ScoreTests(unittest.TestCase):
         self.assertEqual(sum(row["group"] == "memory" for row in selected), 5)
         self.assertEqual(sum(row["group"] == "routing" for row in selected), 10)
 
+    def test_synthetic_eval_identity_guard(self):
+        from types import SimpleNamespace
+        from uuid import uuid4
+
+        user_id = uuid4()
+        synthetic = SimpleNamespace(
+            email=f"research-eval-{user_id}@example.invalid",
+            auth_provider="google",
+            google_id=f"research-eval-{user_id}",
+        )
+        real_user = SimpleNamespace(
+            email="owner@example.com",
+            auth_provider="local",
+            google_id=None,
+        )
+        self.assertTrue(runner.is_synthetic_eval_user(synthetic, user_id))
+        self.assertFalse(runner.is_synthetic_eval_user(real_user, user_id))
+
     def test_dedicated_eval_database_allowed(self):
         self.assertEqual(runner.require_evaluation_database("postgresql+psycopg2://finmate:finmate@127.0.0.1:5433/finmate_eval"),"finmate_eval")
 
