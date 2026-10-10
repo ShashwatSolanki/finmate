@@ -11,6 +11,10 @@ class ScoreTests(unittest.TestCase):
     def test_grouping_number_format(self): self.assertTrue(runner.contains_number("Balance INR 30,000.00",30000,.01))
     def test_not_partial_numeric_token(self): self.assertFalse(runner.contains_number("13000",3000,.01))
     def test_decimal_invoice_total(self): self.assertTrue(runner.contains_number("Subtotal 153.00",153,.01))
+    def test_numeric_answer_requires_value_in_user_visible_reply(self):
+        self.assertTrue(runner.numeric_answer_matches("The total is INR 3,000.", [3000], .01))
+        self.assertFalse(runner.numeric_answer_matches("I could not determine the total.", [3000], .01))
+
 
     def test_memory_numeric_answer_accepts_grouped_number_format(self):
         self.assertTrue(runner.memory_answer_matches("Your saved monthly income is INR 46,500.", "46500", .01))
@@ -22,11 +26,19 @@ class ScoreTests(unittest.TestCase):
     def test_memory_text_answer_matches_case_insensitively(self):
         self.assertTrue(runner.memory_answer_matches("Your risk tolerance is Conservative.", "conservative", .01))
     def test_invoice_payload_correct(self):
-        meta={"invoice_payload":'{"currency":"INR","subtotal":"153.00","line_items":[{"amount":"49.00"},{"amount":"79.00"},{"amount":"25.00"}]}'}
-        self.assertTrue(runner.invoice_payload_correct(meta,{"currency":"INR","subtotal":153,"line_amounts":[49,79,25]}))
+        meta={"invoice_payload":'{"currency":"INR","subtotal":"153.00","total":"153.00","line_items":[{"amount":"49.00"},{"amount":"79.00"},{"amount":"25.00"}]}'}
+        self.assertTrue(runner.invoice_payload_correct(meta,{"currency":"INR","subtotal":153,"total":153,"line_amounts":[49,79,25]}))
     def test_invoice_payload_wrong_subtotal(self):
-        meta={"invoice_payload":'{"currency":"INR","subtotal":"152","line_items":[{"amount":"49"},{"amount":"79"},{"amount":"25"}]}'}
-        self.assertFalse(runner.invoice_payload_correct(meta,{"currency":"INR","subtotal":153,"line_amounts":[49,79,25]}))
+        meta={"invoice_payload":'{"currency":"INR","subtotal":"152","total":"153","line_items":[{"amount":"49"},{"amount":"79"},{"amount":"25"}]}'}
+        self.assertFalse(runner.invoice_payload_correct(meta,{"currency":"INR","subtotal":153,"total":153,"line_amounts":[49,79,25]}))
+
+    def test_invoice_payload_missing_total_is_rejected(self):
+        meta={"invoice_payload":'{"currency":"INR","subtotal":"153","line_items":[{"amount":"49"},{"amount":"79"},{"amount":"25"}]}'}
+        self.assertFalse(runner.invoice_payload_correct(meta,{"currency":"INR","subtotal":153,"total":153,"line_amounts":[49,79,25]}))
+
+    def test_invoice_payload_wrong_total_is_rejected(self):
+        meta={"invoice_payload":'{"currency":"INR","subtotal":"153","total":"152","line_items":[{"amount":"49"},{"amount":"79"},{"amount":"25"}]}'}
+        self.assertFalse(runner.invoice_payload_correct(meta,{"currency":"INR","subtotal":153,"total":153,"line_amounts":[49,79,25]}))
     def test_float_binary_retrieval_scores_included(self):
         score=summary.rate([{"retrieval_hit_at_5":1.0},{"retrieval_hit_at_5":0.0},{"retrieval_hit_at_5":None}],"retrieval_hit_at_5")
         self.assertEqual((score["n"],score["successes"]),(2,1))
