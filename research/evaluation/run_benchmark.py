@@ -38,6 +38,15 @@ def numeric_values(text):
 def contains_number(text,target,tol):
     return any(abs(v-target)<=tol for v in numeric_values(text))
 
+def memory_answer_matches(text, expected, tol=0.01):
+    """Match saved-memory answers without numeric substring false positives."""
+    expected = str(expected or "").strip()
+    if not expected:
+        return False
+    if re.fullmatch(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)", expected):
+        return contains_number(text, float(expected), tol)
+    return expected.casefold() in text.casefold()
+
 def invoice_payload_correct(meta,gold,tol=0.01):
     raw=meta.get("invoice_payload")
     if not raw: return False
@@ -168,8 +177,8 @@ def run():
             blob=reply+"\n"+json.dumps(meta,ensure_ascii=False,default=str)
             gold_nums=case.get("gold_numeric_values",[]); tol=float(case.get("tolerance",0.01))
             numeric_ok=all(contains_number(blob,float(v),tol) for v in gold_nums) if gold_nums else None
-            gold_mem=str(case.get("gold_memory_answer") or "").strip().lower()
-            memory_ok=(gold_mem in blob.lower()) if gold_mem else None
+            gold_mem=str(case.get("gold_memory_answer") or "").strip()
+            memory_ok=memory_answer_matches(reply, gold_mem, tol) if gold_mem else None
             route_ok=(agent==case["expected_agent"]) if case.get("expected_agent") else None
             executed=[x for x in str(meta.get("agents_executed","")).split(",") if x]
             agentic_ok=(executed==case.get("expected_agents",[])) if case.get("expected_source")=="agentic" else None
