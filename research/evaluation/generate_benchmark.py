@@ -1,67 +1,70 @@
-"""Generate a deterministic 120-case synthetic FinMate research benchmark."""
+"""Generate a deterministic, synthetic 120-case pilot benchmark for FinMate."""
 from __future__ import annotations
 import json
 from pathlib import Path
 from collections import Counter
 
 OUT = Path(__file__).with_name("benchmark.jsonl")
-cases = []
+cases=[]
 
-# 40 numerical/data-grounded tasks: 20 recent transaction aggregates, 10 invoices,
-# and 10 calculations in prompt text.
+# 40 numerical tasks: transaction aggregates, invoice totals, and budget arithmetic.
 for i in range(20):
-    amounts = [420+37*i, 310+19*i, 95+11*i]
-    tx = [
-      {"amount":amounts[0],"currency":"INR","category":"food","description":"Synthetic grocery transaction","days_ago":2},
-      {"amount":amounts[1],"currency":"INR","category":"food","description":"Synthetic dining transaction","days_ago":9},
-      {"amount":amounts[2],"currency":"INR","category":"food","description":"Synthetic food transaction","days_ago":21},
+    vals=[420+37*i,310+19*i,95+11*i]
+    transactions=[
+      {"amount":vals[0],"currency":"INR","category":"food","description":"Synthetic grocery transaction","days_ago":2},
+      {"amount":vals[1],"currency":"INR","category":"food","description":"Synthetic dining transaction","days_ago":9},
+      {"amount":vals[2],"currency":"INR","category":"food","description":"Synthetic food transaction","days_ago":21},
       {"amount":777+i,"currency":"INR","category":"transport","description":"Distractor category transaction","days_ago":4},
       {"amount":999+i,"currency":"INR","category":"food","description":"Stale transaction outside 30-day window","days_ago":58},
     ]
     cases.append({"case_id":f"NUM-TX-{i+1:02d}","group":"numerical","subgroup":"transaction_aggregation",
       "message":"How much did I spend on food in the last 30 days? Give the total and briefly explain it.",
-      "expected_agent":"budget_planner","transactions_fixture":tx,"gold_numeric_values":[sum(amounts)],
+      "expected_agent":"budget_planner","transactions_fixture":transactions,"gold_numeric_values":[sum(vals)],
       "tolerance":0.01,"requires_invoice_artifacts":False})
 for i in range(10):
     a,b,c=49+13*i,79+17*i,25+7*i
+    total=a+b+c
     cases.append({"case_id":f"NUM-INV-{i+1:02d}","group":"numerical","subgroup":"invoice_subtotal",
-      "message":f"Create an invoice with website maintenance INR {a}, SEO audit INR {b}, and domain renewal INR {c}. What is the subtotal before tax?",
-      "expected_agent":"invoice_generator","gold_numeric_values":[a+b+c],"tolerance":0.01,
-      "requires_invoice_artifacts":True,"gold_invoice":{"currency":"INR","subtotal":a+b+c,"line_amounts":[a,b,c]}})
+      "message":f"Create invoice maintenance INR {a}, SEO INR {b}, domain INR {c}.",
+      "expected_agent":"invoice_generator","gold_numeric_values":[total],"tolerance":0.01,
+      "requires_invoice_artifacts":True,"gold_invoice":{"currency":"INR","subtotal":total,"line_amounts":[a,b,c]}})
 for i in range(10):
     income,rent,emi,food,utilities=38000+2750*i,9000+375*i,2500+125*i,3000+110*i,1000+45*i
-    remaining=income-rent-emi-food-utilities
+    remain=income-rent-emi-food-utilities
     cases.append({"case_id":f"NUM-BAL-{i+1:02d}","group":"numerical","subgroup":"balance_arithmetic",
       "message":f"My monthly income is INR {income}, rent is INR {rent}, EMI is INR {emi}, groceries are INR {food}, and utilities are INR {utilities}. How much remains after these expenses?",
-      "expected_agent":"budget_planner","gold_numeric_values":[remaining],"tolerance":0.01,
-      "requires_invoice_artifacts":False})
+      "expected_agent":"budget_planner","gold_numeric_values":[remain],"tolerance":0.01,"requires_invoice_artifacts":False})
 
-# 40 memory-dependent tasks. These facts are seeded as source=research_eval, which is
-# visible through semantic search but not recent-chat or onboarding-context helpers.
+# 40 memory tasks; eight explicitly test abstention when the requested fact is absent.
 for i in range(40):
     income,rent,goal=46500+1375*i,12000+275*(i%17),7000+450*(i%19)
     risk=["conservative","moderate","aggressive","moderate"][i%4]
     horizon=["1 year","3 years","5 years","10 years"][i%4]
-    variants=[
+    options=[
       ("income",f"The synthetic user's monthly after-tax income is INR {income}.",str(income),"budget_planner","From my saved profile, what is my monthly after-tax income?"),
       ("rent",f"The synthetic user's monthly rent is INR {rent}.",str(rent),"budget_planner","What monthly rent amount did I previously tell you?"),
       ("risk",f"The synthetic user's investment risk tolerance is {risk}.",risk,"investment_analyser","What investment risk tolerance did I record in my profile?"),
       ("horizon",f"The synthetic user's investment time horizon is {horizon}.",horizon,"investment_analyser","What investment time horizon did I previously specify?"),
-      ("goal",f"The synthetic user's monthly savings goal is INR {goal}.",str(goal),"budget_planner","What monthly savings target did I ask you to remember?"),
-    ]
-    kind,relevant,target,agent,question=variants[i%len(variants)]
-    fixtures=[relevant,
+      ("goal",f"The synthetic user's monthly savings goal is INR {goal}.",str(goal),"budget_planner","What monthly savings target did I ask you to remember?")]
+    kind,relevant,target,agent,question=options[i%len(options)]
+    memory=[
       f"Distractor: the synthetic user's preferred chart style is bar chart number {i%7}.",
       f"Distractor: the synthetic user's favorite reminder day is day {i%5+1} of the month.",
       f"Distractor: an unrelated note refers to invoice template version {i%4+1}.",
-      f"Distractor: the synthetic user's preferred notification window is {8+i%8}:00 local time."]
+      f"Distractor: the synthetic user's notification window is {8+i%8}:00 local time."]
+    absent=i%10 in (8,9)
+    if absent:
+        kind,target,agent,question="absent","", "budget_planner","What monthly emergency-fund contribution target did I ask you to remember? If it is not stored, say so rather than guessing."
+        relevant=""
+    else:
+        memory.insert(0,relevant)
     cases.append({"case_id":f"MEM-{kind.upper()}-{i+1:02d}","group":"memory","subgroup":f"memory_{kind}",
-      "message":question,"expected_agent":agent,"memory_fixture":fixtures,"relevant_memory":relevant,
-      "gold_memory_answer":target,"gold_numeric_values":[float(target)] if target.isdigit() else [],
-      "tolerance":0.01,"requires_invoice_artifacts":False})
+      "message":question,"expected_agent":agent,"memory_fixture":memory,"relevant_memory":relevant or None,
+      "gold_memory_answer":target or None,"gold_numeric_values":[float(target)] if target.isdigit() else [],
+      "tolerance":0.01,"expected_abstention":absent,"requires_invoice_artifacts":False})
 
-# 40 routing/orchestration cases: 20 single specialist plus 20 multi-specialist.
-singles=[
+# 40 routing tasks: 20 single-specialist and 20 multi-specialist.
+single=[
 ("budget_planner","Summarize my recent spending by category and suggest a budget cap."),
 ("budget_planner","Help me plan savings from my income and recurring monthly expenses."),
 ("budget_planner","Review my grocery spending and identify where I can reduce costs."),
@@ -81,12 +84,10 @@ singles=[
 ("investment_analyser","Explain a conservative portfolio approach without using live stock quotes."),
 ("invoice_generator","Prepare an invoice for training services INR 5000 and documentation INR 1500."),
 ("budget_planner","How can I set a realistic weekly spending limit from a monthly budget?"),
-("investment_analyser","Describe factors to review before reallocating my investment portfolio."),
-]
-for i,(agent,msg) in enumerate(singles,1):
+("investment_analyser","Describe factors to review before reallocating my investment portfolio.")]
+for i,(agent,message) in enumerate(single,1):
     cases.append({"case_id":f"ROUTE-SINGLE-{i:02d}","group":"routing","subgroup":"single_specialist",
-      "message":msg,"expected_agent":agent,"requires_invoice_artifacts":agent=="invoice_generator"})
-
+      "message":message,"expected_agent":agent,"requires_invoice_artifacts":agent=="invoice_generator"})
 multi=[
 ("budget_investment","Analyze my spending and tell me how much I can invest this month.",["budget_planner","investment_analyser"]),
 ("budget_invoice","Analyze my expenses and generate an invoice for the listed expenses.",["budget_planner","invoice_generator"]),
@@ -97,7 +98,7 @@ multi=[
 ("budget_investment","Check my spending pattern and explain an appropriate investment allocation for the remaining money.",["budget_planner","investment_analyser"]),
 ("budget_invoice","Review my spending and make an invoice with travel support INR 600 and setup INR 300.",["budget_planner","invoice_generator"]),
 ("three_domain","Analyze expenses, estimate what I could invest, and create an invoice for consulting INR 2100.",["budget_planner","investment_analyser","invoice_generator"]),
-("budget_investment","Look at the difference between my income and expenses, then discuss savings versus investing.",["budget_planner","investment_analyser"]),
+("budget_investment","Look at the difference between my income and expenses, and then discuss savings versus investing.",["budget_planner","investment_analyser"]),
 ("budget_invoice","Summarize my expenses and draft an invoice for maintenance INR 700 and support INR 250.",["budget_planner","invoice_generator"]),
 ("three_domain","Evaluate my monthly expenses, consider an investment approach, and draft an invoice for audit INR 500.",["budget_planner","investment_analyser","invoice_generator"]),
 ("budget_investment","How much room does my budget leave for investing, and what risk factors should I consider?",["budget_planner","investment_analyser"]),
@@ -106,14 +107,12 @@ multi=[
 ("budget_investment","Review my income and monthly categories, then advise on a cautious allocation for excess funds.",["budget_planner","investment_analyser"]),
 ("budget_invoice","Summarize monthly spending and prepare an invoice for configuration INR 400 plus support INR 500.",["budget_planner","invoice_generator"]),
 ("three_domain","Analyze household costs, explain an investment option for the remainder, and prepare a service invoice INR 2500.",["budget_planner","investment_analyser","invoice_generator"]),
-("budget_investment","Review spending and estimate money available for long-term investing after expenses.",["budget_planner","investment_analyser"]),
-("budget_invoice","Look at my spending and create an invoice for project work INR 1700 and revision INR 400.",["budget_planner","invoice_generator"]),
-]
-for i,(kind,msg,agents) in enumerate(multi,1):
+("budget_investment","Review spending and estimate the money available for long-term investing after expenses.",["budget_planner","investment_analyser"]),
+("budget_invoice","Look at my spending and create an invoice for project work INR 1700 and revision INR 400.",["budget_planner","invoice_generator"])]
+for i,(kind,message,agents) in enumerate(multi,1):
     cases.append({"case_id":f"ROUTE-MULTI-{i:02d}","group":"routing","subgroup":kind,
-      "message":msg,"expected_source":"agentic","expected_agents":agents,
+      "message":message,"expected_source":"agentic","expected_agents":agents,
       "requires_invoice_artifacts":"invoice_generator" in agents})
-
-assert len(cases)==120 and len({c["case_id"] for c in cases})==120
-OUT.write_text("\n".join(json.dumps(c,ensure_ascii=False) for c in cases)+"\n",encoding="utf-8")
-print(f"Wrote {len(cases)} cases to {OUT}; groups={dict(Counter(c['group'] for c in cases))}")
+assert len(cases)==120 and len({x["case_id"] for x in cases})==120
+OUT.write_text("\n".join(json.dumps(x,ensure_ascii=False) for x in cases)+"\n",encoding="utf-8")
+print(f"Wrote {len(cases)} cases to {OUT}; groups={dict(Counter(c['group'] for c in cases))}; absent-memory={sum(c.get('expected_abstention',False) for c in cases)}")
