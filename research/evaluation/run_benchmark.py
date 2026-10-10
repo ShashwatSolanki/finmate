@@ -10,7 +10,7 @@ import httpx
 ROOT=Path(__file__).resolve().parents[2]
 BACKEND=ROOT/"backend"
 if str(BACKEND) not in sys.path: sys.path.insert(0,str(BACKEND))
-NUM_RE=re.compile(r"(?<![A-Za-z0-9,.])[-+]?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?%?(?![\d,])")
+NUM_RE=re.compile(r"(?<![A-Za-z0-9,.])[-+]?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?%?(?!,\d)")
 
 def require_evaluation_database(database_url):
     """Reject destructive benchmark runs outside a dedicated eval/test database."""
