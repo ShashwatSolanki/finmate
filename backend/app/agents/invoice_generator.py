@@ -85,7 +85,7 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
     # Commas/semicolons separate compact line items. Keep "and" within a
     # description (for example, "design and development") unless the preceding
     # segment is already a complete description+amount pair.
-    comma_parts = re.split(r"[,;]", cleaned, flags=re.I)
+    comma_parts = re.split(r",(?!\\d)|;", cleaned, flags=re.I)
     conjunction_parts: list[str] = []
     for comma_part in comma_parts:
         and_parts = re.split(r"\s+and\s+", comma_part, flags=re.I)
