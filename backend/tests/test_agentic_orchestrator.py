@@ -121,6 +121,32 @@ class AgenticPlannerTests(unittest.TestCase):
             ],
         )
 
+    def test_cautious_allocation_for_excess_funds_triggers_investment(self):
+        plan = build_plan(
+            "Review my income and monthly categories, then advise on a cautious allocation for excess funds."
+        )
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(
+            [step.agent for step in plan.steps],
+            [AgentName.BUDGET_PLANNER, AgentName.INVESTMENT_ANALYSER],
+        )
+
+    def test_household_costs_is_included_in_three_domain_plan(self):
+        plan = build_plan(
+            "Analyze household costs, explain an investment option for the remainder, and prepare a service invoice INR 2500."
+        )
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        self.assertEqual(
+            [step.agent for step in plan.steps],
+            [
+                AgentName.BUDGET_PLANNER,
+                AgentName.INVESTMENT_ANALYSER,
+                AgentName.INVOICE_GENERATOR,
+            ],
+        )
+
     def test_investment_agent_strips_agentic_observations_from_request(self):
         message = (
             "Analyze my spending and tell me how much I can invest this month."
