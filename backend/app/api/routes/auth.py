@@ -27,6 +27,7 @@ from app.security.passwords import (
     validate_password_strength,
     verify_password,
 )
+from app.security.otp import hash_otp, verify_otp
 from app.security.rate_limiter import auth_rate_limiter
 from app.services.email_service import (
     generate_otp,
@@ -178,7 +179,8 @@ def register(body: RegisterBody, db: Session = Depends(get_db)) -> TokenOut:
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.verification_code_expire_minutes)
     verification_token = EmailVerificationToken(
         user_id=user.id,
-        code=otp,
+        code=None,
+        code_hash=hash_otp(otp),
         expires_at=expires_at,
         used=False,
     )
@@ -216,15 +218,19 @@ def verify_email(body: VerifyEmailBody, request: Request, db: Session = Depends(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code")
 
     now = datetime.now(timezone.utc)
-    token_rec = (
+    candidates = (
         db.query(EmailVerificationToken)
         .filter(
             EmailVerificationToken.user_id == user.id,
-            EmailVerificationToken.code == body.code.strip(),
             EmailVerificationToken.used.is_(False),
         )
         .order_by(EmailVerificationToken.created_at.desc())
-        .first()
+        .limit(10)
+        .all()
+    )
+    token_rec = next(
+        (candidate for candidate in candidates if candidate.code_hash and verify_otp(body.code.strip(), candidate.code_hash)),
+        None,
     )
     if not token_rec:
         _record_auth_attempt(rate_key, ip_rate_key)
@@ -267,7 +273,7 @@ def resend_verification(body: ResendVerificationBody, request: Request, db: Sess
 
     otp = generate_otp()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.verification_code_expire_minutes)
-    db.add(EmailVerificationToken(user_id=user.id, code=otp, expires_at=expires_at, used=False))
+    db.add(EmailVerificationToken(user_id=user.id, code=None, code_hash=hash_otp(otp), expires_at=expires_at, used=False))
     db.commit()
 
     send_verification_email(user.email, otp)
@@ -292,7 +298,7 @@ def forgot_password(body: ForgotPasswordBody, request: Request, db: Session = De
 
     otp = generate_otp()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.password_reset_code_expire_minutes)
-    db.add(PasswordResetToken(user_id=user.id, code=otp, expires_at=expires_at, used=False))
+    db.add(PasswordResetToken(user_id=user.id, code=None, code_hash=hash_otp(otp), expires_at=expires_at, used=False))
     db.commit()
 
     send_password_reset_email(user.email, otp)
@@ -310,15 +316,19 @@ def reset_password(body: ResetPasswordBody, request: Request, db: Session = Depe
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email or reset code")
 
     now = datetime.now(timezone.utc)
-    reset_rec = (
+    candidates = (
         db.query(PasswordResetToken)
         .filter(
             PasswordResetToken.user_id == user.id,
-            PasswordResetToken.code == body.code.strip(),
             PasswordResetToken.used.is_(False),
         )
         .order_by(PasswordResetToken.created_at.desc())
-        .first()
+        .limit(10)
+        .all()
+    )
+    reset_rec = next(
+        (candidate for candidate in candidates if candidate.code_hash and verify_otp(body.code.strip(), candidate.code_hash)),
+        None,
     )
     if not reset_rec:
         _record_auth_attempt(rate_key, ip_rate_key)
