@@ -67,6 +67,19 @@ def memory_answer_matches(text, expected, tol=0.01):
     visible = visible_answer_text(text)
     if re.fullmatch(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)", expected):
         return contains_number(visible, float(expected), tol)
+    normalized_expected = expected.casefold()
+    if normalized_expected in {"conservative", "moderate", "medium", "aggressive", "low", "high"}:
+        return bool(
+            re.search(r"\bsaved(?:\s+investment)?\s+risk tolerance\b.{0,40}\b"
+                      + re.escape(expected)
+                      + r"\b", visible, re.I)
+        )
+    if re.fullmatch(r"\d+\s+years?", normalized_expected):
+        return bool(
+            re.search(r"\bsaved(?:\s+investment)?\s+time horizon\b.{0,30}\b"
+                      + re.escape(expected)
+                      + r"\b", visible, re.I)
+        )
     return expected.casefold() in visible.casefold()
 
 def invoice_payload_correct(meta,gold,tol=0.01):
