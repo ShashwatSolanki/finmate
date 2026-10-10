@@ -97,8 +97,8 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
             )
             next_is_invoice_request = bool(
                 re.match(
-                    r"^\\s*(?:(?:create|generate|make|draft|prepare)\\s+(?:an?\\s+)?(?:client\\s+)?invoice|"
-                    r"i\\s+need\\s+(?:an?\\s+)?(?:client\\s+)?invoice)\\b",
+                    r"^\s*(?:(?:create|generate|make|draft|prepare)\s+(?:an?\s+)?(?:client\s+)?invoice|"
+                    r"i\s+need\s+(?:an?\s+)?(?:client\s+)?invoice)\b",
                     next_part,
                     re.I,
                 )
