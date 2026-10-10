@@ -92,6 +92,30 @@ class ProfileMemoryTests(unittest.TestCase):
             )
         )
 
+    def test_save_instruction_is_not_mistaken_for_a_recall_question(self):
+        self.assertIsNone(
+            answer_saved_profile_fact(
+                "Please remember my monthly after-tax income is INR 46500.",
+                None,
+            )
+        )
+        self.assertIsNone(
+            answer_saved_profile_fact(
+                "Record my investment risk tolerance is conservative.",
+                None,
+            )
+        )
+
+    def test_does_not_treat_prior_assistant_answer_as_saved_profile_evidence(self):
+        reply = answer_saved_profile_fact(
+            "From my saved profile, what is my monthly after-tax income?",
+            "Assistant (budget_planner): [AGENT: BUDGET]\\n\\n"
+            "Your saved monthly after-tax income is INR 46500.",
+        )
+        self.assertIsNotNone(reply)
+        self.assertIn("don't see a saved monthly after-tax income", reply)
+        self.assertNotIn("46,500", reply)
+
 
 if __name__ == "__main__":
     unittest.main()
