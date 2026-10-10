@@ -27,6 +27,7 @@ from app.security.passwords import (
     validate_password_strength,
     verify_password,
 )
+from app.security.otp import hash_otp, verify_otp
 from app.security.rate_limiter import auth_rate_limiter
 from app.services.email_service import (
     generate_otp,
@@ -119,6 +120,16 @@ class ResetPasswordBody(BaseModel):
 class MessageOut(BaseModel):
     message: str
     success: bool = True
+    # Return mock codes only in non-production local/test environments.
+    verification_code_preview: str | None = None
+
+
+def _mock_code_preview(code: str) -> str | None:
+    # Fail closed: only known local/test environments may return an OTP in an API response.
+    environment = settings.app_env.lower()
+    if settings.email_mock_mode and environment in {"development", "dev", "test", "testing"}:
+        return code
+    return None
 
 
 def _issue_tokens_for_user(
@@ -150,7 +161,13 @@ def _issue_tokens_for_user(
 
 
 @router.post("/register", response_model=TokenOut)
-def register(body: RegisterBody, db: Session = Depends(get_db)) -> TokenOut:
+def register(body: RegisterBody, request: Request, db: Session = Depends(get_db)) -> TokenOut:
+    # Rate-limit account creation by normalized email and client IP.
+    rate_key = _auth_rate_key(request, "register", body.email)
+    ip_rate_key = _auth_ip_key(request, "register")
+    _check_rate_limit(rate_key, ip_rate_key)
+    _record_auth_attempt(rate_key, ip_rate_key)
+
     # 1. Enforce password complexity policy
     is_valid_pwd, pwd_error = validate_password_strength(body.password)
     if not is_valid_pwd:
@@ -178,7 +195,8 @@ def register(body: RegisterBody, db: Session = Depends(get_db)) -> TokenOut:
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.verification_code_expire_minutes)
     verification_token = EmailVerificationToken(
         user_id=user.id,
-        code=otp,
+        code=None,
+        code_hash=hash_otp(otp),
         expires_at=expires_at,
         used=False,
     )
@@ -191,7 +209,7 @@ def register(body: RegisterBody, db: Session = Depends(get_db)) -> TokenOut:
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to send verification email. Please try again later.",
         )
-    code_preview = otp if settings.email_mock_mode and settings.app_env.lower() != "production" else None
+    code_preview = _mock_code_preview(otp)
 
     return _issue_tokens_for_user(
         user,
@@ -216,15 +234,19 @@ def verify_email(body: VerifyEmailBody, request: Request, db: Session = Depends(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code")
 
     now = datetime.now(timezone.utc)
-    token_rec = (
+    candidates = (
         db.query(EmailVerificationToken)
         .filter(
             EmailVerificationToken.user_id == user.id,
-            EmailVerificationToken.code == body.code.strip(),
             EmailVerificationToken.used.is_(False),
         )
         .order_by(EmailVerificationToken.created_at.desc())
-        .first()
+        .limit(10)
+        .all()
+    )
+    token_rec = next(
+        (candidate for candidate in candidates if candidate.code_hash and verify_otp(body.code.strip(), candidate.code_hash)),
+        None,
     )
     if not token_rec:
         _record_auth_attempt(rate_key, ip_rate_key)
@@ -267,11 +289,14 @@ def resend_verification(body: ResendVerificationBody, request: Request, db: Sess
 
     otp = generate_otp()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.verification_code_expire_minutes)
-    db.add(EmailVerificationToken(user_id=user.id, code=otp, expires_at=expires_at, used=False))
+    db.add(EmailVerificationToken(user_id=user.id, code=None, code_hash=hash_otp(otp), expires_at=expires_at, used=False))
     db.commit()
 
     send_verification_email(user.email, otp)
-    return MessageOut(message="If the email is registered and unverified, a verification code has been sent.")
+    return MessageOut(
+        message="If the email is registered and unverified, a verification code has been sent.",
+        verification_code_preview=_mock_code_preview(otp),
+    )
 
 
 @router.post("/forgot-password", response_model=MessageOut)
@@ -292,11 +317,14 @@ def forgot_password(body: ForgotPasswordBody, request: Request, db: Session = De
 
     otp = generate_otp()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=settings.password_reset_code_expire_minutes)
-    db.add(PasswordResetToken(user_id=user.id, code=otp, expires_at=expires_at, used=False))
+    db.add(PasswordResetToken(user_id=user.id, code=None, code_hash=hash_otp(otp), expires_at=expires_at, used=False))
     db.commit()
 
     send_password_reset_email(user.email, otp)
-    return MessageOut(message="If the email exists in our system, a password reset code has been sent.")
+    return MessageOut(
+        message="If the email exists in our system, a password reset code has been sent.",
+        verification_code_preview=_mock_code_preview(otp),
+    )
 
 
 @router.post("/reset-password", response_model=MessageOut)
@@ -310,15 +338,19 @@ def reset_password(body: ResetPasswordBody, request: Request, db: Session = Depe
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid email or reset code")
 
     now = datetime.now(timezone.utc)
-    reset_rec = (
+    candidates = (
         db.query(PasswordResetToken)
         .filter(
             PasswordResetToken.user_id == user.id,
-            PasswordResetToken.code == body.code.strip(),
             PasswordResetToken.used.is_(False),
         )
         .order_by(PasswordResetToken.created_at.desc())
-        .first()
+        .limit(10)
+        .all()
+    )
+    reset_rec = next(
+        (candidate for candidate in candidates if candidate.code_hash and verify_otp(body.code.strip(), candidate.code_hash)),
+        None,
     )
     if not reset_rec:
         _record_auth_attempt(rate_key, ip_rate_key)
@@ -331,11 +363,12 @@ def reset_password(body: ResetPasswordBody, request: Request, db: Session = Depe
         _record_auth_attempt(rate_key, ip_rate_key)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired reset code")
 
-    _reset_auth_attempt(rate_key, ip_rate_key)
-    # Invalid OTP submissions are counted even if the proposed password is weak.
+    # Do not clear the rate-limit window until the new password is valid as well.
     is_valid_pwd, pwd_error = validate_password_strength(body.new_password)
     if not is_valid_pwd:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=pwd_error)
+
+    _reset_auth_attempt(rate_key, ip_rate_key)
 
     # Update password and mark verified
     user.password_hash = hash_password(body.new_password)
@@ -399,7 +432,13 @@ def refresh_token_endpoint(body: RefreshTokenBody, db: Session = Depends(get_db)
     if not jti or not sub:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Malformed refresh token")
 
-    token_row = db.query(RefreshToken).filter(RefreshToken.token_jti == jti).first()
+    # Serialize refresh-token rotation so concurrent requests cannot both mint a new session.
+    token_row = (
+        db.query(RefreshToken)
+        .filter(RefreshToken.token_jti == jti)
+        .with_for_update()
+        .first()
+    )
     if not token_row:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token not recognized")
 

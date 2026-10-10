@@ -52,8 +52,31 @@ def _ensure_auth_schema(target_engine=None) -> None:
             conn.execute(text("ALTER TABLE users ADD COLUMN auth_provider VARCHAR(32) DEFAULT 'local'"))
 
 
+def _ensure_otp_hash_schema(target_engine=None) -> None:
+    """Upgrade legacy OTP tables and invalidate plaintext codes during the one-time migration."""
+    eng = target_engine or engine
+    if eng.dialect.name != "postgresql":
+        # Fresh SQLite test databases receive the current schema from Base.metadata.create_all.
+        return
+    inspector = inspect(eng)
+    tables = set(inspector.get_table_names())
+    with eng.begin() as conn:
+        for table in ("email_verification_tokens", "password_reset_tokens"):
+            if table not in tables:
+                continue
+            columns = {col["name"] for col in inspect(eng).get_columns(table)}
+            if "code_hash" in columns:
+                continue
+            # Existing codes cannot be migrated to salted hashes in SQL. Expire them
+            # safely so users must request a fresh code after deployment.
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN code_hash VARCHAR(128) NULL"))
+            conn.execute(text(f"ALTER TABLE {table} ALTER COLUMN code DROP NOT NULL"))
+            conn.execute(text(f"UPDATE {table} SET code = NULL WHERE code IS NOT NULL"))
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _ensure_chat_message_metadata_column()
     _ensure_auth_schema()
+    _ensure_otp_hash_schema()
 

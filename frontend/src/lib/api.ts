@@ -11,6 +11,143 @@ export function apiUrl(path: string): string {
   return API_BASE_URL + (path.startsWith("/") ? path : "/" + path);
 }
 
+export const REFRESH_TOKEN_KEY = "finmate_refresh_token";
+export const AUTH_REFRESHED_EVENT = "finmate:auth-refreshed";
+export const AUTH_EXPIRED_EVENT = "finmate:auth-expired";
+
+type TokenPair = {
+  access_token: string;
+  refresh_token: string;
+};
+
+let refreshPromise: Promise<string | null> | null = null;
+
+function readStoredAuthValue(key: string): string | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredAuthValue(key: string, value: string): void {
+  try {
+    if (typeof localStorage !== "undefined") localStorage.setItem(key, value);
+  } catch {
+    // Storage may be blocked; the current request can still use the returned token.
+  }
+}
+
+function clearStoredAuth(): void {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+    }
+  } catch {
+    // Ignore storage restrictions; notify the auth provider regardless.
+  }
+}
+
+function dispatchAuthEvent(name: string): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(name));
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = readStoredAuthValue(REFRESH_TOKEN_KEY);
+  if (!refreshToken) {
+    clearStoredAuth();
+    dispatchAuthEvent(AUTH_EXPIRED_EVENT);
+    return null;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(apiUrl("/api/auth/refresh"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+  } catch {
+    // A transient network failure must not sign the user out.
+    return null;
+  }
+
+  if (!response.ok) {
+    if ([400, 401, 403, 422].includes(response.status)) {
+      clearStoredAuth();
+      dispatchAuthEvent(AUTH_EXPIRED_EVENT);
+    }
+    return null;
+  }
+
+  let tokens: Partial<TokenPair>;
+  try {
+    tokens = (await response.json()) as Partial<TokenPair>;
+  } catch {
+    clearStoredAuth();
+    dispatchAuthEvent(AUTH_EXPIRED_EVENT);
+    return null;
+  }
+
+  if (typeof tokens.access_token !== "string" || !tokens.access_token ||
+      typeof tokens.refresh_token !== "string" || !tokens.refresh_token) {
+    clearStoredAuth();
+    dispatchAuthEvent(AUTH_EXPIRED_EVENT);
+    return null;
+  }
+
+  writeStoredAuthValue(TOKEN_KEY, tokens.access_token);
+  writeStoredAuthValue(REFRESH_TOKEN_KEY, tokens.refresh_token);
+  dispatchAuthEvent(AUTH_REFRESHED_EVENT);
+  return tokens.access_token;
+}
+
+function refreshAccessTokenSingleFlight(staleAccessToken: string | null): Promise<string | null> {
+  if (!refreshPromise) {
+    const refreshWithCrossTabLock = async (): Promise<string | null> => {
+      // Coordinate refreshes across browser tabs when the Web Locks API is available.
+      // A waiting tab reuses the token already rotated by the tab that held the lock.
+      if (typeof navigator !== "undefined" && navigator.locks?.request) {
+        return navigator.locks.request("finmate-auth-refresh", async () => {
+          const latestAccessToken = readStoredAuthValue(TOKEN_KEY);
+          if (latestAccessToken && latestAccessToken !== staleAccessToken) {
+            return latestAccessToken;
+          }
+          return refreshAccessToken();
+        });
+      }
+      return refreshAccessToken();
+    };
+
+    refreshPromise = refreshWithCrossTabLock().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
+/** Fetch an API endpoint and rotate the stored token pair once after an authenticated 401. */
+export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const url = apiUrl(path);
+  const initialHeaders = new Headers(init.headers);
+  const hasAuthorization = initialHeaders.has("Authorization");
+  const storedAccessToken = readStoredAuthValue(TOKEN_KEY);
+  if (hasAuthorization && storedAccessToken) {
+    initialHeaders.set("Authorization", "Bearer " + storedAccessToken);
+  }
+
+  const response = await fetch(url, { ...init, headers: initialHeaders });
+  if (response.status !== 401 || !hasAuthorization) return response;
+
+  const refreshedAccessToken = await refreshAccessTokenSingleFlight(storedAccessToken);
+  if (!refreshedAccessToken) return response;
+
+  const retryHeaders = new Headers(init.headers);
+  retryHeaders.set("Authorization", "Bearer " + refreshedAccessToken);
+  return fetch(url, { ...init, headers: retryHeaders });
+}
+
 export type ChatResponse = {
   agent: string;
   reply: string;

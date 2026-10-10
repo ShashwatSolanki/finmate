@@ -246,7 +246,14 @@ The current application initializes ORM tables through SQLAlchemy metadata.
 
 A full production migration framework is not currently the primary database setup mechanism.
 
-## 9. Backend design rule
+## 9. Authentication and security notes
+
+- Access-token refresh is coordinated client-side and refresh tokens rotate on the backend. Keep refresh rotation atomic and regression-tested.
+- Email verification and password-reset OTPs are stored as salted PBKDF2 hashes, not plaintext. During the migration, any legacy plaintext OTPs are cleared; existing pending codes become invalid and users must request fresh codes.
+- Public registration and authentication flows use account/IP rate limiting; production and staging must configure shared Redis according to `docs/free-staging.md`.
+- Runtime dependencies should be audited with `pip-audit -r requirements.txt`; CI runs the dependency audit.
+
+## 10. Backend design rule
 
 The backend should keep business-critical calculations close to the data source and outside the language model.
 

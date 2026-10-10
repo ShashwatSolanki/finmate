@@ -19,6 +19,7 @@ from app.db.models import (
 )
 from app.main import app
 from app.security.rate_limiter import auth_rate_limiter
+from app.security.otp import verify_otp
 
 # In-memory SQLite database for isolated testing
 TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -50,6 +51,7 @@ class EmailVerificationAndResetTests(unittest.TestCase):
         Base.metadata.create_all(bind=engine)
         app.dependency_overrides[get_db] = override_get_db
         cls.client = TestClient(app)
+        cls.code_previews = {}
 
     @classmethod
     def tearDownClass(cls):
@@ -74,6 +76,7 @@ class EmailVerificationAndResetTests(unittest.TestCase):
         self.assertFalse(data["is_verified"])
         self.assertTrue(data["requires_verification"])
         self.assertIsNotNone(data["verification_code_preview"])
+        self.code_previews[email] = data["verification_code_preview"]
 
         # Check DB
         db = TestingSessionLocal()
@@ -83,7 +86,8 @@ class EmailVerificationAndResetTests(unittest.TestCase):
 
         tokens = db.query(EmailVerificationToken).filter(EmailVerificationToken.user_id == user.id).all()
         self.assertEqual(len(tokens), 1)
-        self.assertEqual(tokens[0].code, data["verification_code_preview"])
+        self.assertIsNone(tokens[0].code)
+        self.assertTrue(verify_otp(data["verification_code_preview"], tokens[0].code_hash))
         self.assertFalse(tokens[0].used)
         db.close()
 
@@ -105,7 +109,7 @@ class EmailVerificationAndResetTests(unittest.TestCase):
             .filter(EmailVerificationToken.user_id == user.id, EmailVerificationToken.used.is_(False))
             .first()
         )
-        code = token.code
+        code = self.code_previews[email]
         db.close()
 
         res = self.client.post(
@@ -120,16 +124,17 @@ class EmailVerificationAndResetTests(unittest.TestCase):
         db = TestingSessionLocal()
         user = db.query(User).filter(User.email == email).first()
         self.assertTrue(user.is_verified)
-        token_after = db.query(EmailVerificationToken).filter(EmailVerificationToken.code == code).first()
+        token_after = db.query(EmailVerificationToken).filter(EmailVerificationToken.user_id == user.id).first()
         self.assertTrue(token_after.used)
         db.close()
 
     def test_04_verify_email_expired_code(self):
         email = "expired_test@example.com"
-        self.client.post(
+        register_res = self.client.post(
             "/api/auth/register",
             json={"email": email, "password": "SecureP@ssw0rd123"},
         )
+        code = register_res.json()["verification_code_preview"]
         db = TestingSessionLocal()
         user = db.query(User).filter(User.email == email).first()
         expired_token = (
@@ -139,7 +144,6 @@ class EmailVerificationAndResetTests(unittest.TestCase):
         )
         expired_token.expires_at = datetime.now(timezone.utc) - timedelta(minutes=10)
         db.commit()
-        code = expired_token.code
         db.close()
 
         res = self.client.post(
@@ -166,7 +170,8 @@ class EmailVerificationAndResetTests(unittest.TestCase):
             .all()
         )
         self.assertEqual(len(active_tokens), 1)
-        new_code = active_tokens[0].code
+        new_code = res.json()["verification_code_preview"]
+        self.assertTrue(verify_otp(new_code, active_tokens[0].code_hash))
         db.close()
 
         # Now verify with new code
@@ -201,7 +206,7 @@ class EmailVerificationAndResetTests(unittest.TestCase):
             .first()
         )
         self.assertIsNotNone(reset_token)
-        code = reset_token.code
+        code = res.json()["verification_code_preview"]
         db.close()
 
         # Attempt reset with weak password -> 422
@@ -289,7 +294,7 @@ class EmailVerificationAndResetTests(unittest.TestCase):
             .filter(EmailVerificationToken.user_id == user.id, EmailVerificationToken.used.is_(False))
             .first()
         )
-        code = v_token.code
+        code = token_data["verification_code_preview"]
         db.close()
 
         # Complete email verification
@@ -363,7 +368,7 @@ class EmailVerificationAndResetTests(unittest.TestCase):
             .filter(PasswordResetToken.user_id == user.id, PasswordResetToken.used.is_(False))
             .first()
         )
-        code = reset_token.code
+        code = forgot_res.json()["verification_code_preview"]
         db.close()
 
         # Perform password reset
@@ -414,13 +419,10 @@ class EmailVerificationAndResetTests(unittest.TestCase):
         )
         old_rf_token = reg_res.json()["refresh_token"]
 
-        # Request reset and change password
-        self.client.post("/api/auth/forgot-password", json={"email": email})
-        db = TestingSessionLocal()
-        user = db.query(User).filter(User.email == email).first()
-        token = db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user.id).first()
-        code = token.code
-        db.close()
+        # Request reset and capture the mock code from the isolated test response.
+        forgot_res = self.client.post("/api/auth/forgot-password", json={"email": email})
+        self.assertEqual(forgot_res.status_code, 200)
+        code = forgot_res.json()["verification_code_preview"]
 
         self.client.post(
             "/api/auth/reset-password",
