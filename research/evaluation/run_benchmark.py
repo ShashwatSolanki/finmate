@@ -38,20 +38,36 @@ def numeric_values(text):
 def contains_number(text,target,tol):
     return any(abs(v-target)<=tol for v in numeric_values(text))
 
+def visible_answer_text(reply):
+    """Strip agent tags and the machine-readable JSON tail hidden by the chat UI."""
+    visible = []
+    for line in str(reply or "").splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        if text.startswith("[AGENT:") and text.endswith("]"):
+            continue
+        if text.startswith("{"):
+            break
+        visible.append(text)
+    return " ".join(visible)
+
 def numeric_answer_matches(reply, expected_values, tol=0.01):
-    """Score gold numbers from user-visible reply text only, never internal metadata."""
+    """Score gold numbers from user-visible prose, never metadata or hidden JSON."""
     if not expected_values:
         return False
-    return all(contains_number(reply, float(value), tol) for value in expected_values)
+    visible = visible_answer_text(reply)
+    return all(contains_number(visible, float(value), tol) for value in expected_values)
 
 def memory_answer_matches(text, expected, tol=0.01):
     """Match saved-memory answers without numeric substring false positives."""
     expected = str(expected or "").strip()
     if not expected:
         return False
+    visible = visible_answer_text(text)
     if re.fullmatch(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)", expected):
-        return contains_number(text, float(expected), tol)
-    return expected.casefold() in text.casefold()
+        return contains_number(visible, float(expected), tol)
+    return expected.casefold() in visible.casefold()
 
 def invoice_payload_correct(meta,gold,tol=0.01):
     """Validate invoice currency, line items, subtotal, and final total."""
