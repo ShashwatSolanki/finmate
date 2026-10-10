@@ -18,13 +18,6 @@ from app.ml.finmate import finalize_llm_reply, generate, llm_available
 from app.services.spending_insights import category_delta_vs_prior_month
 
 _AMOUNT = r"((?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?)(?:\s*(k|m|thousands?|millions?|lakhs?|crores?)\b)?"
-_CURRENCY_AMOUNT = re.compile(
-    rf"(?:\b(?:INR|USD|EUR|GBP)\b|Rs\.?|[₹$€£])\s*{_AMOUNT}(?!\d|,\d)"
-    rf"|{_AMOUNT}\s*\b(?:INR|USD|EUR|GBP)\b",
-    re.I,
-)
-
-
 def _parse_labeled_amount(message: str, labels: str) -> Decimal | None:
     pattern = re.compile(
         rf"\b(?:{labels})\b\s*(?:is|are|of|equals|:|=)?\s*"
