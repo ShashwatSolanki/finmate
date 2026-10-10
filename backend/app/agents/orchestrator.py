@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.agents import budget_planner, invoice_generator, investment_analyser
 from app.agents.confidence import calculate_confidence
 from app.agents.agentic_orchestrator import run_agentic_turn
-from app.agents.intent import classify_agent
+from app.agents.intent import classify_agent, has_explicit_domain_signal
 from app.agents.profile_memory import answer_saved_profile_fact
 from app.agents.types import AgentName, AgentResult
 from app.config import settings
@@ -86,14 +86,8 @@ def run_turn(
         if agentic_result is not None:
             return _finalize(agentic_result)
 
-    if chosen is None:
-        classified = classify_agent(user_message)
-        if classified in (
-            AgentName.BUDGET_PLANNER,
-            AgentName.INVOICE_GENERATOR,
-            AgentName.INVESTMENT_ANALYSER,
-        ):
-            chosen = classified
+    if chosen is None and has_explicit_domain_signal(user_message):
+        chosen = classify_agent(user_message)
 
     # A general-model-only path is retained for any future unclassified agent
     # state, but classified budget requests now go through budget_planner.run().
