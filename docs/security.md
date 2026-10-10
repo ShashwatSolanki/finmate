@@ -4,7 +4,7 @@ This document tracks security-specific behavior and deployment checks. It is not
 
 ## Implemented in the hardening branch
 
-- Backend and lightweight staging environments update `python-multipart`, Pillow, and PyMuPDF to newer patched versions.
+- Backend and lightweight staging environments update `python-multipart`, Pillow, PyMuPDF, `python-dotenv`, PDFMiner (through `pdfplumber`), FastAPI/Starlette, and Sentence Transformers/Transformers. JWT handling was moved from `python-jose` (which pulls `ecdsa`) to PyJWT after the new dependency audit identified known advisories in the previous tree.
 - CI runs `pip-audit` for Python dependencies and `npm audit --omit=dev --audit-level=high` for production frontend dependencies.
 - Invoice uploads are read in bounded chunks and rejected above 12 MiB. The parser determines PDF/image type from file contents, allows only supported raster image formats, and rejects images above 25 megapixels before OCR.
 - Docker Compose binds PostgreSQL to `127.0.0.1` rather than all host interfaces. The sample password is for local development only; do not reuse it for a shared or production database.
@@ -50,5 +50,5 @@ The CI workflow performs the dependency audits on pull requests. Advisory databa
 - Access and refresh tokens are currently stored in browser `localStorage`. Any successful same-origin XSS could read them. Moving refresh tokens to appropriately scoped HttpOnly/Secure cookies and using a strong Content Security Policy should be considered in a separate, carefully tested change.
 - Run a threat model and authorized penetration test against a deployed, isolated staging environment before storing real financial data.
 - Consider migrating ad-hoc startup schema changes to a versioned migration framework once the schema change workflow is stable.
-- Vite is a development/build dependency and is not included in the production-only npm audit gate. Keep the development toolchain updated and never expose the Vite development server to untrusted networks.
+- Vite is a development/build dependency and is not included in the production-only npm audit gate. The current dev script explicitly binds to `127.0.0.1`; keep the Vite toolchain updated and do not change it to a network-facing host without reviewing the applicable Vite advisories.
 - Security controls reduce risk but do not establish that every possible vulnerability has been found.
