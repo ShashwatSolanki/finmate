@@ -29,6 +29,12 @@ class ScoreTests(unittest.TestCase):
         self.assertFalse(runner.numeric_answer_matches(reply, [3000], .01))
         self.assertFalse(runner.memory_answer_matches(reply, "46500", .01))
 
+    def test_abstention_scoring_ignores_hidden_json(self):
+        hidden_only = 'The answer is INR 120.\n\n{"notes":"not found"}'
+        visible = "I don't see that saved fact, so I won't guess."
+        self.assertFalse(runner.abstention_answer_matches(hidden_only))
+        self.assertTrue(runner.abstention_answer_matches(visible))
+
 
     def test_memory_numeric_answer_accepts_grouped_number_format(self):
         self.assertTrue(runner.memory_answer_matches("Your saved monthly income is INR 46,500.", "46500", .01))
