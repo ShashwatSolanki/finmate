@@ -116,7 +116,7 @@ Implementation:
 backend/app/agents/agentic_orchestrator.py
 ```
 
-The planner identifies requests spanning multiple domains.
+The planner identifies requests spanning multiple domains. Its phrase-level signals include household/living/monthly costs for the budget domain and cautious or long-term allocation language tied to excess funds for investment intent. These heuristics are regression-tested because a missing domain signal can silently omit a specialist from a multi-domain plan.
 
 Example:
 
