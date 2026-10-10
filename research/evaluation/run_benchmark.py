@@ -82,13 +82,31 @@ def run():
     p.add_argument("--reset-test-user-state",action="store_true")
     p.add_argument("--dataset",type=Path,default=Path(__file__).with_name("benchmark.jsonl"))
     p.add_argument("--output",type=Path,default=None)
-    p.add_argument("--limit",type=int,default=0)
+    p.add_argument("--limit",type=int,default=0,help="Take the first N cases for debugging only; not stratified.")
+    p.add_argument("--pilot",action="store_true",help="Select a deterministic stratified 15-case smoke pilot across numerical, memory/abstention, single-agent and multi-agent tasks.")
     p.add_argument("--commit",default="")
     p.add_argument("--environment-notes",default="")
     args=p.parse_args()
     if not args.dataset.exists(): raise SystemExit(f"Dataset not found: {args.dataset}. Run generate_benchmark.py first.")
     cases=load_jsonl(args.dataset)
-    if args.limit: cases=cases[:args.limit]
+    if args.pilot:
+        def take(group, subgroup, indices):
+            rows=[x for x in cases if x.get("group")==group and (subgroup is None or x.get("subgroup")==subgroup)]
+            return [rows[i] for i in indices if i < len(rows)]
+        selected=[]
+        selected += take("numerical","transaction_aggregation",[0,10])
+        selected += take("numerical","invoice_subtotal",[0,5])
+        selected += take("numerical","balance_arithmetic",[0,5])
+        selected += take("memory","memory_income",[0])
+        selected += take("memory","memory_risk",[2])
+        selected += take("memory","memory_goal",[4])
+        selected += take("memory","memory_absent",[0,4])
+        selected += take("routing","single_specialist",[0,5,10,15])
+        selected += take("routing","budget_investment",[0,4])
+        selected += take("routing","budget_invoice",[1,5])
+        selected += take("routing","three_domain",[2,4])
+        cases=selected
+    elif args.limit: cases=cases[:args.limit]
     if not cases: raise SystemExit("Dataset is empty.")
     api_mode=args.condition!="llm_only"
     if api_mode and (not args.token or not args.user_id or not args.reset_test_user_state):
