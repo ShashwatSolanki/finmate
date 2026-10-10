@@ -11,10 +11,23 @@ from decimal import Decimal
 
 
 _PROFILE_INTENT = re.compile(
-    r"\b(saved profile|my profile|record(?:ed)?|previously|"
-    r"ask(?:ed)? you to remember|saved memory|remember)\b",
+    r"\b(saved profile|my profile|previously|"
+    r"ask(?:ed)? you to remember|saved memory)\b",
     re.I,
 )
+
+# Recent-chat and semantic retrieval contexts can contain assistant-generated
+# summaries. Do not use those as evidence of a saved user fact: an earlier
+# assistant answer may itself have been wrong.
+_ASSISTANT_CONTEXT_ENTRY = re.compile(
+    r"(?ms)^Assistant \([^)\r\n]*\):.*?"
+    r"(?=^(?:User:|Assistant \([^)]*\):|"
+    r"\[Recent conversation\]|\[User onboarding profile\]|\[Retrieved memory\]|---\s*$)|\Z)"
+)
+
+
+def _profile_evidence_context(context: str | None) -> str:
+    return _ASSISTANT_CONTEXT_ENTRY.sub("", context or "").strip()
 _CURRENCY = r"(?:INR|USD|EUR|GBP|Rs\.?|₹|\$|€|£)"
 
 
@@ -73,7 +86,7 @@ def answer_saved_profile_fact(message: str, context: str | None) -> str | None:
     if not _PROFILE_INTENT.search(message):
         return None
 
-    ctx = context or ""
+    ctx = _profile_evidence_context(context)
     question = message.lower()
 
     if "emergency" in question and ("target" in question or "contribution" in question):
