@@ -43,6 +43,8 @@ class Settings(BaseSettings):
 
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     finmate_use_embeddings: bool = True
+    # Disable semantic memory retrieval for controlled research ablations.
+    finmate_use_rag: bool = True
     intent_embedding_weight: float = 0.25
 
     alpha_vantage_api_key: str | None = None
