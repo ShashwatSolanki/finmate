@@ -10,6 +10,7 @@ This document tracks security-specific behavior and deployment checks. It is not
 - Docker Compose binds PostgreSQL to `127.0.0.1` rather than all host interfaces. The sample password is for local development only; do not reuse it for a shared or production database.
 - Verification and password-reset codes are persisted as salted PBKDF2 hashes. On first startup after deployment, PostgreSQL migration code adds hash columns and clears legacy plaintext OTPs. Pending legacy codes are intentionally invalidated; users must request fresh codes.
 - Account creation is rate-limited by normalized email and client IP. Production/staging still require shared Redis rate limiting.
+- OTP previews in API responses are returned only when mock email is explicitly enabled in known local/test environments; other environment names fail closed.
 - Protected frontend requests use a shared single-flight refresh flow: expired access tokens trigger one refresh attempt, the token pair is rotated, and the original request is retried once.
 - Invalid structured invoice PDF requests return a validation response rather than an unhandled server error.
 
