@@ -467,6 +467,7 @@ def generate(
     *,
     system_extra: str | None = None,
     json_tools_fallback: list[str] | None = None,
+    max_new_tokens: int | None = None,
 ) -> str:
     if any(kw in user_message.lower() for kw in CRISIS_KEYWORDS):
         return (
@@ -520,7 +521,10 @@ def generate(
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
-            max_new_tokens=min(settings.finmate_max_new_tokens, 512),
+            max_new_tokens=min(
+                max_new_tokens if max_new_tokens is not None else settings.finmate_max_new_tokens,
+                512,
+            ),
             repetition_penalty=1.15,
             do_sample=False,
         )
