@@ -68,7 +68,6 @@ def _extract_lump_sum(message: str) -> Decimal | None:
         r"\b(?:invest(?:ing)?|investment(?:\s+amount)?|lump[ -]?sum(?:\s+investment)?|"
         r"investable\s+(?:amount|surplus)|(?:fixed|term)[ -]?deposit)\b"
     )
-    )
     match = re.search(
         investment_label
         + r"\s*(?:(?:of|about|around|approximately|is)\s+)?"
