@@ -23,6 +23,14 @@ class ProfileMemoryTests(unittest.TestCase):
         self.assertIn("INR 100,000", reply)
         self.assertNotIn("INR 1.", reply)
 
+    def test_answers_saved_income_expressed_in_lakhs(self):
+        reply = answer_saved_profile_fact(
+            "From my saved profile, what is my monthly after-tax income?",
+            "The synthetic user's monthly after-tax income is INR 1 lakh.",
+        )
+        self.assertIsNotNone(reply)
+        self.assertIn("INR 100,000", reply)
+
     def test_malformed_grouped_saved_income_abstains(self):
         reply = answer_saved_profile_fact(
             "From my saved profile, what is my monthly after-tax income?",
