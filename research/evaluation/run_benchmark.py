@@ -38,6 +38,12 @@ def numeric_values(text):
 def contains_number(text,target,tol):
     return any(abs(v-target)<=tol for v in numeric_values(text))
 
+def numeric_answer_matches(reply, expected_values, tol=0.01):
+    """Score gold numbers from user-visible reply text only, never internal metadata."""
+    if not expected_values:
+        return False
+    return all(contains_number(reply, float(value), tol) for value in expected_values)
+
 def memory_answer_matches(text, expected, tol=0.01):
     """Match saved-memory answers without numeric substring false positives."""
     expected = str(expected or "").strip()
@@ -48,6 +54,7 @@ def memory_answer_matches(text, expected, tol=0.01):
     return expected.casefold() in text.casefold()
 
 def invoice_payload_correct(meta,gold,tol=0.01):
+    """Validate invoice currency, line items, subtotal, and final total."""
     raw=meta.get("invoice_payload")
     if not raw: return False
     try:
@@ -56,8 +63,16 @@ def invoice_payload_correct(meta,gold,tol=0.01):
         amounts=sorted(round(float(x.get("amount",0)),2) for x in payload.get("line_items",[]))
         expected=sorted(round(float(x),2) for x in gold.get("line_amounts",[]))
         subtotal=payload.get("subtotal")
-        if subtotal is None: subtotal=sum(amounts)
-        return amounts==expected and abs(float(subtotal)-float(gold.get("subtotal",0)))<=tol
+        actual_total=payload.get("total")
+        expected_subtotal=gold.get("subtotal")
+        expected_total=gold.get("total", expected_subtotal)
+        if subtotal is None or actual_total is None or expected_subtotal is None or expected_total is None:
+            return False
+        return (
+            amounts==expected
+            and abs(float(subtotal)-float(expected_subtotal))<=tol
+            and abs(float(actual_total)-float(expected_total))<=tol
+        )
     except (TypeError,ValueError,json.JSONDecodeError): return False
 
 def parse_agent(reply,api_agent=""):
@@ -174,9 +189,8 @@ def run():
             latency=time.perf_counter()-start
             reply=str(data.get("reply","")); meta=data.get("metadata") or {}
             agent=parse_agent(reply,str(data.get("agent","")))
-            blob=reply+"\n"+json.dumps(meta,ensure_ascii=False,default=str)
             gold_nums=case.get("gold_numeric_values",[]); tol=float(case.get("tolerance",0.01))
-            numeric_ok=all(contains_number(blob,float(v),tol) for v in gold_nums) if gold_nums else None
+            numeric_ok=numeric_answer_matches(reply,gold_nums,tol) if gold_nums else None
             gold_mem=str(case.get("gold_memory_answer") or "").strip()
             memory_ok=memory_answer_matches(reply, gold_mem, tol) if gold_mem else None
             route_ok=(agent==case["expected_agent"]) if case.get("expected_agent") else None
