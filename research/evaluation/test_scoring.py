@@ -111,4 +111,8 @@ class ScoreTests(unittest.TestCase):
     def test_non_eval_database_rejected(self):
         with self.assertRaises(ValueError):
             runner.require_evaluation_database("postgresql+psycopg2://finmate:finmate@127.0.0.1:5433/finmate")
+
+    def test_database_name_containing_contest_is_not_mistaken_for_test(self):
+        with self.assertRaises(ValueError):
+            runner.require_evaluation_database("postgresql+psycopg2://finmate:finmate@127.0.0.1:5433/finmate_contest")
 if __name__=="__main__": unittest.main()
