@@ -83,7 +83,7 @@ def run():
     p.add_argument("--dataset",type=Path,default=Path(__file__).with_name("benchmark.jsonl"))
     p.add_argument("--output",type=Path,default=None)
     p.add_argument("--limit",type=int,default=0,help="Take the first N cases for debugging only; not stratified.")
-    p.add_argument("--pilot",action="store_true",help="Select a deterministic stratified 15-case smoke pilot across numerical, memory/abstention, single-agent and multi-agent tasks.")
+    p.add_argument("--pilot",action="store_true",help="Select a deterministic stratified 21-case smoke pilot across numerical, memory/abstention, single-agent and multi-agent tasks.")
     p.add_argument("--commit",default="")
     p.add_argument("--environment-notes",default="")
     args=p.parse_args()
