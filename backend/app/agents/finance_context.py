@@ -5,15 +5,28 @@ from __future__ import annotations
 import re
 from decimal import Decimal
 
-_ONBOARDING_INCOME = re.compile(r"monthly income:\s*([\d,]+(?:\.\d+)?)\s*(\w+)?", re.I)
+_AMOUNT_TOKEN = r"(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?(?:\s*(?:k|m|thousands?|millions?|lacs?|lakhs?|crores?)\b)?"
+_ONBOARDING_INCOME = re.compile(rf"monthly income:\s*({_AMOUNT_TOKEN})(?!,\d)\s*(\w+)?", re.I)
 _SALARY_INCOME = re.compile(
-    r"(?:salary|income)(?:\s+is|\s+of)?\s*(?:rs\.?|inr|₹|usd|\$|€|eur)?\s*([\d,]+(?:\.\d+)?)",
+    rf"(?:salary|income)(?:\s+is|\s+of)?\s*(?:rs\.?|inr|₹|usd|\$|€|eur)?\s*({_AMOUNT_TOKEN})(?!,\d)",
     re.I,
 )
 
 
 def _parse_amount(raw: str) -> Decimal:
-    return Decimal(raw.replace(",", ""))
+    match = re.fullmatch(r"(?P<number>(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?)(?:\s*(?P<scale>k|m|thousands?|millions?|lacs?|lakhs?|crores?)\b)?", raw.strip(), re.I)
+    if not match:
+        raise ValueError("invalid income amount format")
+    amount = Decimal(match.group("number").replace(",", ""))
+    scale = (match.group("scale") or "").lower()
+    multiplier = (
+        Decimal("1000") if scale in {"k", "thousand", "thousands"} else
+        Decimal("1000000") if scale in {"m", "million", "millions"} else
+        Decimal("100000") if scale in {"lac", "lacs", "lakh", "lakhs"} else
+        Decimal("10000000") if scale in {"crore", "crores"} else
+        Decimal("1")
+    )
+    return amount * multiplier
 
 
 def _currency_near_match(text: str, match: re.Match[str]) -> str | None:
