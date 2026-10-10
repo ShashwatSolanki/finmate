@@ -89,6 +89,23 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(invoice.subtotal, Decimal("900.00"))
         self.assertEqual(invoice.total, Decimal("900.00"))
 
+    def test_invoice_preserves_and_inside_descriptions_and_grouped_amounts(self):
+        invoice = _structured_from_message(
+            "Create invoice for design and development INR 1,200 and hosting INR 2,000."
+        )
+
+        self.assertIsNotNone(invoice)
+        assert invoice is not None
+        self.assertEqual(
+            [(item.description, item.amount) for item in invoice.line_items],
+            [
+                ("design and development", Decimal("1200.00")),
+                ("hosting", Decimal("2000.00")),
+            ],
+        )
+        self.assertEqual(invoice.subtotal, Decimal("3200.00"))
+        self.assertEqual(invoice.total, Decimal("3200.00"))
+
     def test_expense_invoice_uses_recent_transactions(self):
         invoice = MagicMock()
         item = MagicMock()
