@@ -21,7 +21,7 @@ def _amount_fact(context: str, label_pattern: str) -> tuple[str, str | None] | N
     # Handles both "monthly income: 46500 INR" and
     # "monthly after-tax income is INR 46500".
     pattern = re.compile(
-        rf"\b{label_pattern}\s*(?:is|:|=)?\s*"
+        rf"\b(?:{label_pattern})\s*(?:is|:|=)?\s*"
         rf"(?:(?P<prefix>{_CURRENCY})\s*)?"
         rf"(?P<amount>\d[\d,]*(?:\.\d+)?)"
         rf"\s*(?P<suffix>{_CURRENCY})?\b",
@@ -41,6 +41,14 @@ def _amount_fact(context: str, label_pattern: str) -> tuple[str, str | None] | N
             )
         )
     return match.group("amount").replace(",", ""), currency
+
+
+def _format_amount(amount: str, currency: str | None) -> str:
+    # Decimal-like text is formatted without introducing binary-float rounding.
+    whole, dot, fraction = amount.partition(".")
+    whole = f"{int(whole):,}"
+    numeric = whole + (dot + fraction if dot else "")
+    return f"{currency} {numeric}" if currency else numeric
 
 
 def _abstain(label: str) -> str:
@@ -65,8 +73,7 @@ def answer_saved_profile_fact(message: str, context: str | None) -> str | None:
         )
         if found:
             amount, currency = found
-            value = f"{currency} {float(amount):,.2f}" if currency else f"{float(amount):,.2f}"
-            return f"Your saved monthly emergency-fund contribution target is {value}."
+            return f"Your saved monthly emergency-fund contribution target is {_format_amount(amount, currency)}."
         return _abstain("monthly emergency-fund contribution target")
 
     if re.search(r"\b(after[- ]tax\s+income|monthly\s+income|salary|income)\b", question):
@@ -74,16 +81,14 @@ def answer_saved_profile_fact(message: str, context: str | None) -> str | None:
         label = "monthly after-tax income" if "after-tax" in question else "monthly income"
         if found:
             amount, currency = found
-            value = f"{currency} {float(amount):,.2f}" if currency else f"{float(amount):,.2f}"
-            return f"Your saved {label} is {value}."
+            return f"Your saved {label} is {_format_amount(amount, currency)}."
         return _abstain(label)
 
     if re.search(r"\bmonthly\s+rent\b|\brent amount\b", question):
         found = _amount_fact(ctx, r"monthly\s+rent|rent amount")
         if found:
             amount, currency = found
-            value = f"{currency} {float(amount):,.2f}" if currency else f"{float(amount):,.2f}"
-            return f"Your saved monthly rent is {value}."
+            return f"Your saved monthly rent is {_format_amount(*found)}."
         return _abstain("monthly rent amount")
 
     if "risk tolerance" in question:
@@ -118,9 +123,7 @@ def answer_saved_profile_fact(message: str, context: str | None) -> str | None:
     if re.search(r"\bmonthly\s+savings\s+(?:goal|target)\b|\bsavings target\b", question):
         found = _amount_fact(ctx, r"monthly\s+savings\s+(?:goal|target)|savings target")
         if found:
-            amount, currency = found
-            value = f"{currency} {float(amount):,.2f}" if currency else f"{float(amount):,.2f}"
-            return f"Your saved monthly savings goal is {value}."
+            return f"Your saved monthly savings goal is {_format_amount(*found)}."
         return _abstain("monthly savings goal")
 
     return None
