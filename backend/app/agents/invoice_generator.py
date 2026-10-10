@@ -157,7 +157,14 @@ def _structured_from_message(message: str) -> StructuredInvoice | None:
     """Try full invoice parse on pasted OCR/PDF text; fall back to simple line format."""
     simple = _parse_simple_lines(message)
     explicit_multi_item_plus = bool(re.search(r"\bplus\b", message, re.I)) and len(simple) >= 2
-    if simple and (len(message.strip()) < 80 or explicit_multi_item_plus):
+    explicit_client_invoice = bool(
+        re.search(r"\binvoice\s+(?:a\s+)?client\s+for\b", message, re.I)
+    )
+    if simple and (
+        len(message.strip()) < 80
+        or explicit_multi_item_plus
+        or explicit_client_invoice
+    ):
         line_items = [ParsedLineItem(description=x["description"], amount=Decimal(x["amount"])) for x in simple]
         total = sum((i.amount for i in line_items), start=Decimal("0"))
         return StructuredInvoice(
