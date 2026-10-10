@@ -64,7 +64,7 @@ class FinanceRoutingRegressionTests(unittest.TestCase):
         agentic.assert_not_called()
         budget_run.assert_not_called()
         self.assertEqual(result.metadata["source"], "llm")
-        self.assertIn("Budgeting plans day-to-day cash flow", result.reply)
+        self.assertIn("Risk tolerance describes willingness to accept losses", result.reply)
 
     def test_saved_profile_fact_bypasses_free_form_generation(self):
         context = "[Retrieved memory]\nThe synthetic user's monthly after-tax income is INR 46500."
