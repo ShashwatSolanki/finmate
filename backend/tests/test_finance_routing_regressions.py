@@ -20,7 +20,7 @@ class FinanceRoutingRegressionTests(unittest.TestCase):
             metadata={"source": "exact_arithmetic"},
         )
         with (
-            patch("app.agents.orchestrator.settings.finmate_agentic_mode", False),
+            patch("app.agents.orchestrator.settings.finmate_agentic_mode", True),
             patch("app.agents.orchestrator.settings.finmate_use_llm", True),
             patch("app.agents.orchestrator.classify_agent", return_value=AgentName.BUDGET_PLANNER),
             patch("app.agents.orchestrator.budget_planner.run", return_value=expected) as budget_run,
@@ -51,18 +51,20 @@ class FinanceRoutingRegressionTests(unittest.TestCase):
             patch("app.agents.orchestrator.settings.finmate_use_llm", True),
             patch.object(finmate, "llm_available", return_value=True),
             patch.object(finmate, "generate", return_value=model_reply) as generate,
+            patch("app.agents.orchestrator.run_agentic_turn") as agentic,
             patch("app.agents.orchestrator.budget_planner.run") as budget_run,
         ):
             result = run_turn(
                 self.user_id,
-                "Explain the difference between risk tolerance and investment time horizon.",
+                "Explain the difference between budget planning and investing.",
                 self.db,
             )
 
         generate.assert_called_once()
+        agentic.assert_not_called()
         budget_run.assert_not_called()
         self.assertEqual(result.metadata["source"], "llm")
-        self.assertIn("Risk tolerance describes willingness", result.reply)
+        self.assertIn("Budgeting plans day-to-day cash flow", result.reply)
 
     def test_saved_profile_fact_bypasses_free_form_generation(self):
         context = "[Retrieved memory]\nThe synthetic user's monthly after-tax income is INR 46500."
