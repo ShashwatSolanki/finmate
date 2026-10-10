@@ -125,8 +125,9 @@ class MessageOut(BaseModel):
 
 
 def _mock_code_preview(code: str) -> str | None:
+    # Fail closed: only known local/test environments may return an OTP in an API response.
     environment = settings.app_env.lower()
-    if settings.email_mock_mode and environment not in {"production", "prod", "staging"}:
+    if settings.email_mock_mode and environment in {"development", "dev", "test", "testing"}:
         return code
     return None
 
@@ -208,7 +209,7 @@ def register(body: RegisterBody, request: Request, db: Session = Depends(get_db)
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Unable to send verification email. Please try again later.",
         )
-    code_preview = otp if settings.email_mock_mode and settings.app_env.lower() != "production" else None
+    code_preview = _mock_code_preview(otp)
 
     return _issue_tokens_for_user(
         user,
