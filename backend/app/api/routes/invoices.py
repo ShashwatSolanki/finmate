@@ -209,11 +209,14 @@ def invoice_pdf_structured(
 ) -> Response:
     """Generate PDF from a full StructuredInvoice (e.g. after editing parsed upload)."""
     ref = (body.invoice_number or str(uuid.uuid4())[:8]).upper()[:24]
-    pdf_bytes = build_invoice_pdf_from_structured(
-        body,
-        invoice_ref=ref,
-        bill_to_fallback=body.bill_to or current.email,
-    )
+    try:
+        pdf_bytes = build_invoice_pdf_from_structured(
+            body,
+            invoice_ref=ref,
+            bill_to_fallback=body.bill_to or current.email,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
