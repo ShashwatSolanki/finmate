@@ -18,6 +18,11 @@ from app.ml.finmate import finalize_llm_reply, generate, llm_available
 from app.services.spending_insights import category_delta_vs_prior_month
 
 _AMOUNT = r"((?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?)(?:\s*(k|m|thousands?|millions?|lakhs?|crores?)\b)?"
+_CURRENCY_AMOUNT = re.compile(
+    rf"(?:\b(?:INR|USD|EUR|GBP)\b|Rs\.?|[₹$€£])\s*{_AMOUNT}(?!\d|,\d)"
+    rf"|{_AMOUNT}\s*\b(?:INR|USD|EUR|GBP)\b",
+    re.I,
+)
 
 
 def _parse_labeled_amount(message: str, labels: str) -> Decimal | None:
@@ -83,6 +88,13 @@ def _extract_balance_remainder(message: str) -> tuple[Decimal, Decimal, dict[str
         if amount is not None:
             expenses[label] = amount
 
+    # Do not silently ignore a currency-denominated item just because its label
+    # is outside the supported expense vocabulary (for example, a credit-card bill).
+    # One currency amount belongs to income; every additional amount must map to a
+    # supported expense before returning a deterministic remainder.
+    currency_amounts = list(_CURRENCY_AMOUNT.finditer(message))
+    if len(currency_amounts) > 1 + len(expenses):
+        return None
     if not expenses:
         return None
     spent = sum(expenses.values(), Decimal("0"))
