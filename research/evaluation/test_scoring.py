@@ -20,4 +20,11 @@ class ScoreTests(unittest.TestCase):
     def test_float_binary_retrieval_scores_included(self):
         score=summary.rate([{"retrieval_hit_at_5":1.0},{"retrieval_hit_at_5":0.0},{"retrieval_hit_at_5":None}],"retrieval_hit_at_5")
         self.assertEqual((score["n"],score["successes"]),(2,1))
+
+    def test_dedicated_eval_database_allowed(self):
+        self.assertEqual(runner.require_evaluation_database("postgresql+psycopg2://finmate:finmate@127.0.0.1:5433/finmate_eval"),"finmate_eval")
+
+    def test_non_eval_database_rejected(self):
+        with self.assertRaises(ValueError):
+            runner.require_evaluation_database("postgresql+psycopg2://finmate:finmate@127.0.0.1:5433/finmate")
 if __name__=="__main__": unittest.main()
