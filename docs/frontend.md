@@ -108,7 +108,7 @@ PDF or CSV export
 
 ## 10. Session renewal
 
-Authenticated requests use the shared `apiFetch` wrapper. If a protected request returns HTTP 401, the wrapper coordinates one refresh-token request, stores the rotated token pair, and retries the original request once. Concurrent requests in the same browser tab share the same refresh operation. Invalid refresh tokens clear the local session; transient network failures do not immediately sign the user out.
+Authenticated requests use the shared `apiFetch` wrapper. If a protected request returns HTTP 401, the wrapper coordinates one refresh-token request, stores the rotated token pair, and retries the original request once. Concurrent requests in the same browser tab share the same refresh operation. Where the browser supports the Web Locks API, tabs also serialize refresh attempts and a waiting tab reuses the already-rotated access token. Invalid refresh tokens clear the local session; transient network failures do not immediately sign the user out.
 
 Tokens are currently persisted in `localStorage`, which means a successful same-origin script injection could read them. This implementation detail remains a security trade-off; see [Security](security.md) for recommended future work.
 
