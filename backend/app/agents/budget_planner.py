@@ -22,7 +22,7 @@ _AMOUNT = r"(\d[\d,]*(?:\.\d+)?)"
 
 def _parse_labeled_amount(message: str, labels: str) -> Decimal | None:
     pattern = re.compile(
-        rf"\b(?:{labels})\b\s*(?:is|of|equals|:|=)?\s*"
+        rf"\b(?:{labels})\b\s*(?:is|are|of|equals|:|=)?\s*"
         rf"(?:(?:INR|Rs\.?|₹|USD|\$|EUR|€|GBP|£)\s*)?{_AMOUNT}",
         re.I,
     )
