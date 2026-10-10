@@ -141,7 +141,7 @@ def _synthesize(
     if not observation_text:
         return observations[-1].reply if observations else ""
 
-    if settings.finmate_use_llm:
+    if settings.finmate_use_llm and settings.finmate_agentic_synthesis:
         try:
             from app.ml import finmate
 
