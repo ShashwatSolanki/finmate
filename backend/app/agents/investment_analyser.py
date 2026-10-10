@@ -337,7 +337,7 @@ def _portfolio_plan_reply(message: str, rag_context: str | None) -> str:
         "[AGENT: INVESTMENT]\n\n"
         f"{prose}\n\n"
         '{"intent":"portfolio_suggestion","steps":["Set allocation from risk profile","Use staggered entries","Rebalance quarterly"],'
-        '"tools_needed":["yfinance_lookup"],"notes":"personalized from onboarding; no ticker confirmed"}'
+        '"tools_needed":["yfinance_lookup"],"notes":"allocation is illustrative unless saved profile context is available; no ticker confirmed"}'
     )
 
 
