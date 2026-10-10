@@ -133,3 +133,18 @@ Report denominators for each metric. Preserve JSONL results and manifests. For A
 3. Consider external FinQA/ConvFinQA/FinanceBench evaluation only as complementary tasks with separate metrics and licence checks.
 4. Have two reviewers annotate a subset of factual claims and report agreement.
 5. Do not claim calibrated confidence from FinMate's heuristic without a separate calibration test.
+
+
+## Baseline audit and benchmark versioning (2026-10-11)
+
+The original local `benchmark-final-review.jsonl` is preserved as the version-1 baseline dataset. Its SHA-256 was `6757ca2f715450d687a69ff04913a56408a877db83049ff47ee9c4455aebc127`; the recorded full-system run on application commit `4a3f0096c573d1d85920792582c733e542da6b35` returned 120/120 HTTP successes and 117/120 automated task completions. Do not overwrite its raw output or manifest.
+
+Review of that run found one invoice task whose prompt requested an invoice without stating line items while the scorer required a structured artifact; its expected behavior was therefore underspecified. The revised generator gives that task two explicit line items and gold descriptions/amounts. The same run also exposed planner vocabulary gaps for “cautious allocation for excess funds” and “household costs”. Regression tests and bounded-planner phrase handling have been added for those cases.
+
+Generate a separately named dataset after checking out the reviewed planner/benchmark revision, for example:
+
+~~~bash
+python research/evaluation/generate_benchmark.py --output research/evaluation/benchmark-reviewed-v2.jsonl
+~~~
+
+Record and freeze the resulting SHA-256 before running conditions. Preserve version-1 artifacts unchanged. For a controlled ablation comparison, use the same reviewed-v2 file and the same application commit for every condition; rerun the full condition on that version before making a primary result claim. The version-1 run remains a development baseline, not a holdout evaluation or a validated gold-standard benchmark.
