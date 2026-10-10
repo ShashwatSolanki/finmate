@@ -80,6 +80,36 @@ describe("API helpers", () => {
     expect(second.ok).toBe(true);
   });
 
+  it("reuses a token rotated by another tab before acquiring the refresh lock", async () => {
+    vi.stubGlobal("localStorage", localStorageMock);
+    storage.set(TOKEN_KEY, "old-access");
+    storage.set(REFRESH_TOKEN_KEY, "old-refresh");
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+
+    vi.stubGlobal("navigator", {
+      locks: {
+        request: vi.fn(async (_name: string, callback: () => Promise<string | null>) => {
+          // Simulate another tab completing token rotation while this request waits.
+          storage.set(TOKEN_KEY, "rotated-by-other-tab");
+          storage.set(REFRESH_TOKEN_KEY, "rotated-refresh");
+          return callback();
+        }),
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      requests.push({ url: String(input), init });
+      if (requests.length === 1) return new Response(null, { status: 401 });
+      return jsonResponse({ ok: true });
+    }));
+
+    const response = await apiFetch("/api/transactions", { headers: authHeaders("old-access") });
+
+    expect(response.status).toBe(200);
+    expect(requests).toHaveLength(2);
+    expect(requests.some((request) => request.url === apiUrl("/api/auth/refresh"))).toBe(false);
+    expect(new Headers(requests[1].init?.headers).get("Authorization")).toBe("Bearer rotated-by-other-tab");
+  });
+
   it("clears stored auth when the refresh token is invalid", async () => {
     vi.stubGlobal("localStorage", localStorageMock);
     storage.set(TOKEN_KEY, "old-access");
