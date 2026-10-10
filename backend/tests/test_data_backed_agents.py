@@ -98,8 +98,8 @@ class DataBackedAgentTests(unittest.TestCase):
         )
 
         self.assertEqual(result.metadata["source"], "structured_parse")
-        self.assertIn('"notes":"parsed from message text"', result.reply)
-        self.assertNotIn('"notes":"generated from recent user transactions"', result.reply)
+        self.assertIn('"notes": "parsed from message text"', result.reply)
+        self.assertNotIn('"notes": "generated from recent user transactions"', result.reply)
 
     def test_client_invoice_clause_in_multi_agent_request_keeps_clean_item_name(self):
         invoice = _structured_from_message(
