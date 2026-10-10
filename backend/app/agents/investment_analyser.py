@@ -61,18 +61,28 @@ def _extract_original_request(message: str) -> str:
 
 
 def _extract_lump_sum(message: str) -> Decimal | None:
-    """Extract an investment amount without mistaking ages, dates, or percentages for money."""
+    """Extract an amount only when the wording ties it to investing."""
     amount_pattern = r"(\d[\d,]*(?:\.\d{1,2})?)\s*(k|m|lakh|lakhs)?"
-    currency_match = re.search(
-        r"(?:₹|\$|€|£|\bINR\b|\bUSD\b|\bEUR\b|\bGBP\b)\s*" + amount_pattern,
+    currency_pattern = r"(?:₹|\$|€|£|\bINR\b|\bUSD\b|\bEUR\b|\bGBP\b)?\s*"
+    investment_label = (
+        r"\b(?:invest(?:ing)?|investment(?:\s+amount)?|lump[ -]?sum(?:\s+investment)?|"
+        r"deposit|investable\s+(?:amount|surplus)|amount)\b"
+    )
+    match = re.search(
+        investment_label
+        + r"\s*(?:(?:of|about|around|approximately|is|for|in)\s+)?"
+        + currency_pattern
+        + amount_pattern,
         message,
         re.I,
     )
-    match = currency_match
     if not match:
+        # Also support a currency amount followed immediately by an explicit
+        # investment purpose, without matching unrelated invoice/expense amounts.
         match = re.search(
-            r"\b(?:invest(?:ing)?|investment of|lump[ -]?sum|deposit|amount of)\s*(?:about\s+|around\s+|of\s+)?"
-            + amount_pattern,
+            currency_pattern
+            + amount_pattern
+            + r"\s+(?:to invest|for investing|as (?:a )?(?:lump[ -]?sum )?investment)\b",
             message,
             re.I,
         )
