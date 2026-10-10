@@ -39,6 +39,13 @@ class ProfileMemoryTests(unittest.TestCase):
         self.assertIsNotNone(reply)
         self.assertIn("won't guess", reply)
 
+        malformed = answer_saved_profile_fact(
+            "From my saved profile, what is my monthly after-tax income?",
+            "The synthetic user's monthly after-tax income is INR 50,0000.",
+        )
+        self.assertIsNotNone(malformed)
+        self.assertIn("won't guess", malformed)
+
     def test_answers_saved_risk_tolerance_from_retrieved_text(self):
         reply = answer_saved_profile_fact(
             "What investment risk tolerance did I record in my profile?",
