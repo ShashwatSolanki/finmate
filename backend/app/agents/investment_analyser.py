@@ -70,7 +70,7 @@ def _extract_lump_sum(message: str) -> Decimal | None:
     )
     match = re.search(
         investment_label
-        + r"\s*(?:(?:of|about|around|approximately|is|for|in)\s+)?"
+        + r"\s*(?:(?:of|about|around|approximately|is)\s+)?"
         + currency_pattern
         + amount_pattern,
         message,
