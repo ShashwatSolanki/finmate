@@ -7,9 +7,9 @@ from decimal import Decimal
 
 _AMOUNT_TOKEN = r"(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?(?:\s*(?:k|m|thousands?|millions?|lacs?|lakhs?|crores?)\b)?"
 _CURRENCY_TOKEN = r"(?:INR|USD|EUR|GBP|AUD|CAD|SGD|JPY|CHF|NZD|CNY|HKD|KRW|SEK|NOK|DKK|ZAR|AED|SAR|Rs\.?|₹|\$|€|£)"
-_ONBOARDING_INCOME = re.compile(rf"monthly income:\s*({_AMOUNT_TOKEN})(?![\d,])\s*({_CURRENCY_TOKEN})?(?![A-Za-z])", re.I)
+_ONBOARDING_INCOME = re.compile(rf"monthly income:\s*({_AMOUNT_TOKEN})(?!\d|,\d)\s*({_CURRENCY_TOKEN})?(?![A-Za-z])", re.I)
 _SALARY_INCOME = re.compile(
-    rf"(?:salary|income)(?:\s+is|\s+of)?\s*(?:rs\.?|inr|₹|usd|\$|€|eur)?\s*({_AMOUNT_TOKEN})(?![\d,])",
+    rf"(?:salary|income)(?:\s+is|\s+of)?\s*(?:rs\.?|inr|₹|usd|\$|€|eur)?\s*({_AMOUNT_TOKEN})(?!\d|,\d)",
     re.I,
 )
 
