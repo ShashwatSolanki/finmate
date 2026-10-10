@@ -110,10 +110,35 @@ multi=[
 ("three_domain","Analyze household costs, explain an investment option for the remainder, and prepare a service invoice INR 2500.",["budget_planner","investment_analyser","invoice_generator"]),
 ("budget_investment","Review spending and estimate the money available for long-term investing after expenses.",["budget_planner","investment_analyser"]),
 ("budget_invoice","Look at my spending and create an invoice for project work INR 1700 and revision INR 400.",["budget_planner","invoice_generator"])]
+# Validate line-item content, not just presence of invoice artifacts, for
+# multi-domain cases that explicitly request itemized services and amounts.
+routing_invoice_gold = {
+    3:  (["consulting"], [1200]),
+    5:  (["website maintenance"], [800]),
+    6:  (["design"], [950]),
+    9:  (["consulting"], [2100]),
+    11: (["maintenance", "support"], [700, 250]),
+    12: (["audit"], [500]),
+    14: (["technical assistance"], [1300]),
+    15: (["development"], [3600]),
+    17: (["configuration", "support"], [400, 500]),
+    20: (["project work", "revision"], [1700, 400]),
+}
 for i,(kind,message,agents) in enumerate(multi,1):
-    cases.append({"case_id":f"ROUTE-MULTI-{i:02d}","group":"routing","subgroup":kind,
+    case={"case_id":f"ROUTE-MULTI-{i:02d}","group":"routing","subgroup":kind,
       "message":message,"expected_source":"agentic","expected_agents":agents,
-      "requires_invoice_artifacts":"invoice_generator" in agents})
+      "requires_invoice_artifacts":"invoice_generator" in agents}
+    if i in routing_invoice_gold:
+        descriptions, amounts = routing_invoice_gold[i]
+        total = sum(amounts)
+        case["gold_invoice"] = {
+            "currency": "INR",
+            "subtotal": total,
+            "total": total,
+            "line_descriptions": descriptions,
+            "line_amounts": amounts,
+        }
+    cases.append(case)
 assert len(cases)==120 and len({x["case_id"] for x in cases})==120
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument(
