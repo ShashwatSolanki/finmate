@@ -116,7 +116,7 @@ for i,(kind,message,agents) in enumerate(multi,1):
       "requires_invoice_artifacts":"invoice_generator" in agents})
 assert len(cases)==120 and len({x["case_id"] for x in cases})==120
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--output", type=Path, default=OUT, help="Output JSONL path (defaults to research/evaluation/benchmark.jsonl")
+parser.add_argument("--output", type=Path, default=OUT, help="Output JSONL path (defaults to research/evaluation/benchmark.jsonl)")
 output = parser.parse_args().output
 output.parent.mkdir(parents=True, exist_ok=True)
 output.write_text("\n".join(json.dumps(x,ensure_ascii=False) for x in cases)+"\n",encoding="utf-8")
