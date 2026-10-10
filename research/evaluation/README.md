@@ -23,6 +23,7 @@ Set these variables before restarting the API:
 - No semantic retrieval: FINMATE_USE_RAG=false
 - No multi-agent planner: FINMATE_AGENTIC_MODE=false
 - No LLM generation: FINMATE_USE_LLM=false
+- Deterministic agentic synthesis experiment: FINMATE_AGENTIC_SYNTHESIS=false. This disables only the final synthesis model call; specialist execution and their own applicable paths remain enabled. The default is true, preserving current behavior.
 - Direct local model: --condition llm_only, which bypasses API tools, memory, and specialist orchestration.
 
 FINMATE_USE_RAG defaults to true. Disabling it does not disable recent-conversation or onboarding context by itself. The runner clears test-user state and seeds memory rows with source research_eval; use only a dedicated disposable database. The direct-model baseline is not equivalent to an external general-purpose LLM, and this limitation should be stated.
