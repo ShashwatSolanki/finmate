@@ -75,14 +75,27 @@ def _detect_currency(message: str) -> str:
 def _parse_simple_lines(message: str) -> list[dict[str, str]]:
     """Parse compact natural-language invoice requests into line items."""
     cleaned = re.sub(
-        r"^\s*(?:(?:create|generate|make|draft)\s+(?:an?\s+)?invoice"
+        r"^\s*(?:(?:create|generate|make|draft|prepare)\s+(?:an?\s+)?(?:client\s+)?invoice"
         r"|i\s+need\s+(?:an?\s+)?(?:client\s+)?invoice)"
         r"\s*(?:for|from|line\s+items?)?\s*[:\-]?\s*",
         "",
         message,
         flags=re.I,
     )
-    parts = re.split(r"\s+and\s+|[,;]", cleaned, flags=re.I)
+    # First split on conjunctions/commas, then recognize "plus" as a line-item
+    # separator only when each side independently ends in a parseable amount.
+    # This avoids splitting ordinary descriptions such as "design and development".
+    initial_parts = re.split(r"\s+and\s+|[,;]", cleaned, flags=re.I)
+    parts: list[str] = []
+    for initial_part in initial_parts:
+        plus_parts = re.split(r"\s+plus\s+", initial_part, flags=re.I)
+        if len(plus_parts) > 1 and all(
+            _AMOUNT_LINE.match(part.strip()) or _AMOUNT_FIRST_LINE.match(part.strip())
+            for part in plus_parts
+        ):
+            parts.extend(plus_parts)
+        else:
+            parts.append(initial_part)
     items: list[dict[str, str]] = []
     for part in parts:
         text = part.strip().rstrip(".!?")
@@ -103,6 +116,7 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
         if val <= 0:
             continue
         desc = re.sub(r"^(?:for|of)\s+", "", desc.strip(), flags=re.I)
+        desc = re.sub(r"^invoice\s+(?:a\s+)?client\s+for\s+", "", desc, flags=re.I)
         if desc:
             items.append({"description": desc, "amount": f"{val:.2f}"})
     return items
@@ -111,10 +125,16 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
 def _structured_from_message(message: str) -> StructuredInvoice | None:
     """Try full invoice parse on pasted OCR/PDF text; fall back to simple line format."""
     simple = _parse_simple_lines(message)
-    if simple and len(message.strip()) < 80:
+    explicit_multi_item_plus = bool(re.search(r"\bplus\b", message, re.I)) and len(simple) >= 2
+    if simple and (len(message.strip()) < 80 or explicit_multi_item_plus):
         line_items = [ParsedLineItem(description=x["description"], amount=Decimal(x["amount"])) for x in simple]
         total = sum((i.amount for i in line_items), start=Decimal("0"))
-        return StructuredInvoice(line_items=line_items, total=total, currency=_detect_currency(message))
+        return StructuredInvoice(
+            line_items=line_items,
+            subtotal=total,
+            total=total,
+            currency=_detect_currency(message),
+        )
 
     result = parse_invoice_text(message, source_type="text", filename="chat-message.txt")
     if result.invoice.line_items:
@@ -123,7 +143,12 @@ def _structured_from_message(message: str) -> StructuredInvoice | None:
     if simple:
         line_items = [ParsedLineItem(description=x["description"], amount=Decimal(x["amount"])) for x in simple]
         total = sum((i.amount for i in line_items), start=Decimal("0"))
-        return StructuredInvoice(line_items=line_items, total=total, currency=_detect_currency(message) if _detect_currency(message) != "USD" else result.invoice.currency)
+        return StructuredInvoice(
+            line_items=line_items,
+            subtotal=total,
+            total=total,
+            currency=_detect_currency(message) if _detect_currency(message) != "USD" else result.invoice.currency,
+        )
     return None
 
 
