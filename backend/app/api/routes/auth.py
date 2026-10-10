@@ -120,6 +120,15 @@ class ResetPasswordBody(BaseModel):
 class MessageOut(BaseModel):
     message: str
     success: bool = True
+    # Return mock codes only in non-production local/test environments.
+    verification_code_preview: str | None = None
+
+
+def _mock_code_preview(code: str) -> str | None:
+    environment = settings.app_env.lower()
+    if settings.email_mock_mode and environment not in {"production", "prod", "staging"}:
+        return code
+    return None
 
 
 def _issue_tokens_for_user(
@@ -277,7 +286,10 @@ def resend_verification(body: ResendVerificationBody, request: Request, db: Sess
     db.commit()
 
     send_verification_email(user.email, otp)
-    return MessageOut(message="If the email is registered and unverified, a verification code has been sent.")
+    return MessageOut(
+        message="If the email is registered and unverified, a verification code has been sent.",
+        verification_code_preview=_mock_code_preview(otp),
+    )
 
 
 @router.post("/forgot-password", response_model=MessageOut)
@@ -302,7 +314,10 @@ def forgot_password(body: ForgotPasswordBody, request: Request, db: Session = De
     db.commit()
 
     send_password_reset_email(user.email, otp)
-    return MessageOut(message="If the email exists in our system, a password reset code has been sent.")
+    return MessageOut(
+        message="If the email exists in our system, a password reset code has been sent.",
+        verification_code_preview=_mock_code_preview(otp),
+    )
 
 
 @router.post("/reset-password", response_model=MessageOut)
