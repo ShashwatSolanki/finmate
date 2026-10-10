@@ -41,15 +41,14 @@ class FinanceRoutingRegressionTests(unittest.TestCase):
         from app.ml import finmate
 
         model_reply = (
-            "[AGENT: INVESTMENT]\\n\\n"
-            "Compound interest earns returns on prior returns.\\n\\n"
+            "[AGENT: INVESTMENT]\n\n"
+            "Compound interest earns returns on prior returns.\n\n"
             '{"intent":"investment_info","steps":["Explain compounding"],'
             '"tools_needed":[],"notes":"educational answer"}'
         )
         with (
             patch("app.agents.orchestrator.settings.finmate_agentic_mode", False),
             patch("app.agents.orchestrator.settings.finmate_use_llm", True),
-            patch("app.agents.orchestrator.has_explicit_domain_signal", return_value=False),
             patch.object(finmate, "llm_available", return_value=True),
             patch.object(finmate, "generate", return_value=model_reply) as generate,
             patch("app.agents.orchestrator.budget_planner.run") as budget_run,
