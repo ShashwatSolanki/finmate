@@ -33,6 +33,7 @@ class DatasetTests(unittest.TestCase):
             g=r["gold_invoice"]
             self.assertEqual(sum(g["line_amounts"]),g["subtotal"])
             self.assertEqual(g["subtotal"],r["gold_numeric_values"][0])
+            self.assertEqual(len(g["line_descriptions"]),len(g["line_amounts"]))
     def test_transaction_gold_values(self):
         rows=[r for r in self.rows if r.get("subgroup")=="transaction_aggregation"]
         for r in rows:
