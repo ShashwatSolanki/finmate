@@ -70,6 +70,20 @@ class ScoreTests(unittest.TestCase):
                 "A five-year time horizon may suit some investors.", "5 years", .01
             )
         )
+    def test_execution_path_scoring_does_not_trust_agent_label_or_guess_missing_metadata(self):
+        self.assertTrue(
+            runner.execution_path_matches({"execution_path": "specialist"}, "specialist")
+        )
+        self.assertFalse(
+            runner.execution_path_matches({"execution_path": "general_llm"}, "specialist")
+        )
+        self.assertTrue(
+            runner.execution_path_matches({"execution_path": "general_llm"}, "general_llm")
+        )
+        self.assertFalse(runner.execution_path_matches({"source": "llm"}, "specialist"))
+        self.assertFalse(runner.execution_path_matches({}, "general_llm"))
+        self.assertIsNone(runner.execution_path_matches({}, None))
+
     def test_invoice_payload_correct(self):
         meta={"invoice_payload":'{"currency":"INR","subtotal":"153.00","total":"153.00","line_items":[{"description":"maintenance","amount":"49.00"},{"description":"SEO","amount":"79.00"},{"description":"domain","amount":"25.00"}]}'}
         self.assertTrue(runner.invoice_payload_correct(meta,{"currency":"INR","subtotal":153,"total":153,"line_amounts":[49,79,25],"line_descriptions":["maintenance","SEO","domain"]}))

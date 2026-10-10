@@ -20,21 +20,21 @@ for i in range(20):
     ]
     cases.append({"case_id":f"NUM-TX-{i+1:02d}","group":"numerical","subgroup":"transaction_aggregation",
       "message":"How much did I spend on food in the last 30 days? Give the total and briefly explain it.",
-      "expected_agent":"budget_planner","transactions_fixture":transactions,"gold_numeric_values":[sum(vals)],
+      "expected_agent":"budget_planner","expected_execution_path":"specialist","transactions_fixture":transactions,"gold_numeric_values":[sum(vals)],
       "tolerance":0.01,"requires_invoice_artifacts":False})
 for i in range(10):
     a,b,c=49+13*i,79+17*i,25+7*i
     total=a+b+c
     cases.append({"case_id":f"NUM-INV-{i+1:02d}","group":"numerical","subgroup":"invoice_subtotal",
       "message":f"Create invoice maintenance INR {a}, SEO INR {b}, domain INR {c}.",
-      "expected_agent":"invoice_generator","gold_numeric_values":[total],"tolerance":0.01,
+      "expected_agent":"invoice_generator","expected_execution_path":"specialist","gold_numeric_values":[total],"tolerance":0.01,
       "requires_invoice_artifacts":True,"gold_invoice":{"currency":"INR","subtotal":total,"total":total,"line_descriptions":["maintenance","SEO","domain"],"line_amounts":[a,b,c]}})
 for i in range(10):
     income,rent,emi,food,utilities=38000+2750*i,9000+375*i,2500+125*i,3000+110*i,1000+45*i
     remain=income-rent-emi-food-utilities
     cases.append({"case_id":f"NUM-BAL-{i+1:02d}","group":"numerical","subgroup":"balance_arithmetic",
       "message":f"My monthly income is INR {income}, rent is INR {rent}, EMI is INR {emi}, groceries are INR {food}, and utilities are INR {utilities}. How much remains after these expenses?",
-      "expected_agent":"budget_planner","gold_numeric_values":[remain],"tolerance":0.01,"requires_invoice_artifacts":False})
+      "expected_agent":"budget_planner","expected_execution_path":"specialist","gold_numeric_values":[remain],"tolerance":0.01,"requires_invoice_artifacts":False})
 
 # 40 memory tasks; eight explicitly test abstention when the requested fact is absent.
 for i in range(40):
@@ -60,7 +60,7 @@ for i in range(40):
     else:
         memory.insert(0,relevant)
     cases.append({"case_id":f"MEM-{kind.upper()}-{i+1:02d}","group":"memory","subgroup":f"memory_{kind}",
-      "message":question,"expected_agent":agent,"memory_fixture":memory,"relevant_memory":relevant or None,
+      "message":question,"expected_agent":agent,"expected_execution_path":"profile_memory","memory_fixture":memory,"relevant_memory":relevant or None,
       "gold_memory_answer":target or None,"gold_numeric_values":[float(target)] if target.isdigit() else [],
       "tolerance":0.01,"expected_abstention":absent,"requires_invoice_artifacts":False})
 
@@ -86,9 +86,18 @@ single=[
 ("invoice_generator","Prepare an invoice for training services INR 5000 and documentation INR 1500."),
 ("budget_planner","How can I set a realistic weekly spending limit from a monthly budget?"),
 ("investment_analyser","Describe factors to review before reallocating my investment portfolio.")]
+general_education_cases = {5, 11, 17}
 for i,(agent,message) in enumerate(single,1):
-    cases.append({"case_id":f"ROUTE-SINGLE-{i:02d}","group":"routing","subgroup":"single_specialist",
-      "message":message,"expected_agent":agent,"requires_invoice_artifacts":agent=="invoice_generator"})
+    is_general_education = i in general_education_cases
+    cases.append({
+      "case_id":f"ROUTE-SINGLE-{i:02d}",
+      "group":"routing",
+      "subgroup":"general_education" if is_general_education else "single_specialist",
+      "message":message,
+      "expected_agent":None if is_general_education else agent,
+      "expected_execution_path":"general_llm" if is_general_education else "specialist",
+      "requires_invoice_artifacts":agent=="invoice_generator"
+    })
 multi=[
 ("budget_investment","Analyze my spending and tell me how much I can invest this month.",["budget_planner","investment_analyser"]),
 ("budget_invoice","Analyze my expenses and generate an invoice for the listed expenses.",["budget_planner","invoice_generator"]),
@@ -126,7 +135,7 @@ routing_invoice_gold = {
 }
 for i,(kind,message,agents) in enumerate(multi,1):
     case={"case_id":f"ROUTE-MULTI-{i:02d}","group":"routing","subgroup":kind,
-      "message":message,"expected_source":"agentic","expected_agents":agents,
+      "message":message,"expected_source":"agentic","expected_execution_path":"agentic","expected_agents":agents,
       "requires_invoice_artifacts":"invoice_generator" in agents}
     if i in routing_invoice_gold:
         descriptions, amounts = routing_invoice_gold[i]

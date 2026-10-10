@@ -145,6 +145,13 @@ def parse_agent(reply,api_agent=""):
     m=re.search(r"\[AGENT:\s*(BUDGET|INVESTMENT|INVOICE)\s*\]",reply,re.I)
     return {"BUDGET":"budget_planner","INVESTMENT":"investment_analyser","INVOICE":"invoice_generator"}.get(m.group(1).upper(),"") if m else ""
 
+def execution_path_matches(meta,expected):
+    """Require explicit trusted runtime metadata; never infer execution from an agent label."""
+    if not expected:
+        return None
+    actual=str((meta or {}).get("execution_path","")).strip().casefold()
+    return bool(actual) and actual == str(expected).strip().casefold()
+
 def is_synthetic_eval_user(user, user_id):
     """Identify the exact synthetic principal created by this research harness."""
     return bool(
@@ -294,6 +301,9 @@ def run():
             gold_mem=str(case.get("gold_memory_answer") or "").strip()
             memory_ok=memory_answer_matches(reply, gold_mem, tol) if gold_mem else None
             route_ok=(agent==case["expected_agent"]) if case.get("expected_agent") else None
+            execution_path=str(meta.get("execution_path","")).strip()
+            expected_execution_path=case.get("expected_execution_path")
+            execution_path_ok=execution_path_matches(meta,expected_execution_path)
             executed=[x for x in str(meta.get("agents_executed","")).split(",") if x]
             agentic_ok=(executed==case.get("expected_agents",[])) if case.get("expected_source")=="agentic" else None
             artifact_present=all(str(meta.get(k,"")).strip() for k in ("invoice_ref","invoice_payload","invoice_actions"))
@@ -303,12 +313,14 @@ def run():
             if case.get("expected_abstention"):
                 abstention_ok=abstention_answer_matches(reply)
             checks=[]
-            for val in (numeric_ok,memory_ok,route_ok,agentic_ok,artifacts_ok,invoice_ok,abstention_ok):
+            for val in (numeric_ok,memory_ok,route_ok,execution_path_ok,agentic_ok,artifacts_ok,invoice_ok,abstention_ok):
                 if val is not None: checks.append(val)
             http_ok=(status==200) if api_mode else not bool(error)
             rows.append({"case_id":case["case_id"],"group":case["group"],"subgroup":case.get("subgroup",""),
               "condition":args.condition,"http_status":status,"http_ok":http_ok,"error":error,"latency_seconds":round(latency,4),
-              "agent":agent,"expected_agent":case.get("expected_agent"),"route_correct":route_ok,"numeric_correct":numeric_ok,
+              "agent":agent,"expected_agent":case.get("expected_agent"),"route_correct":route_ok,
+              "execution_path":execution_path,"expected_execution_path":expected_execution_path,
+              "execution_path_correct":execution_path_ok,"numeric_correct":numeric_ok,
               "memory_correct":memory_ok,"abstention_correct":abstention_ok,"agentic_correct":agentic_ok,
               "agents_executed":executed,"expected_agents":case.get("expected_agents"),"invoice_artifacts_present":artifacts_ok,
               "invoice_payload_correct":invoice_ok,"rag_chunks_used":meta.get("rag_chunks_used"),

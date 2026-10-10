@@ -35,6 +35,7 @@ class FinanceRoutingRegressionTests(unittest.TestCase):
 
         budget_run.assert_called_once()
         self.assertEqual(result.agent, AgentName.BUDGET_PLANNER)
+        self.assertEqual(result.metadata["execution_path"], "specialist")
         self.assertIn("22500", result.reply)
 
     def test_general_finance_education_uses_model_path(self):
@@ -64,6 +65,7 @@ class FinanceRoutingRegressionTests(unittest.TestCase):
         agentic.assert_not_called()
         budget_run.assert_not_called()
         self.assertEqual(result.metadata["source"], "llm")
+        self.assertEqual(result.metadata["execution_path"], "general_llm")
         self.assertIn("Risk tolerance describes willingness to accept losses", result.reply)
 
     def test_saved_profile_fact_bypasses_free_form_generation(self):
@@ -86,6 +88,7 @@ class FinanceRoutingRegressionTests(unittest.TestCase):
         budget_run.assert_not_called()
         self.assertIn("INR 46,500", result.reply)
         self.assertEqual(result.metadata["source"], "retrieved_profile_memory")
+        self.assertEqual(result.metadata["execution_path"], "profile_memory")
 
 
 if __name__ == "__main__":

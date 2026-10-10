@@ -50,6 +50,13 @@ def run_turn(
     chosen: AgentName | None = agent
 
     def _finalize(result: AgentResult) -> AgentResult:
+        source = result.metadata.get("source")
+        execution_path = {
+            "agentic": "agentic",
+            "llm": "general_llm",
+            "retrieved_profile_memory": "profile_memory",
+        }.get(source, "specialist")
+        result.metadata.setdefault("execution_path", execution_path)
         result.metadata.update(calculate_confidence([result], rag_context=rag_context))
         return result
 
