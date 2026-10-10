@@ -160,7 +160,13 @@ def _issue_tokens_for_user(
 
 
 @router.post("/register", response_model=TokenOut)
-def register(body: RegisterBody, db: Session = Depends(get_db)) -> TokenOut:
+def register(body: RegisterBody, request: Request, db: Session = Depends(get_db)) -> TokenOut:
+    # Rate-limit account creation by normalized email and client IP.
+    rate_key = _auth_rate_key(request, "register", body.email)
+    ip_rate_key = _auth_ip_key(request, "register")
+    _check_rate_limit(rate_key, ip_rate_key)
+    _record_auth_attempt(rate_key, ip_rate_key)
+
     # 1. Enforce password complexity policy
     is_valid_pwd, pwd_error = validate_password_strength(body.password)
     if not is_valid_pwd:
