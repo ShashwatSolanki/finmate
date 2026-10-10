@@ -71,6 +71,10 @@ The full API pilot exposed cases where the general LLM path answered budget ques
 
 Income and investment amount parsers must require explicit labels instead of treating every currency-prefixed number as salary or investable capital. This is particularly important for multi-domain prompts containing invoice line amounts alongside budget or investment requests; a currency amount alone does not establish what the amount represents.
 
+Natural-language invoice requests can contain multiple line items joined by "plus". Regression coverage verifies that "configuration INR 400 plus support INR 500" is represented as two line items totaling INR 900, even when the invoice is requested in a longer multi-domain prompt. The answer's HTTP success or presence of an invoice export payload is not enough: item descriptions, amounts, currency, subtotal, and total must match the requested invoice.
+
+The investment planner may use a moderate-risk split as an illustrative default when no risk preference is available, but must not state that the user has a saved moderate-risk profile unless that preference is present in retrieved profile context. Keep semantic correctness separate from task completion and latency, and record unsupported personalization claims as correctness failures.
+
 Explicit saved-profile fact lookups are answered only when the requested value is present in retrieved profile context. If the requested value is absent, FinMate abstains rather than inventing it. This is a retrieval-grounded extraction path, not evidence that semantic retrieval always finds the correct memory; Hit@5/MRR must still be reported independently.
 
 The memory correctness scorer evaluates the user-visible reply, not metadata. Numeric saved facts are parsed as numeric tokens using the case tolerance, so grouped formatting such as `INR 46,500` matches gold value `46500` without accepting a partial substring in a different number. This corrects a scoring-format false negative; it does not change gold labels or relax the correctness requirement.
