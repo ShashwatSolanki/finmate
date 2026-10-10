@@ -82,20 +82,37 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
         message,
         flags=re.I,
     )
-    # First split on conjunctions/commas, then recognize "plus" as a line-item
-    # separator only when each side independently ends in a parseable amount.
-    # This avoids splitting ordinary descriptions such as "design and development".
-    initial_parts = re.split(r"\s+and\s+|[,;]", cleaned, flags=re.I)
+    # Commas/semicolons separate compact line items. Keep "and" within a
+    # description (for example, "design and development") unless the preceding
+    # segment is already a complete description+amount pair.
+    comma_parts = re.split(r"[,;]", cleaned, flags=re.I)
+    conjunction_parts: list[str] = []
+    for comma_part in comma_parts:
+        and_parts = re.split(r"\s+and\s+", comma_part, flags=re.I)
+        current = and_parts[0]
+        for next_part in and_parts[1:]:
+            current_is_line_item = bool(
+                _AMOUNT_LINE.match(current.strip())
+                or _AMOUNT_FIRST_LINE.match(current.strip())
+            )
+            if current_is_line_item:
+                conjunction_parts.append(current)
+                current = next_part
+            else:
+                current = f"{current} and {next_part}"
+        conjunction_parts.append(current)
+
     parts: list[str] = []
-    for initial_part in initial_parts:
-        plus_parts = re.split(r"\s+plus\s+", initial_part, flags=re.I)
+    for conjunction_part in conjunction_parts:
+        plus_parts = re.split(r"\s+plus\s+", conjunction_part, flags=re.I)
         if len(plus_parts) > 1 and all(
             _AMOUNT_LINE.match(part.strip()) or _AMOUNT_FIRST_LINE.match(part.strip())
             for part in plus_parts
         ):
             parts.extend(plus_parts)
         else:
-            parts.append(initial_part)
+            parts.append(conjunction_part)
+    
     items: list[dict[str, str]] = []
     for part in parts:
         text = part.strip().rstrip(".!?")
