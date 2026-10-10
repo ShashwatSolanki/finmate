@@ -16,7 +16,7 @@ class ScoreTests(unittest.TestCase):
         self.assertFalse(runner.numeric_answer_matches("I could not determine the total.", [3000], .01))
 
     def test_numeric_and_memory_scoring_ignore_hidden_json(self):
-        reply = 'I could not determine the total.\\n\\n{"gold":3000,"memory":46500}'
+        reply = 'I could not determine the total.\n\n{"gold":3000,"memory":46500}'
         self.assertFalse(runner.numeric_answer_matches(reply, [3000], .01))
         self.assertFalse(runner.memory_answer_matches(reply, "46500", .01))
 
