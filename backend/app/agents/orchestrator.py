@@ -76,7 +76,7 @@ def run_turn(
 
     # Use the bounded planner only for requests that clearly span multiple
     # specialists. Single-domain requests keep the existing routing path.
-    if chosen is None and settings.finmate_agentic_mode:
+    if chosen is None and settings.finmate_agentic_mode and has_explicit_domain_signal(user_message):
         agentic_result = run_agentic_turn(
             user_id,
             user_message,
