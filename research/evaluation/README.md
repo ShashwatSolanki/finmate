@@ -87,8 +87,7 @@ The model logs stage timings for model loading or cache lookup, prompt preparati
 generation, decoding, and postprocessing, along with the execution device and token
 counts. CUDA generation timings synchronize the GPU before measuring completion.
 These diagnostics do not log prompts, replies, or financial content. The timing line
-is emitted at warning level temporarily so it remains visible under the default local
-Uvicorn logging configuration; change it back to info level after profiling.
+is logged at info level, leaving warning logs for actionable problems.
 
 When recent transaction history is empty, the budget planner uses its deterministic
 no-data fallback instead of invoking local model generation to restate the absence
@@ -104,7 +103,7 @@ The synthesis prompt previously requested only the primary agent tag on the firs
 ## Metrics
 
 - Request success/failure, specialist routing, and agent-sequence correctness
-- Gold-number accuracy, transaction-total correctness, and structured invoice currency/line amounts/subtotal
+- Gold-number accuracy from user-visible replies, transaction-total correctness, and structured invoice currency/line amounts/subtotal/final total
 - Personal-memory correctness and appropriate abstention when the fact is not stored
 - Task completion (all applicable checks must pass)
 - Retrieval Hit@5 and MRR with actual runtime embeddings
