@@ -64,6 +64,14 @@ python research/evaluation/summarize_results.py research/evaluation/results/full
 
 Outputs are summary.md, summary.json, and claims_annotation_template.csv.
 
+## Correctness guardrails added during pilot debugging
+
+The full API pilot exposed cases where the general LLM path answered budget questions without calling the data-backed budget specialist. Budget classification now routes through the specialist, and explicitly itemized income-minus-expenses questions plus category-specific transaction totals use deterministic calculations. This prevents model-generated guesses from being scored as account data. Other budget requests may still use the LLM to explain database-derived summaries.
+
+Explicit saved-profile fact lookups are answered only when the requested value is present in retrieved profile context. If the requested value is absent, FinMate abstains rather than inventing it. This is a retrieval-grounded extraction path, not evidence that semantic retrieval always finds the correct memory; Hit@5/MRR must still be reported independently.
+
+The bounded planner recognizes "investable surplus" as an investment signal so three-domain requests can plan the investment specialist when appropriate. Regression tests cover exact arithmetic, category selection, saved-profile facts, missing-memory abstention, and bounded multi-agent planning. Re-run the pilot after restarting the API, then inspect every failed JSONL record before running ablations. Do not loosen gold labels or scoring checks merely to increase completion rates.
+
 ## Metrics
 
 - Request success/failure, specialist routing, and agent-sequence correctness
