@@ -2,12 +2,43 @@ import unittest
 from unittest.mock import MagicMock
 from uuid import uuid4
 
-from app.agents.agentic_orchestrator import build_plan
+from app.agents.agentic_orchestrator import _synthesize, build_plan
 from app.agents.investment_analyser import _extract_original_request
-from app.agents.types import AgentName
+from app.agents.types import AgentName, AgentResult
 
 
 class AgenticPlannerTests(unittest.TestCase):
+    def test_deterministic_synthesis_skips_model_and_preserves_observations(self):
+        observations = [
+            AgentResult(
+                agent=AgentName.BUDGET_PLANNER,
+                reply="[AGENT: BUDGET]\\nVerified budget observation",
+                planned_steps=[],
+                metadata={},
+            ),
+            AgentResult(
+                agent=AgentName.INVESTMENT_ANALYSER,
+                reply="[AGENT: INVESTMENT]\\nVerified investment observation",
+                planned_steps=[],
+                metadata={},
+            ),
+        ]
+        from app.ml import finmate
+
+        with patch("app.agents.agentic_orchestrator.settings.finmate_use_llm", True), patch(
+            "app.agents.agentic_orchestrator.settings.finmate_agentic_synthesis", False
+        ), patch.object(finmate, "generate") as generate:
+            reply = _synthesize(
+                "Review my budget and suggest investments.",
+                observations,
+                AgentName.BUDGET_PLANNER,
+            )
+
+        generate.assert_not_called()
+        self.assertIn("Verified budget observation", reply)
+        self.assertIn("Verified investment observation", reply)
+        self.assertIn("deterministic synthesis fallback", reply)
+
     def test_single_domain_request_stays_on_existing_router(self):
         self.assertIsNone(build_plan("How much did I spend on groceries?"))
 
