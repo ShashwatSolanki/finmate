@@ -116,7 +116,13 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
         if val <= 0:
             continue
         desc = re.sub(r"^(?:for|of)\s+", "", desc.strip(), flags=re.I)
-        desc = re.sub(r"^invoice\s+(?:a\s+)?client\s+for\s+", "", desc, flags=re.I)
+        desc = re.sub(
+            r"^(?:(?:create|generate|make|draft|prepare)\s+(?:an?\s+)?(?:client\s+)?invoice"
+            r"(?:\s+(?:for|from|line\s+items?))?|invoice\s+(?:a\s+)?client\s+for)\s*",
+            "",
+            desc,
+            flags=re.I,
+        )
         if desc:
             items.append({"description": desc, "amount": f"{val:.2f}"})
     return items
