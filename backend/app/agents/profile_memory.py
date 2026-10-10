@@ -23,7 +23,7 @@ def _amount_fact(context: str, label_pattern: str) -> tuple[str, str | None] | N
     pattern = re.compile(
         rf"\b(?:{label_pattern})\s*(?:is|:|=)?\s*"
         rf"(?:(?P<prefix>{_CURRENCY})\s*)?"
-        rf"(?P<amount>(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?)(?!,\d)"
+        rf"(?P<amount>(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?)(?:\s*(?P<scale>k|m|thousands?|millions?|lacs?|lakhs?|crores?)\b)?(?!,\d)"
         rf"\s*(?P<suffix>{_CURRENCY})?\b",
         re.I,
     )
@@ -40,7 +40,16 @@ def _amount_fact(context: str, label_pattern: str) -> tuple[str, str | None] | N
                 )
             )
         )
-    return match.group("amount").replace(",", ""), currency
+    amount = Decimal(match.group("amount").replace(",", ""))
+    scale = (match.group("scale") or "").lower()
+    multiplier = (
+        Decimal("1000") if scale in {"k", "thousand", "thousands"} else
+        Decimal("1000000") if scale in {"m", "million", "millions"} else
+        Decimal("100000") if scale in {"lac", "lacs", "lakh", "lakhs"} else
+        Decimal("10000000") if scale in {"crore", "crores"} else
+        Decimal("1")
+    )
+    return format(amount * multiplier, "f"), currency
 
 
 def _format_amount(amount: str, currency: str | None) -> str:
