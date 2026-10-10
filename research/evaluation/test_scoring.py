@@ -9,6 +9,8 @@ def load(name):
 runner=load("run_benchmark"); summary=load("summarize_results")
 class ScoreTests(unittest.TestCase):
     def test_grouping_number_format(self): self.assertTrue(runner.contains_number("Balance INR 30,000.00",30000,.01))
+    def test_numeric_value_followed_by_comma_is_still_complete(self):
+        self.assertTrue(runner.contains_number("The total is INR 3,000, based on recorded transactions.", 3000, .01))
     def test_indian_grouping_number_format(self):
         self.assertTrue(runner.contains_number("Balance INR 1,00,000.00", 100000, .01))
         self.assertTrue(runner.memory_answer_matches("Your saved income is INR 1,00,000.", "100000", .01))
