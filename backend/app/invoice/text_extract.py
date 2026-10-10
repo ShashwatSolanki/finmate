@@ -226,16 +226,25 @@ def extract_text_from_image(data: bytes) -> tuple[str, list[str]]:
 
 
 def extract_invoice_text(*, data: bytes, content_type: str | None, filename: str) -> tuple[str, str, list[str]]:
-    """Return (source_type, text, warnings)."""
-    ct = (content_type or "").split(";")[0].strip().lower()
-    name = (filename or "").lower()
-
-    if ct == _PDF_TYPE or name.endswith(".pdf"):
+    """Detect file type from its content; MIME type and filename are untrusted hints."""
+    if data.startswith(b"%PDF-"):
         text, warnings = extract_text_from_pdf(data)
         return "pdf", text, warnings
 
-    if ct in _IMAGE_TYPES or name.endswith((".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".bmp")):
-        text, warnings = extract_text_from_image(data)
-        return "image", text, warnings
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            image_format = (image.format or "").upper()
+            if image_format not in _SUPPORTED_IMAGE_FORMATS:
+                raise ValueError("Unsupported file type. Upload a PDF, PNG, JPEG, WebP, TIFF, or BMP.")
+            if image.width <= 0 or image.height <= 0 or image.width * image.height > _MAX_IMAGE_PIXELS:
+                raise ValueError("Image dimensions exceed the supported limit of 25 megapixels.")
+            image.verify()
+    except ValueError:
+        raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ValueError("Image dimensions exceed the supported processing limit.") from exc
+    except (OSError, SyntaxError) as exc:
+        raise ValueError("Unsupported or invalid file content. Upload a PDF or a supported image.") from exc
 
-    raise ValueError(f"Unsupported file type: {content_type or filename}. Upload PDF or PNG/JPEG/WebP.")
+    text, warnings = extract_text_from_image(data)
+    return "image", text, warnings
