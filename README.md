@@ -227,6 +227,7 @@ finmate/
 │   ├── invoice-system.md
 │   ├── frontend.md
 │   ├── evaluation.md
+│   ├── security.md
 │   ├── development.md
 │   └── free-staging.md
 ├── render.yaml
