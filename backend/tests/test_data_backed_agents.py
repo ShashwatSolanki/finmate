@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from app.agents.agentic_orchestrator import run_agentic_turn
 from app.agents.budget_planner import run as run_budget
-from app.agents.invoice_generator import run as run_invoice
+from app.agents.invoice_generator import _structured_from_message, run as run_invoice
 from app.agents.investment_analyser import _extract_risk_from_context, run as run_investment
 from app.agents.types import AgentName, AgentResult
 
@@ -24,6 +24,19 @@ class DataBackedAgentTests(unittest.TestCase):
     def setUp(self):
         self.db = MagicMock()
         self.user_id = uuid4()
+
+    def test_missing_risk_context_is_labelled_as_illustrative(self):
+        result = run_investment(
+            self.user_id,
+            "How should I invest my surplus?",
+            self.db,
+            rag_context=None,
+        )
+
+        self.assertIn("couldn't verify your saved risk tolerance", result.reply.lower())
+        self.assertIn("illustrative, not personalized", result.reply.lower())
+        self.assertNotIn("using your moderate risk profile", result.reply.lower())
+        self.assertEqual(result.metadata["source"], "illustrative_default")
 
     def test_investment_history_does_not_invent_portfolio(self):
         self.db.scalars.return_value.all.return_value = []
@@ -56,6 +69,25 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(result.metadata["source"], "portfolio_holdings")
         self.assertEqual(result.metadata["holdings_count"], "1")
         self.assertIn("Unrealized P/L: +250.00 USD (+25.00%)", result.reply)
+
+    def test_plus_separated_invoice_items_survive_multi_domain_prompt(self):
+        invoice = _structured_from_message(
+            "Summarize monthly spending and prepare an invoice for "
+            "configuration INR 400 plus support INR 500."
+        )
+
+        self.assertIsNotNone(invoice)
+        assert invoice is not None
+        self.assertEqual(invoice.currency, "INR")
+        self.assertEqual(
+            [(item.description, item.amount) for item in invoice.line_items],
+            [
+                ("configuration", Decimal("400.00")),
+                ("support", Decimal("500.00")),
+            ],
+        )
+        self.assertEqual(invoice.subtotal, Decimal("900.00"))
+        self.assertEqual(invoice.total, Decimal("900.00"))
 
     def test_expense_invoice_uses_recent_transactions(self):
         invoice = MagicMock()
