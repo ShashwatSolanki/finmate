@@ -6,7 +6,8 @@ import re
 from decimal import Decimal
 
 _AMOUNT_TOKEN = r"(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?(?:\s*(?:k|m|thousands?|millions?|lacs?|lakhs?|crores?)\b)?"
-_ONBOARDING_INCOME = re.compile(rf"monthly income:\s*({_AMOUNT_TOKEN})(?!,\d)\s*(\w+)?", re.I)
+_CURRENCY_TOKEN = r"(?:INR|USD|EUR|GBP|AUD|CAD|SGD|JPY|CHF|NZD|CNY|HKD|KRW|SEK|NOK|DKK|ZAR|AED|SAR|Rs\.?|₹|\$|€|£)"
+_ONBOARDING_INCOME = re.compile(rf"monthly income:\s*({_AMOUNT_TOKEN})(?!,\d)\s*({_CURRENCY_TOKEN})?(?![A-Za-z])", re.I)
 _SALARY_INCOME = re.compile(
     rf"(?:salary|income)(?:\s+is|\s+of)?\s*(?:rs\.?|inr|₹|usd|\$|€|eur)?\s*({_AMOUNT_TOKEN})(?!,\d)",
     re.I,
@@ -50,6 +51,7 @@ def extract_monthly_income(message: str, rag_context: str | None = None) -> tupl
         m = _ONBOARDING_INCOME.search(text)
         if m:
             currency = (m.group(2) or "").strip().upper() or None
+            currency = {"RS": "INR", "RS.": "INR", "₹": "INR", "$": "USD", "€": "EUR", "£": "GBP"}.get(currency, currency)
             return _parse_amount(m.group(1)), currency
 
     for text in sources:
