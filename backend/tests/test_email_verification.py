@@ -419,13 +419,10 @@ class EmailVerificationAndResetTests(unittest.TestCase):
         )
         old_rf_token = reg_res.json()["refresh_token"]
 
-        # Request reset and change password
-        self.client.post("/api/auth/forgot-password", json={"email": email})
-        db = TestingSessionLocal()
-        user = db.query(User).filter(User.email == email).first()
-        token = db.query(PasswordResetToken).filter(PasswordResetToken.user_id == user.id).first()
-        code = self.client.post("/api/auth/forgot-password", json={"email": email}).json()["verification_code_preview"]
-        db.close()
+        # Request reset and capture the mock code from the isolated test response.
+        forgot_res = self.client.post("/api/auth/forgot-password", json={"email": email})
+        self.assertEqual(forgot_res.status_code, 200)
+        code = forgot_res.json()["verification_code_preview"]
 
         self.client.post(
             "/api/auth/reset-password",
