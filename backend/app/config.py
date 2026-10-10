@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     # Bounded agentic execution for requests spanning multiple specialists.
     finmate_agentic_mode: bool = True
     # Optional latency experiment: bypass only the final LLM synthesis after specialist execution.
-    finmate_agentic_synthesis: bool = True
+    finmate_agentic_synthesis: bool = False
     agentic_max_steps: int = 3
 
     # Path to tesseract.exe when not on PATH (common on Windows after installer)
