@@ -5,7 +5,7 @@ This document tracks security-specific behavior and deployment checks. It is not
 ## Implemented in the hardening branch
 
 - Backend and lightweight staging environments update `python-multipart`, Pillow, PyMuPDF, `python-dotenv`, PDFMiner (through `pdfplumber`), FastAPI/Starlette, and Sentence Transformers/Transformers. JWT handling was moved from `python-jose` (which pulls `ecdsa`) to PyJWT after the new dependency audit identified known advisories in the previous tree.
-- CI runs `pip-audit` for Python dependencies and `npm audit --omit=dev --audit-level=high` for production frontend dependencies.
+- CI runs `pip-audit` for both Python dependency sets and `npm audit --audit-level=high` across all frontend dependencies, including build and test tools.
 - Invoice uploads are read in bounded chunks and rejected above 12 MiB. The parser determines PDF/image type from file contents, allows only supported raster image formats, and rejects images above 25 megapixels before OCR. PDF processing rejects documents over 100 pages, renders at most five pages for OCR, limits each rendered page to 25 megapixels, and applies a 20-second timeout to each Tesseract operation.
 - Docker Compose binds PostgreSQL to `127.0.0.1` rather than all host interfaces. The sample password is for local development only; do not reuse it for a shared or production database.
 - Verification and password-reset codes are persisted as salted PBKDF2 hashes. On first startup after deployment, PostgreSQL migration code adds hash columns and clears legacy plaintext OTPs. Pending legacy codes are intentionally invalidated; users must request fresh codes.
@@ -40,17 +40,17 @@ For frontend production dependencies:
 ```bash
 cd frontend
 npm ci
-npm audit --omit=dev --audit-level=high
+npm audit --audit-level=high
 npm test
 npm run build
 ```
 
-The CI workflow performs dependency audits for both `requirements.txt` and `requirements-staging.txt`, plus production frontend dependencies, on pull requests. Advisory databases change over time, so a clean audit is only a point-in-time result.
+The CI workflow performs dependency audits for both `requirements.txt` and `requirements-staging.txt`, plus all frontend dependencies (including Vite and Vitest), on pull requests. Advisory databases change over time, so a clean audit is only a point-in-time result.
 
 ## Remaining risks / follow-up work
 
 - Access and refresh tokens are currently stored in browser `localStorage`. Any successful same-origin XSS could read them. Moving refresh tokens to appropriately scoped HttpOnly/Secure cookies and using a strong Content Security Policy should be considered in a separate, carefully tested change.
 - Run a threat model and authorized penetration test against a deployed, isolated staging environment before storing real financial data.
 - Consider migrating ad-hoc startup schema changes to a versioned migration framework once the schema change workflow is stable.
-- Vite is a development/build dependency and is not included in the production-only npm audit gate. The current dev script explicitly binds to `127.0.0.1`; keep the Vite toolchain updated and do not change it to a network-facing host without reviewing the applicable Vite advisories.
+- The Vite build/development server is not part of the production runtime, but its dependencies are now included in CI's full npm audit. Keep the dev script bound to `127.0.0.1` and keep the toolchain updated.
 - Security controls reduce risk but do not establish that every possible vulnerability has been found.
