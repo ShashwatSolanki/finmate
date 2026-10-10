@@ -108,7 +108,9 @@ export default function RegisterPage() {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.detail || "Failed to resend code");
       }
-      setInfo("A new verification code has been sent to your email.");
+      const data = (await res.json()) as { verification_code_preview?: string | null };
+      setCodePreview(data.verification_code_preview ?? null);
+      setInfo("If this is local mock-email mode, use the demo code shown below; otherwise check your inbox.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to resend code");
     } finally {
