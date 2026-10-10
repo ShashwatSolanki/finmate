@@ -142,7 +142,7 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
             continue
         desc = re.sub(r"^(?:for|of)\s+", "", desc.strip(), flags=re.I)
         desc = re.sub(
-            r"^(?:(?:create|generate|make|draft|prepare)\s+(?:an?\s+)?(?:client\s+)?invoice"
+            r"^(?:and\s+)?(?:(?:create|generate|make|draft|prepare)\s+(?:an?\s+)?(?:client\s+)?invoice"
             r"(?:\s+(?:for|from|line\s+items?))?|invoice\s+(?:a\s+)?client\s+for)\s*",
             "",
             desc,
