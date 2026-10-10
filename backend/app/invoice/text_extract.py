@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 
 _IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/jpg", "image/webp", "image/tiff", "image/bmp"})
 _PDF_TYPE = "application/pdf"
+_MAX_IMAGE_PIXELS = 25_000_000
+_SUPPORTED_IMAGE_FORMATS = frozenset({"PNG", "JPEG", "WEBP", "TIFF", "BMP"})
 _tesseract_configured = False
 
 _WINDOWS_TESSERACT_CANDIDATES = (
