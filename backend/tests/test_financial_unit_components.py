@@ -57,6 +57,10 @@ def test_onboarding_income_supports_lakh_and_rejects_malformed_grouping() -> Non
     assert extract_monthly_income("Help me budget", "monthly income: 1,00,00 INR") == (None, None)
     assert extract_monthly_income("Help me budget", "monthly income: 1 lakh and rent INR 25,000") == (Decimal("100000"), None)
     assert extract_monthly_income("Help me budget", "monthly income: 1000 ₹") == (Decimal("1000"), "INR")
+    assert extract_monthly_income("Help me budget", "monthly income: ₹50,000") == (Decimal("50000"), "INR")
+    assert extract_monthly_income("Help me budget", "monthly income: $4,200") == (Decimal("4200"), "USD")
+    assert extract_monthly_income("Help me budget", "monthly income: 4,200 £") == (Decimal("4200"), "GBP")
+    assert extract_monthly_income("Help me budget", "monthly income: $4,200 INR") == (None, None)
 
 
 @pytest.mark.parametrize(
