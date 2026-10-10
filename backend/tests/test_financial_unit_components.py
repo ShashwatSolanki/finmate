@@ -47,6 +47,9 @@ def test_finance_context_prefers_onboarding_context() -> None:
     ("message", "expected"),
     [
         ("Invest INR 50,000 as a lump sum.", Decimal("50000")),
+        ("How should I invest in 5 years?", None),
+        ("Should I invest for 5 years?", None),
+        ("I plan to invest INR 50,000 for 5 years.", Decimal("50000")),
         ("How should I allocate an investment of ₹1,25,000?", Decimal("125000")),
         ("INR 3600 is for a client development invoice; suggest an investment strategy.", None),
         ("Review my budget, estimate investable surplus, and invoice a client for development INR 3600.", None),
