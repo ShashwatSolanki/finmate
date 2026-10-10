@@ -26,6 +26,32 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(len(self.rows),120)
         self.assertEqual(len({r["case_id"] for r in self.rows}),120)
         self.assertEqual(Counter(r["group"] for r in self.rows),{"numerical":40,"memory":40,"routing":40})
+
+    def test_generator_refuses_to_overwrite_existing_default_output(self):
+        with tempfile.TemporaryDirectory(prefix="finmate-generator-clobber-test-") as temp:
+            folder = Path(temp)
+            script = folder / "generate_benchmark.py"
+            script.write_text(
+                (HERE / "generate_benchmark.py").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            first = subprocess.run(
+                [sys.executable, str(script)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(first.returncode, 0, first.stderr)
+            output = folder / "benchmark.jsonl"
+            original = output.read_bytes()
+
+            second = subprocess.run(
+                [sys.executable, str(script)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(second.returncode, 0)
+            self.assertIn("refusing to overwrite", second.stderr.lower())
+            self.assertEqual(output.read_bytes(), original)
     def test_invoice_gold_totals(self):
         rows=[r for r in self.rows if r.get("gold_invoice")]
         self.assertEqual(len(rows),10)
