@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import logging
+import math
 import os
 import shutil
 from pathlib import Path
@@ -15,6 +16,10 @@ logger = logging.getLogger(__name__)
 _IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/jpg", "image/webp", "image/tiff", "image/bmp"})
 _PDF_TYPE = "application/pdf"
 _MAX_IMAGE_PIXELS = 25_000_000
+_MAX_PDF_PAGES = 100
+_MAX_PDF_RENDER_PIXELS = 25_000_000
+_PDF_OCR_DPI = 250
+_OCR_TIMEOUT_SECONDS = 20
 _SUPPORTED_IMAGE_FORMATS = frozenset({"PNG", "JPEG", "WEBP", "TIFF", "BMP"})
 _tesseract_configured = False
 
@@ -101,7 +106,11 @@ def _ocr_image(img: Image.Image) -> str:
     config = "--psm 6 --oem 3"
 
     try:
-        return pytesseract.image_to_string(prepared, config=config) or ""
+        return pytesseract.image_to_string(
+            prepared,
+            config=config,
+            timeout=_OCR_TIMEOUT_SECONDS,
+        ) or ""
     except pytesseract.TesseractNotFoundError as exc:
         cmd = _resolve_tesseract_cmd()
         hint = (
@@ -110,6 +119,12 @@ def _ocr_image(img: Image.Image) -> str:
             else " Install from https://github.com/tesseract-ocr/tesseract or set TESSERACT_CMD in backend/.env."
         )
         raise RuntimeError("Tesseract OCR binary not found." + hint) from exc
+    except RuntimeError as exc:
+        if "timeout" in str(exc).lower():
+            raise ValueError(
+                f"OCR exceeded the {_OCR_TIMEOUT_SECONDS}-second processing limit."
+            ) from exc
+        raise
 
 
 def _pdf_text_pdfplumber(data: bytes) -> str:
@@ -145,6 +160,25 @@ def _pdf_text_pypdf(data: bytes) -> str:
     return "\n".join((page.extract_text() or "") for page in reader.pages[:10]).strip()
 
 
+def _pdf_page_count(data: bytes) -> int | None:
+    """Return a PDF's page count when PyMuPDF can inspect it safely."""
+    try:
+        import fitz  # pymupdf
+    except ImportError:
+        return None
+
+    doc = None
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+        return int(doc.page_count)
+    except Exception:
+        # Let pdfplumber / pypdf report a more useful parse error for unsupported PDFs.
+        return None
+    finally:
+        if doc is not None:
+            doc.close()
+
+
 def _pdf_ocr_fallback(data: bytes) -> str:
     try:
         import fitz  # pymupdf
@@ -152,18 +186,44 @@ def _pdf_ocr_fallback(data: bytes) -> str:
         return ""
 
     parts: list[str] = []
+    doc = None
     try:
         doc = fitz.open(stream=data, filetype="pdf")
-        for page in list(doc)[:5]:
-            pix = page.get_pixmap(dpi=250)
-            mode = "RGBA" if pix.alpha else "RGB"
-            img = Image.frombytes(mode, (pix.width, pix.height), pix.samples)
+        if doc.page_count > _MAX_PDF_PAGES:
+            raise ValueError(f"PDF exceeds the supported limit of {_MAX_PDF_PAGES} pages.")
+
+        # Index pages directly instead of materializing every page object in a PDF.
+        for page_index in range(min(5, doc.page_count)):
+            page = doc.load_page(page_index)
+            rect = page.rect
+            width_px = math.ceil(rect.width * _PDF_OCR_DPI / 72)
+            height_px = math.ceil(rect.height * _PDF_OCR_DPI / 72)
+            if (
+                width_px <= 0
+                or height_px <= 0
+                or width_px * height_px > _MAX_PDF_RENDER_PIXELS
+            ):
+                raise ValueError(
+                    "PDF page dimensions exceed the supported OCR rendering limit "
+                    f"of {_MAX_PDF_RENDER_PIXELS:,} pixels."
+                )
+
+            pix = page.get_pixmap(dpi=_PDF_OCR_DPI, alpha=False)
+            # Verify actual dimensions too, in case a PDF's crop / rotation changes the estimate.
+            if pix.width <= 0 or pix.height <= 0 or pix.width * pix.height > _MAX_PDF_RENDER_PIXELS:
+                raise ValueError(
+                    "PDF page dimensions exceed the supported OCR rendering limit "
+                    f"of {_MAX_PDF_RENDER_PIXELS:,} pixels."
+                )
+            img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
             parts.append(_ocr_image(img))
-        doc.close()
-    except RuntimeError:
+    except (ValueError, RuntimeError):
         raise
     except Exception as exc:
         logger.debug("PDF OCR fallback failed: %s", exc)
+    finally:
+        if doc is not None:
+            doc.close()
     return "\n".join(parts).strip()
 
 
@@ -171,6 +231,11 @@ def extract_text_from_pdf(data: bytes) -> tuple[str, list[str]]:
     warnings: list[str] = []
     if not data.startswith(b"%PDF-"):
         raise ValueError("The uploaded file is not a valid PDF.")
+
+    page_count = _pdf_page_count(data)
+    if page_count is not None and page_count > _MAX_PDF_PAGES:
+        raise ValueError(f"PDF exceeds the supported limit of {_MAX_PDF_PAGES} pages.")
+
     text = ""
     try:
         text = _pdf_text_pdfplumber(data)
