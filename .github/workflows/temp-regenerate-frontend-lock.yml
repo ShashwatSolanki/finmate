@@ -1,0 +1,39 @@
+name: Temporary frontend lockfile regeneration
+
+on:
+  push:
+    branches:
+      - security/vite-toolchain-refresh
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out toolchain branch
+        uses: actions/checkout@v4
+        with:
+          ref: security/vite-toolchain-refresh
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Regenerate lockfile from package.json
+        working-directory: frontend
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Commit regenerated lockfile
+        run: |
+          git add frontend/package-lock.json
+          if git diff --cached --quiet; then
+            echo "Lockfile is already up to date."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: regenerate frontend lockfile for Vite 8"
+          git push origin HEAD:security/vite-toolchain-refresh
