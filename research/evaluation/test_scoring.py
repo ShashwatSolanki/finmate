@@ -21,6 +21,36 @@ class ScoreTests(unittest.TestCase):
         score=summary.rate([{"retrieval_hit_at_5":1.0},{"retrieval_hit_at_5":0.0},{"retrieval_hit_at_5":None}],"retrieval_hit_at_5")
         self.assertEqual((score["n"],score["successes"]),(2,1))
 
+    def test_pilot_selector_returns_21_cases_including_memory_goal(self):
+        cases = []
+        specifications = [
+            ("numerical", "transaction_aggregation", 11),
+            ("numerical", "invoice_subtotal", 6),
+            ("numerical", "balance_arithmetic", 6),
+            ("memory", "memory_income", 1),
+            ("memory", "memory_risk", 3),
+            ("memory", "memory_goal", 4),
+            ("memory", "memory_absent", 5),
+            ("routing", "single_specialist", 16),
+            ("routing", "budget_investment", 5),
+            ("routing", "budget_invoice", 6),
+            ("routing", "three_domain", 5),
+        ]
+        for group, subgroup, count in specifications:
+            for index in range(count):
+                cases.append({
+                    "case_id": f"{group}-{subgroup}-{index}",
+                    "group": group,
+                    "subgroup": subgroup,
+                })
+
+        selected = runner.select_pilot_cases(cases)
+        self.assertEqual(len(selected), 21)
+        self.assertTrue(any(row["subgroup"] == "memory_goal" for row in selected))
+        self.assertEqual(sum(row["group"] == "numerical" for row in selected), 6)
+        self.assertEqual(sum(row["group"] == "memory" for row in selected), 5)
+        self.assertEqual(sum(row["group"] == "routing" for row in selected), 10)
+
     def test_dedicated_eval_database_allowed(self):
         self.assertEqual(runner.require_evaluation_database("postgresql+psycopg2://finmate:finmate@127.0.0.1:5433/finmate_eval"),"finmate_eval")
 
