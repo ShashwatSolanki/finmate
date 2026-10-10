@@ -100,6 +100,20 @@ On the 21-case stratified pilot, synthesis disabled and enabled both recorded 21
 
 The synthesis prompt previously requested only the primary agent tag on the first line, while the acceptance guard required a tag for every specialist. The prompt was aligned with the acceptance contract and a mocked regression test verifies the intended format, but the follow-up live three-agent smoke still took 44.351 seconds and returned the deterministic fallback. Both the synthesis-off and synthesis-on pilot had 21/21 HTTP successes and task completions, but synthesis-on multi-agent mean latency was 50.197 seconds versus 0.036 seconds off, with no material answer improvement in reviewed outputs. Therefore final synthesis is opt-in and defaults to false. Do not enable it by default until diagnostics show that generated replies are accepted and improve answer quality at an acceptable latency.
 
+
+## Latest reproducible pilot (2026-10-11)
+
+A fresh 21-case stratified API pilot was run against application commit `54b3fc0147637e91ff435857922a3e8031c3861a` using condition `full`, a fresh synthetic user, and the dedicated disposable `finmate_eval` PostgreSQL database. Server flags were `FINMATE_USE_RAG=true`, `FINMATE_AGENTIC_MODE=true`, `FINMATE_USE_LLM=true`, and `FINMATE_AGENTIC_SYNTHESIS=false`.
+
+- HTTP success: **21/21**
+- Automated task completion: **21/21**
+- Runner-reported failed cases: **0**
+- Dataset used: local `research/evaluation/benchmark-final-review.jsonl`
+- Raw results: local `research/evaluation/results/final-pilot-20261011-021636.jsonl`
+- Manifest: local `research/evaluation/results/final-pilot-20261011-021636.manifest.json`
+
+The raw results, manifest, and generated dataset are local evaluation artifacts and are not committed by this documentation update; preserve them for audit and reproducibility. This pilot exercised the scoring checks configured for its 21 selected cases. It is not a human audit of every claim and does not establish population-level financial correctness. Two non-fatal environment warnings appeared: a `RequestsDependencyWarning` about installed HTTP-related dependency versions and a Transformers warning that `TRANSFORMERS_CACHE` is deprecated in favor of `HF_HOME`. Neither stopped the run.
+
 ## Metrics
 
 - Request success/failure, specialist routing, and agent-sequence correctness
