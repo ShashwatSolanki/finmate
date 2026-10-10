@@ -96,6 +96,16 @@ def parse_agent(reply,api_agent=""):
     m=re.search(r"\[AGENT:\s*(BUDGET|INVESTMENT|INVOICE)\s*\]",reply,re.I)
     return {"BUDGET":"budget_planner","INVESTMENT":"investment_analyser","INVOICE":"invoice_generator"}.get(m.group(1).upper(),"") if m else ""
 
+def is_synthetic_eval_user(user, user_id):
+    """Identify the exact synthetic principal created by this research harness."""
+    return bool(
+        user is not None
+        and getattr(user, "email", None) == f"research-eval-{user_id}@example.invalid"
+        and getattr(user, "auth_provider", None) == "google"
+        and getattr(user, "google_id", None) == f"research-eval-{user_id}"
+    )
+
+
 def reset_and_seed(user_id,case):
     from uuid import UUID
     from app.db.models import Budget,ChatSession,InvestmentHolding,MemoryChunk,Transaction,User
@@ -105,11 +115,17 @@ def reset_and_seed(user_id,case):
     try:
         # The isolated eval database may not have an application user yet. Create a
         # non-login synthetic principal so API auth and fixture foreign keys work.
-        if db.get(User,uid) is None:
+        existing_user = db.get(User,uid)
+        if existing_user is None:
             db.add(User(id=uid,email=f"research-eval-{uid}@example.invalid",
               display_name="Research Evaluation User",is_active=True,is_verified=True,
               auth_provider="google",google_id=f"research-eval-{uid}"))
             db.flush()
+        elif not is_synthetic_eval_user(existing_user, uid):
+            raise ValueError(
+                "Refusing destructive reset for a non-synthetic user. "
+                "Generate a fresh --user-id and use only a disposable evaluation database."
+            )
         for session in db.query(ChatSession).filter(ChatSession.user_id==uid).all(): db.delete(session)
         db.query(MemoryChunk).filter(MemoryChunk.user_id==uid).delete(synchronize_session=False)
         db.query(Transaction).filter(Transaction.user_id==uid).delete(synchronize_session=False)
