@@ -541,7 +541,7 @@ def generate(
     result = _postprocess(response, tools_fallback=json_tools_fallback)
     postprocess_seconds = time.perf_counter() - postprocess_started
 
-    logger.warning(
+    logger.info(
         "FinMate inference timing | device=%s model_load_s=%.3f "
         "prompt_prepare_s=%.3f generation_s=%.3f decode_s=%.3f "
         "postprocess_s=%.3f prompt_tokens=%d generated_tokens=%d",
