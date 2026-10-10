@@ -285,6 +285,49 @@ class AuthIntegrationTests(unittest.TestCase):
         self.assertEqual(fail_res.status_code, 401)
 
 
+    def test_06_google_oauth_rate_limit_applies_before_verification(self):
+        """Reject repeated Google OAuth attempts before making more verification calls."""
+        invalid_credential = "mock-google-token:not-an-email"
+        for _ in range(auth_rate_limiter.max_attempts):
+            response = self.client.post(
+                "/api/auth/google",
+                json={"credential": invalid_credential},
+            )
+            self.assertEqual(response.status_code, 401)
+
+        blocked = self.client.post(
+            "/api/auth/google",
+            json={"credential": invalid_credential},
+        )
+        self.assertEqual(blocked.status_code, 429)
+
+
+    def test_07_google_account_link_rate_limit_applies_before_verification(self):
+        """Rate-limit repeated account-link attempts for the authenticated user and IP."""
+        sign_in = self.client.post(
+            "/api/auth/google",
+            json={"credential": "mock-google-token:link_limit_user@finmate.com:google-sub-link-limit:Link Limit"},
+        )
+        self.assertEqual(sign_in.status_code, 200)
+        auth_header = {"Authorization": f"Bearer {sign_in.json()['access_token']}"}
+
+        invalid_credential = "mock-google-token:not-an-email"
+        for _ in range(auth_rate_limiter.max_attempts):
+            response = self.client.post(
+                "/api/auth/link/google",
+                headers=auth_header,
+                json={"credential": invalid_credential},
+            )
+            self.assertEqual(response.status_code, 401)
+
+        blocked = self.client.post(
+            "/api/auth/link/google",
+            headers=auth_header,
+            json={"credential": invalid_credential},
+        )
+        self.assertEqual(blocked.status_code, 429)
+
+
 if __name__ == "__main__":
     unittest.main()
 

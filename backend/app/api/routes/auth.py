@@ -530,7 +530,13 @@ def _verify_google_credential(credential: str) -> dict:
 
 
 @router.post("/google", response_model=TokenOut)
-def google_auth(body: GoogleAuthBody, db: Session = Depends(get_db)) -> TokenOut:
+def google_auth(body: GoogleAuthBody, request: Request, db: Session = Depends(get_db)) -> TokenOut:
+    # This endpoint calls Google's remote tokeninfo API for untrusted credentials.
+    # Count every attempt by client IP to bound outbound requests and CPU use.
+    rate_key = _auth_ip_key(request, "google")
+    _check_rate_limit(rate_key)
+    _record_auth_attempt(rate_key)
+
     google_data = _verify_google_credential(body.credential)
     google_sub = google_data["sub"]
     email = google_data["email"].lower().strip()
@@ -587,9 +593,16 @@ def google_auth(body: GoogleAuthBody, db: Session = Depends(get_db)) -> TokenOut
 @router.post("/link/google", response_model=MessageOut)
 def link_google_account(
     body: GoogleAuthBody,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> MessageOut:
+    # Account linking also performs an outbound Google verification request.
+    rate_key = _auth_rate_key(request, "link-google", current_user.email)
+    ip_rate_key = _auth_ip_key(request, "link-google")
+    _check_rate_limit(rate_key, ip_rate_key)
+    _record_auth_attempt(rate_key, ip_rate_key)
+
     google_data = _verify_google_credential(body.credential)
     google_sub = google_data["sub"]
     email = google_data["email"].lower().strip()
