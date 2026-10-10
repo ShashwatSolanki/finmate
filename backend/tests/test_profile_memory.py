@@ -109,7 +109,7 @@ class ProfileMemoryTests(unittest.TestCase):
     def test_does_not_treat_prior_assistant_answer_as_saved_profile_evidence(self):
         reply = answer_saved_profile_fact(
             "From my saved profile, what is my monthly after-tax income?",
-            "Assistant (budget_planner): [AGENT: BUDGET]\\n\\n"
+            "Assistant (budget_planner): [AGENT: BUDGET]\n\n"
             "Your saved monthly after-tax income is INR 46500.",
         )
         self.assertIsNotNone(reply)
