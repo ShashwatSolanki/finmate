@@ -88,6 +88,31 @@ def reset_and_seed(user_id,case):
         return (1.0 if ranks else 0.0),(1.0/ranks[0] if ranks else 0.0)
     finally: db.close()
 
+def select_pilot_cases(cases):
+    """Select a deterministic 21-case stratified pilot from the generated dataset."""
+    def take(group, subgroup, indices):
+        rows = [
+            row for row in cases
+            if row.get("group") == group
+            and (subgroup is None or row.get("subgroup") == subgroup)
+        ]
+        return [rows[index] for index in indices if index < len(rows)]
+
+    selected = []
+    selected += take("numerical", "transaction_aggregation", [0, 10])
+    selected += take("numerical", "invoice_subtotal", [0, 5])
+    selected += take("numerical", "balance_arithmetic", [0, 5])
+    selected += take("memory", "memory_income", [0])
+    selected += take("memory", "memory_risk", [2])
+    selected += take("memory", "memory_goal", [0])
+    selected += take("memory", "memory_absent", [0, 4])
+    selected += take("routing", "single_specialist", [0, 5, 10, 15])
+    selected += take("routing", "budget_investment", [0, 4])
+    selected += take("routing", "budget_invoice", [1, 5])
+    selected += take("routing", "three_domain", [2, 4])
+    return selected
+
+
 def run():
     p=argparse.ArgumentParser()
     p.add_argument("--condition",choices=["full","no_rag","no_agentic","no_llm","llm_only"],required=True)
@@ -105,22 +130,7 @@ def run():
     if not args.dataset.exists(): raise SystemExit(f"Dataset not found: {args.dataset}. Run generate_benchmark.py first.")
     cases=load_jsonl(args.dataset)
     if args.pilot:
-        def take(group, subgroup, indices):
-            rows=[x for x in cases if x.get("group")==group and (subgroup is None or x.get("subgroup")==subgroup)]
-            return [rows[i] for i in indices if i < len(rows)]
-        selected=[]
-        selected += take("numerical","transaction_aggregation",[0,10])
-        selected += take("numerical","invoice_subtotal",[0,5])
-        selected += take("numerical","balance_arithmetic",[0,5])
-        selected += take("memory","memory_income",[0])
-        selected += take("memory","memory_risk",[2])
-        selected += take("memory","memory_goal",[4])
-        selected += take("memory","memory_absent",[0,4])
-        selected += take("routing","single_specialist",[0,5,10,15])
-        selected += take("routing","budget_investment",[0,4])
-        selected += take("routing","budget_invoice",[1,5])
-        selected += take("routing","three_domain",[2,4])
-        cases=selected
+        cases = select_pilot_cases(cases)
     elif args.limit: cases=cases[:args.limit]
     if not cases: raise SystemExit("Dataset is empty.")
     api_mode=args.condition!="llm_only"
