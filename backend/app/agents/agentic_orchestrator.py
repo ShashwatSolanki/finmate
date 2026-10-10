@@ -72,6 +72,8 @@ def build_plan(message: str) -> AgentPlan | None:
             "sip",
             "market",
             "ticker",
+            "investable",
+            "investable surplus",
         ),
     )
     invoice = _contains(
