@@ -130,3 +130,8 @@ If the memory store grows substantially, the current in-process scan can be repl
 - another persistent vector index
 
 That is future architecture, not the current implementation.
+
+
+## 10. Controlled research ablation
+
+For controlled research experiments, `FINMATE_USE_RAG=false` disables semantic retrieval of `MemoryChunk` rows in the chat request path. It defaults to `true`; normal application behavior is unchanged unless the variable is explicitly set. The ablation intentionally leaves recent conversation and onboarding context code paths intact, so experiments that measure semantic-memory effects must clear recent chat state and should use memory chunks with source `research_eval` rather than `chat` or `onboarding`. Use synthetic data and an isolated disposable database only. See [`research/evaluation/README.md`](../research/evaluation/README.md) for the protocol and destructive reset warning.

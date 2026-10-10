@@ -32,6 +32,19 @@ _INVEST = re.compile(
 )
 _TICKER_IN_TEXT = re.compile(r"\$[A-Za-z]{1,5}\b|\b(AAPL|MSFT|TSLA|GOOGL|AMZN|NVDA|META|NFLX|AMD|INTC)\b")
 
+_GENERAL_EDUCATION = re.compile(
+    r"\b(?:explain|define|what is|what are|difference between|meaning of|"
+    r"why does|why do|how does|how do)\b",
+    re.I,
+)
+_PERSONAL_OR_ACTION = re.compile(
+    r"\b(?:i|me|my|our|saved|recorded|previously|recent|current|latest|show|review|"
+    r"create|make|plan|set|build|generate|draft|prepare|analy[sz]e|compare|calculate|how much|track|buy|sell|investable|allocate|"
+    r"allocation|spend|spent|transactions?|holdings?|ticker|quote|price|surplus|"
+    r"income|salary|rent|expenses?|budget cap|invoice amount)\b",
+    re.I,
+)
+
 PROTOTYPES: dict[AgentName, list[str]] = {
     AgentName.BUDGET_PLANNER: [
         "Help me reduce my monthly spending and stick to a budget.",
@@ -96,6 +109,28 @@ def _embedding_vector(text: str) -> dict[AgentName, float]:
     sims = {a: float(np.dot(q, cents[a])) for a in AgentName}
     return {a: (s + 1.0) / 2.0 for a, s in sims.items()}
 
+
+
+def has_explicit_domain_signal(user_message: str) -> bool:
+    """Return whether the prompt contains an explicit finance-specialist signal.
+
+    This keeps broad educational/general questions on the trained model path while
+    leaving clear budget, invoice, and investment requests on specialist paths.
+    """
+    text = user_message.strip()
+    if (
+        _GENERAL_EDUCATION.search(text)
+        and not _PERSONAL_OR_ACTION.search(text)
+        and not re.search(r"\d|[₹$€£]", text)
+    ):
+        return False
+    return bool(
+        _BUDGET.search(text)
+        or _INVOICE.search(text)
+        or _INVEST.search(text)
+        or _TICKER_IN_TEXT.search(text)
+        or extract_ticker_candidates(text)
+    )
 
 def classify_agent(user_message: str) -> AgentName:
     """Route to the best specialist using keywords, tickers, then embeddings."""

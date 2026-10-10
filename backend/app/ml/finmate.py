@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -466,6 +467,7 @@ def generate(
     *,
     system_extra: str | None = None,
     json_tools_fallback: list[str] | None = None,
+    max_new_tokens: int | None = None,
 ) -> str:
     if any(kw in user_message.lower() for kw in CRISIS_KEYWORDS):
         return (
@@ -479,10 +481,13 @@ def generate(
             '"tools_needed":["list_transactions","set_budget"],"notes":"crisis mode"}'
         )
 
+    model_load_started = time.perf_counter()
     model, tokenizer, device = _load_model()
+    model_load_seconds = time.perf_counter() - model_load_started
 
     import torch
 
+    prompt_prepare_started = time.perf_counter()
     system_text = SYSTEM + (system_extra or "")
     if getattr(tokenizer, "chat_template", None):
         messages = [
@@ -507,18 +512,49 @@ def generate(
     else:
         inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
+    if device == "cuda":
+        torch.cuda.synchronize()
+    prompt_prepare_seconds = time.perf_counter() - prompt_prepare_started
+    prompt_tokens = int(inputs["input_ids"].shape[1])
+
+    generation_started = time.perf_counter()
     with torch.no_grad():
         outputs = model.generate(
             **inputs,
-            max_new_tokens=min(settings.finmate_max_new_tokens, 512),
+            max_new_tokens=min(
+                max_new_tokens if max_new_tokens is not None else settings.finmate_max_new_tokens,
+                512,
+            ),
             repetition_penalty=1.15,
             do_sample=False,
         )
+    if device == "cuda":
+        torch.cuda.synchronize()
+    generation_seconds = time.perf_counter() - generation_started
 
     new_tokens = outputs[0][inputs["input_ids"].shape[1] :]
+    decode_started = time.perf_counter()
     response = tokenizer.decode(new_tokens, skip_special_tokens=True)
+    decode_seconds = time.perf_counter() - decode_started
 
-    return _postprocess(response, tools_fallback=json_tools_fallback)
+    postprocess_started = time.perf_counter()
+    result = _postprocess(response, tools_fallback=json_tools_fallback)
+    postprocess_seconds = time.perf_counter() - postprocess_started
+
+    logger.info(
+        "FinMate inference timing | device=%s model_load_s=%.3f "
+        "prompt_prepare_s=%.3f generation_s=%.3f decode_s=%.3f "
+        "postprocess_s=%.3f prompt_tokens=%d generated_tokens=%d",
+        device,
+        model_load_seconds,
+        prompt_prepare_seconds,
+        generation_seconds,
+        decode_seconds,
+        postprocess_seconds,
+        prompt_tokens,
+        int(new_tokens.shape[-1]),
+    )
+    return result
 
 
 def clear_model_cache() -> None:
