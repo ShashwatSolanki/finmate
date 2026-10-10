@@ -11,11 +11,11 @@ cases=[]
 for i in range(20):
     vals=[420+37*i,310+19*i,95+11*i]
     transactions=[
-      {"amount":vals[0],"currency":"INR","category":"food","description":"Synthetic grocery transaction","days_ago":2},
-      {"amount":vals[1],"currency":"INR","category":"food","description":"Synthetic dining transaction","days_ago":9},
-      {"amount":vals[2],"currency":"INR","category":"food","description":"Synthetic food transaction","days_ago":21},
-      {"amount":777+i,"currency":"INR","category":"transport","description":"Distractor category transaction","days_ago":4},
-      {"amount":999+i,"currency":"INR","category":"food","description":"Stale transaction outside 30-day window","days_ago":58},
+      {"amount":-vals[0],"currency":"INR","category":"food","description":"Synthetic grocery debit","days_ago":2},
+      {"amount":-vals[1],"currency":"INR","category":"food","description":"Synthetic dining debit","days_ago":9},
+      {"amount":-vals[2],"currency":"INR","category":"food","description":"Synthetic food debit","days_ago":21},
+      {"amount":-(777+i),"currency":"INR","category":"transport","description":"Distractor category debit","days_ago":4},
+      {"amount":-(999+i),"currency":"INR","category":"food","description":"Stale transaction outside 30-day window","days_ago":58},
     ]
     cases.append({"case_id":f"NUM-TX-{i+1:02d}","group":"numerical","subgroup":"transaction_aggregation",
       "message":"How much did I spend on food in the last 30 days? Give the total and briefly explain it.",
