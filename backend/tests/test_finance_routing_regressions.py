@@ -37,6 +37,34 @@ class FinanceRoutingRegressionTests(unittest.TestCase):
         self.assertEqual(result.agent, AgentName.BUDGET_PLANNER)
         self.assertIn("22500", result.reply)
 
+    def test_general_finance_education_uses_model_path(self):
+        from app.ml import finmate
+
+        model_reply = (
+            "[AGENT: INVESTMENT]\\n\\n"
+            "Compound interest earns returns on prior returns.\\n\\n"
+            '{"intent":"investment_info","steps":["Explain compounding"],'
+            '"tools_needed":[],"notes":"educational answer"}'
+        )
+        with (
+            patch("app.agents.orchestrator.settings.finmate_agentic_mode", False),
+            patch("app.agents.orchestrator.settings.finmate_use_llm", True),
+            patch("app.agents.orchestrator.has_explicit_domain_signal", return_value=False),
+            patch.object(finmate, "llm_available", return_value=True),
+            patch.object(finmate, "generate", return_value=model_reply) as generate,
+            patch("app.agents.orchestrator.budget_planner.run") as budget_run,
+        ):
+            result = run_turn(
+                self.user_id,
+                "Explain compound interest in simple terms.",
+                self.db,
+            )
+
+        generate.assert_called_once()
+        budget_run.assert_not_called()
+        self.assertEqual(result.metadata["source"], "llm")
+        self.assertIn("Compound interest earns returns", result.reply)
+
     def test_saved_profile_fact_bypasses_free_form_generation(self):
         context = "[Retrieved memory]\nThe synthetic user's monthly after-tax income is INR 46500."
         with (
