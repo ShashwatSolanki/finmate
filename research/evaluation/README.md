@@ -39,8 +39,8 @@ FINMATE_USE_RAG defaults to true. Disabling it does not disable recent-conversat
 ~~~powershell
 $env:DATABASE_URL = "postgresql+psycopg2://finmate:finmate@127.0.0.1:5433/finmate_eval"
 $env:FINMATE_TEST_USER_ID = [guid]::NewGuid().ToString()
-python ../research/evaluation/generate_benchmark.py
-python ../research/evaluation/run_benchmark.py --condition full --pilot --user-id "$env:FINMATE_TEST_USER_ID" --reset-test-user-state --output ../research/evaluation/results/full-pilot.jsonl
+python ../research/evaluation/generate_benchmark.py --output ../research/evaluation/benchmark-current.jsonl
+python ../research/evaluation/run_benchmark.py --condition full --pilot --user-id "$env:FINMATE_TEST_USER_ID" --reset-test-user-state --dataset ../research/evaluation/benchmark-current.jsonl --output ../research/evaluation/results/full-pilot.jsonl
 ~~~
 
 Set DATABASE_URL to that same evaluation database in the separate terminal where Uvicorn starts. Keep JWT_SECRET identical in both processes; otherwise, the locally minted token will not validate. The runner will generate a fresh access token unless you explicitly pass --token. A stratified pilot contains 21 cases; omit --pilot for the complete 120-case dataset.
