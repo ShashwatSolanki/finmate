@@ -65,7 +65,7 @@ def reset_and_seed(user_id,case):
         for item in case.get("transactions_fixture",[]):
             db.add(Transaction(user_id=uid,amount=Decimal(str(item["amount"])),currency=item.get("currency","INR"),
               category=item.get("category"),description=item.get("description","synthetic evaluation transaction"),
-              occurred_on=today-timedelta(days=int(item.get("days_ago",0))))
+              occurred_on=today-timedelta(days=int(item.get("days_ago",0)))))
         db.commit()
         if not case.get("relevant_memory"): return None,None
         ranked=rank_memory(db,uid,case["message"],limit=5,min_similarity=0.22)
