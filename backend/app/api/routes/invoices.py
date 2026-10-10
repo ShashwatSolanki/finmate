@@ -144,9 +144,7 @@ async def parse_invoice_upload(
 ) -> ParseInvoiceResult:
     """Upload a PDF or image invoice; returns structured fields + OCR/PDF text preview."""
     _ = current
-    data = await file.read()
-    if len(data) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 12 MB).")
+    data = await _read_upload_limited(file)
     if not data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
 
@@ -176,9 +174,7 @@ async def parse_invoice_csv_upload(
     current: User = Depends(get_current_user),
 ) -> ParseInvoiceResult:
     _ = current
-    data = await file.read()
-    if len(data) > _MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="File too large (max 12 MB).")
+    data = await _read_upload_limited(file)
     if not data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Empty file.")
     try:
