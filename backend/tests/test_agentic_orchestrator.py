@@ -8,6 +8,11 @@ from app.agents.types import AgentName, AgentResult
 
 
 class AgenticPlannerTests(unittest.TestCase):
+    def test_llm_synthesis_is_opt_in_by_default(self):
+        from app.config import Settings
+
+        self.assertIs(Settings.model_fields["finmate_agentic_synthesis"].default, False)
+
     def test_deterministic_synthesis_skips_model_and_preserves_observations(self):
         observations = [
             AgentResult(
