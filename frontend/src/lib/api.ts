@@ -103,9 +103,24 @@ async function refreshAccessToken(): Promise<string | null> {
   return tokens.access_token;
 }
 
-function refreshAccessTokenSingleFlight(): Promise<string | null> {
+function refreshAccessTokenSingleFlight(staleAccessToken: string | null): Promise<string | null> {
   if (!refreshPromise) {
-    refreshPromise = refreshAccessToken().finally(() => {
+    const refreshWithCrossTabLock = async (): Promise<string | null> => {
+      // Coordinate refreshes across browser tabs when the Web Locks API is available.
+      // A waiting tab reuses the token already rotated by the tab that held the lock.
+      if (typeof navigator !== "undefined" && navigator.locks?.request) {
+        return navigator.locks.request("finmate-auth-refresh", async () => {
+          const latestAccessToken = readStoredAuthValue(TOKEN_KEY);
+          if (latestAccessToken && latestAccessToken !== staleAccessToken) {
+            return latestAccessToken;
+          }
+          return refreshAccessToken();
+        });
+      }
+      return refreshAccessToken();
+    };
+
+    refreshPromise = refreshWithCrossTabLock().finally(() => {
       refreshPromise = null;
     });
   }
@@ -125,7 +140,7 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   const response = await fetch(url, { ...init, headers: initialHeaders });
   if (response.status !== 401 || !hasAuthorization) return response;
 
-  const refreshedAccessToken = await refreshAccessTokenSingleFlight();
+  const refreshedAccessToken = await refreshAccessTokenSingleFlight(storedAccessToken);
   if (!refreshedAccessToken) return response;
 
   const retryHeaders = new Headers(init.headers);
