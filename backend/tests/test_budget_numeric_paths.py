@@ -81,6 +81,14 @@ class BudgetNumericPathTests(unittest.TestCase):
             )
         )
 
+    def test_balance_remainder_refuses_unrecognized_currency_expense(self):
+        self.assertIsNone(
+            _extract_balance_remainder(
+                "Monthly income is INR 50,000, rent is INR 10,000, "
+                "credit card bill is INR 5,000. How much remains?"
+            )
+        )
+
     def test_category_total_requires_a_transaction_total_question(self):
         categories = {"food": Decimal("825"), "transport": Decimal("777")}
         self.assertEqual(
