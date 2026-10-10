@@ -74,6 +74,13 @@ class BudgetNumericPathTests(unittest.TestCase):
             )
         )
 
+    def test_malformed_four_digit_group_is_not_partially_parsed(self):
+        self.assertIsNone(
+            _extract_balance_remainder(
+                "Monthly income is INR 50,0000, rent is INR 5,000. How much remains?"
+            )
+        )
+
     def test_category_total_requires_a_transaction_total_question(self):
         categories = {"food": Decimal("825"), "transport": Decimal("777")}
         self.assertEqual(
