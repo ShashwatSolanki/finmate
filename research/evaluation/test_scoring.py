@@ -15,6 +15,11 @@ class ScoreTests(unittest.TestCase):
         self.assertTrue(runner.numeric_answer_matches("The total is INR 3,000.", [3000], .01))
         self.assertFalse(runner.numeric_answer_matches("I could not determine the total.", [3000], .01))
 
+    def test_numeric_and_memory_scoring_ignore_hidden_json(self):
+        reply = 'I could not determine the total.\\n\\n{"gold":3000,"memory":46500}'
+        self.assertFalse(runner.numeric_answer_matches(reply, [3000], .01))
+        self.assertFalse(runner.memory_answer_matches(reply, "46500", .01))
+
 
     def test_memory_numeric_answer_accepts_grouped_number_format(self):
         self.assertTrue(runner.memory_answer_matches("Your saved monthly income is INR 46,500.", "46500", .01))
