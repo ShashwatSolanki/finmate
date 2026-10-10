@@ -9,7 +9,7 @@ This directory is for research evaluation, not financial advice. Use a dedicated
 - **summarize_results.py**: rates, bootstrap confidence intervals, paired comparisons, and a human unsupported-claim annotation template.
 - **test_*.py**: unit tests for scoring helpers, database-safety checks, and generated-case integrity.
 
-The generated corpus is a pilot, not a validated gold-standard benchmark. Manually review all labels and expected values, freeze the dataset before final runs, and record commit/model/hardware details.
+The generated corpus is a pilot, not a validated gold-standard benchmark. Manually review all labels and expected values, freeze the dataset before final runs, and record commit/model/hardware details. Numeric, memory, and abstention correctness are scored from user-visible reply prose rather than the hidden JSON tail or internal metadata; invoice structure is validated separately from the exported payload.
 
 ## Existing tests versus research metrics
 
