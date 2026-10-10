@@ -95,6 +95,12 @@ no-data fallback instead of invoking local model generation to restate the absen
 of transactions. The LLM-backed path remains enabled when transaction category data
 is present.
 
+## Synthesis comparison note (2026-10-10)
+
+On the 21-case stratified pilot, synthesis disabled and enabled both recorded 21/21 HTTP successes and 21/21 automated task completions. Invoice payload correctness was 2/2 in both result files. With synthesis disabled, multi-agent mean latency was 0.036 seconds (max 0.038 seconds); with synthesis enabled, it was 50.197 seconds (max 64.632 seconds), and p95 latency across all cases rose from 0.0543 seconds to 57.2059 seconds. In the reviewed multi-agent outputs, enabling synthesis did not materially change the returned answer: the deterministic fallback text was returned, while invoice references naturally differed between runs.
+
+The synthesis prompt previously requested only the primary agent tag on the first line, while the acceptance guard required a tag for every specialist. This mismatch could cause generated output to be rejected after paying local inference latency. The prompt has been aligned with the acceptance contract, and synthesis generation is now capped at 256 new tokens. Validate with a mocked regression test and a single live multi-agent smoke before repeating any pilot. Do not claim synthesis improves answer quality until the newly accepted generated replies have been inspected. Keep the default behavior unchanged until that validation is complete.
+
 ## Metrics
 
 - Request success/failure, specialist routing, and agent-sequence correctness
