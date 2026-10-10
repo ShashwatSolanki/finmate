@@ -70,13 +70,13 @@ def memory_answer_matches(text, expected, tol=0.01):
     normalized_expected = expected.casefold()
     if normalized_expected in {"conservative", "moderate", "medium", "aggressive", "low", "high"}:
         return bool(
-            re.search(r"\bsaved(?:\s+investment)?\s+risk tolerance\b.{0,40}\b"
+            re.search(r"\bsaved(?:\s+investment)?\s+risk tolerance\b\s*(?:is|was|:|=)\s*"
                       + re.escape(expected)
                       + r"\b", visible, re.I)
         )
     if re.fullmatch(r"\d+\s+years?", normalized_expected):
         return bool(
-            re.search(r"\bsaved(?:\s+investment)?\s+time horizon\b.{0,30}\b"
+            re.search(r"\bsaved(?:\s+investment)?\s+time horizon\b\s*(?:is|was|:|=)\s*"
                       + re.escape(expected)
                       + r"\b", visible, re.I)
         )
