@@ -17,7 +17,7 @@ class ProfileMemoryTests(unittest.TestCase):
     def test_answers_indian_grouped_saved_income_without_truncating(self):
         reply = answer_saved_profile_fact(
             "From my saved profile, what is my monthly after-tax income?",
-            "The synthetic user's monthly after-tax income is INR 1,00,000.",
+            "The synthetic user's monthly after-tax income is INR 1,00,000, and rent is INR 25,000.",
         )
         self.assertIsNotNone(reply)
         self.assertIn("INR 100,000", reply)
