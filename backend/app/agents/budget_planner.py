@@ -17,7 +17,7 @@ from app.db.models import Transaction
 from app.ml.finmate import finalize_llm_reply, generate, llm_available
 from app.services.spending_insights import category_delta_vs_prior_month
 
-_AMOUNT = r"(\d[\d,]*(?:\.\d+)?)"
+_AMOUNT = r"(\d+(?:,\d{3})*(?:\.\d+)?)"
 
 
 def _parse_labeled_amount(message: str, labels: str) -> Decimal | None:
