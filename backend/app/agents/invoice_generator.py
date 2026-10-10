@@ -95,7 +95,15 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
                 _AMOUNT_LINE.match(current.strip())
                 or _AMOUNT_FIRST_LINE.match(current.strip())
             )
-            if current_is_line_item:
+            next_is_invoice_request = bool(
+                re.match(
+                    r"^\\s*(?:(?:create|generate|make|draft|prepare)\\s+(?:an?\\s+)?(?:client\\s+)?invoice|"
+                    r"i\\s+need\\s+(?:an?\\s+)?(?:client\\s+)?invoice)\\b",
+                    next_part,
+                    re.I,
+                )
+            )
+            if current_is_line_item or next_is_invoice_request:
                 conjunction_parts.append(current)
                 current = next_part
             else:
