@@ -116,8 +116,19 @@ for i,(kind,message,agents) in enumerate(multi,1):
       "requires_invoice_artifacts":"invoice_generator" in agents})
 assert len(cases)==120 and len({x["case_id"] for x in cases})==120
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument("--output", type=Path, default=OUT, help="Output JSONL path (defaults to research/evaluation/benchmark.jsonl)")
-output = parser.parse_args().output
+parser.add_argument(
+    "--output",
+    type=Path,
+    default=None,
+    help="Output JSONL path. Defaults to benchmark.jsonl only when it does not already exist.",
+)
+args = parser.parse_args()
+output = args.output or OUT
+if args.output is None and output.exists():
+    parser.error(
+        f"{output} already exists; refusing to overwrite it. "
+        "Choose a new path with --output or move the existing file after backing it up."
+    )
 output.parent.mkdir(parents=True, exist_ok=True)
 output.write_text("\n".join(json.dumps(x,ensure_ascii=False) for x in cases)+"\n",encoding="utf-8")
 print(f"Wrote {len(cases)} cases to {output}; groups={dict(Counter(c['group'] for c in cases))}; absent-memory={sum(c.get('expected_abstention',False) for c in cases)}")
