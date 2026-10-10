@@ -57,6 +57,10 @@ def build_plan(message: str) -> AgentPlan | None:
             "afford",
             "cash flow",
             "transactions",
+            "household costs",
+            "living costs",
+            "monthly costs",
+            "cost of living",
         ),
     )
     investment = _contains(
@@ -75,6 +79,18 @@ def build_plan(message: str) -> AgentPlan | None:
             "investable",
             "investable surplus",
         ),
+    ) or bool(
+        re.search(r"\b(?:cautious|conservative|long-term|risk-adjusted)\s+allocation\b", text, re.I)
+        or re.search(
+            r"\ballocation\b.{0,40}\b(?:excess funds?|surplus|investment|portfolio)\b",
+            text,
+            re.I,
+        )
+        or re.search(
+            r"\b(?:excess funds?|surplus)\b.{0,40}\ballocation\b",
+            text,
+            re.I,
+        )
     )
     invoice = _contains(
         text,

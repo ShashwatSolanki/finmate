@@ -54,7 +54,7 @@ class DatasetTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(), original)
     def test_invoice_gold_totals(self):
         rows=[r for r in self.rows if r.get("gold_invoice")]
-        self.assertEqual(len(rows),20)
+        self.assertEqual(len(rows),21)
         for r in rows:
             g=r["gold_invoice"]
             self.assertEqual(sum(g["line_amounts"]),g["subtotal"])

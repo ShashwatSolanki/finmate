@@ -100,7 +100,7 @@ for i,(agent,message) in enumerate(single,1):
     })
 multi=[
 ("budget_investment","Analyze my spending and tell me how much I can invest this month.",["budget_planner","investment_analyser"]),
-("budget_invoice","Analyze my expenses and generate an invoice for the listed expenses.",["budget_planner","invoice_generator"]),
+("budget_invoice","Analyze my expenses and generate an invoice for consulting INR 1200 plus support INR 300.",["budget_planner","invoice_generator"]),
 ("three_domain","Review my budget, suggest an investment allocation, and create an invoice for consulting INR 1200.",["budget_planner","investment_analyser","invoice_generator"]),
 ("budget_investment","Compare income against monthly spending, then discuss a cautious investment plan.",["budget_planner","investment_analyser"]),
 ("budget_invoice","Review my recent expenses and prepare a client invoice for website maintenance INR 800.",["budget_planner","invoice_generator"]),
@@ -122,6 +122,7 @@ multi=[
 # Validate line-item content, not just presence of invoice artifacts, for
 # multi-domain cases that explicitly request itemized services and amounts.
 routing_invoice_gold = {
+    2:  (["consulting", "support"], [1200, 300]),
     3:  (["consulting"], [1200]),
     5:  (["website maintenance"], [800]),
     6:  (["design"], [950]),
