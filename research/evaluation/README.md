@@ -70,7 +70,23 @@ The full API pilot exposed cases where the general LLM path answered budget ques
 
 Explicit saved-profile fact lookups are answered only when the requested value is present in retrieved profile context. If the requested value is absent, FinMate abstains rather than inventing it. This is a retrieval-grounded extraction path, not evidence that semantic retrieval always finds the correct memory; Hit@5/MRR must still be reported independently.
 
+The memory correctness scorer evaluates the user-visible reply, not metadata. Numeric saved facts are parsed as numeric tokens using the case tolerance, so grouped formatting such as `INR 46,500` matches gold value `46500` without accepting a partial substring in a different number. This corrects a scoring-format false negative; it does not change gold labels or relax the correctness requirement.
+
 The bounded planner recognizes "investable surplus" as an investment signal so three-domain requests can plan the investment specialist when appropriate. Regression tests cover exact arithmetic, category selection, saved-profile facts, missing-memory abstention, and bounded multi-agent planning. Re-run the pilot after restarting the API, then inspect every failed JSONL record before running ablations. Do not loosen gold labels or scoring checks merely to increase completion rates.
+
+## Local inference performance diagnostics
+
+The model logs stage timings for model loading or cache lookup, prompt preparation,
+generation, decoding, and postprocessing, along with the execution device and token
+counts. CUDA generation timings synchronize the GPU before measuring completion.
+These diagnostics do not log prompts, replies, or financial content. The timing line
+is emitted at warning level temporarily so it remains visible under the default local
+Uvicorn logging configuration; change it back to info level after profiling.
+
+When recent transaction history is empty, the budget planner uses its deterministic
+no-data fallback instead of invoking local model generation to restate the absence
+of transactions. The LLM-backed path remains enabled when transaction category data
+is present.
 
 ## Metrics
 
