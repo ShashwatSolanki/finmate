@@ -114,9 +114,18 @@ def invoice_payload_correct(meta,gold,tol=0.01):
         expected=sorted(round(float(x),2) for x in gold.get("line_amounts",[]))
         expected_descriptions=gold.get("line_descriptions")
         if expected_descriptions is not None:
-            actual_descriptions=sorted(str(x.get("description","")).strip().casefold() for x in line_items)
-            expected_descriptions=sorted(str(x).strip().casefold() for x in expected_descriptions)
-            if actual_descriptions != expected_descriptions:
+            expected_line_amounts=gold.get("line_amounts",[])
+            if len(expected_descriptions) != len(expected_line_amounts):
+                return False
+            actual_pairs=sorted(
+                (str(x.get("description","")).strip().casefold(), round(float(x.get("amount",0)),2))
+                for x in line_items
+            )
+            expected_pairs=sorted(
+                (str(description).strip().casefold(), round(float(amount),2))
+                for description,amount in zip(expected_descriptions,expected_line_amounts)
+            )
+            if actual_pairs != expected_pairs:
                 return False
         subtotal=payload.get("subtotal")
         actual_total=payload.get("total")
