@@ -169,3 +169,8 @@ The current implementation is a bounded multi-agent system.
 It is **not** an unbounded recursive AutoGPT loop. The current planner executes at most `agentic_max_steps` specialists, defaulting to 3.
 
 A future recursive design can be added later without changing the specialist responsibilities.
+
+
+## 8. Research-only configuration
+
+`FINMATE_USE_RAG` defaults to `true`. Set it to `false` only when conducting a controlled evaluation ablation that compares semantic memory retrieval with an otherwise identical configuration. This switch does not disable recent-chat or onboarding context by itself. For a valid no-memory condition, reset per-case chat state and seed only the relevant synthetic `research_eval` memory fixture. Follow `research/evaluation/README.md`; never use evaluation reset scripts against production data.

@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.agents.finance_context import extract_monthly_income
+from app.agents.investment_analyser import _extract_lump_sum
 from app.agents.intent import classify_agent
 from app.agents.ticker_utils import (
     extract_ticker_candidates,
@@ -28,9 +29,20 @@ from app.services.spending_insights import category_delta_vs_prior_month
     ("message", "expected"),
     [
         ("My monthly income is INR 75,000", (Decimal("75000"), "INR")),
-        ("salary $4,200", (Decimal("4200"), None)),
+        ("My monthly income is INR 1,00,000", (Decimal("100000"), "INR")),
+        ("My monthly income is INR 1 lakh", (Decimal("100000"), "INR")),
+        ("My monthly income is INR 1,00,00", (None, None)),
+        ("My monthly income is INR 50,0000", (None, None)),
+        ("salary $4,200", (Decimal("4200"), "USD")),
+        ("My monthly income is ₹50,000", (Decimal("50000"), "INR")),
+        ("salary €4,200", (Decimal("4200"), "EUR")),
+        ("salary £4,200", (Decimal("4200"), "GBP")),
+        ("salary AUD 4,200", (Decimal("4200"), "AUD")),
+        ("salary USD 4,200", (Decimal("4200"), "USD")),
+        ("salary $4,200 INR", (None, None)),
         ("I earn 3,500 every month", (None, None)),
         ("Nothing about income here", (None, None)),
+        ("Review my budget, estimate investable surplus, and invoice a client for development INR 3600.", (None, None)),
     ],
 )
 def test_finance_context_extracts_income_and_currency(message: str, expected: tuple[Decimal | None, str | None]) -> None:
@@ -39,6 +51,40 @@ def test_finance_context_extracts_income_and_currency(message: str, expected: tu
 
 def test_finance_context_prefers_onboarding_context() -> None:
     assert extract_monthly_income("Help me budget", "monthly income: 80000 INR") == (Decimal("80000"), "INR")
+
+def test_onboarding_income_supports_lakh_and_rejects_malformed_grouping() -> None:
+    assert extract_monthly_income("Help me budget", "monthly income: 1 lakh INR") == (Decimal("100000"), "INR")
+    assert extract_monthly_income("Help me budget", "monthly income: 1,00,00 INR") == (None, None)
+    assert extract_monthly_income("Help me budget", "monthly income: 1 lakh and rent INR 25,000") == (Decimal("100000"), None)
+    assert extract_monthly_income("Help me budget", "monthly income: 1000 ₹") == (Decimal("1000"), "INR")
+    assert extract_monthly_income("Help me budget", "monthly income: ₹50,000") == (Decimal("50000"), "INR")
+    assert extract_monthly_income("Help me budget", "monthly income: $4,200") == (Decimal("4200"), "USD")
+    assert extract_monthly_income("Help me budget", "monthly income: 4,200 £") == (Decimal("4200"), "GBP")
+    assert extract_monthly_income("Help me budget", "monthly income: $4,200 INR") == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        ("Invest INR 50,000 as a lump sum.", Decimal("50000")),
+        ("How should I invest in 5 years?", None),
+        ("Invest INR 1,00,000 as a lump sum.", Decimal("100000")),
+        ("Invest INR 50,0000 as a lump sum.", None),
+        ("Invest INR 1,00,00 as a lump sum.", None),
+        ("Should I invest for 5 years?", None),
+        ("I plan to invest INR 50,000 for 5 years.", Decimal("50000")),
+        ("How should I allocate an investment of ₹1,25,000?", Decimal("125000")),
+        ("INR 3600 is for a client development invoice; suggest an investment strategy.", None),
+        ("The client invoice amount is INR 3600; how should I invest my own savings?", None),
+        ("My apartment security deposit is INR 50000; explain investing in general.", None),
+        ("Review my budget, estimate investable surplus, and invoice a client for development INR 3600.", None),
+        ("INR 50,000", None),
+    ],
+)
+def test_investment_amount_requires_explicit_investment_context(
+    message: str, expected: Decimal | None
+) -> None:
+    assert _extract_lump_sum(message) == expected
 
 
 def test_ticker_extraction_handles_dollar_symbols_company_names_and_caps() -> None:

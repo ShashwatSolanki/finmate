@@ -21,13 +21,13 @@ from app.ml.finmate import generate
 
 _AMOUNT_LINE = re.compile(
     r"^\s*(?:[-*]\s*)?(.+?)\s+(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£)?\s*"
-    r"([\d,]+(?:\.\d{1,2})?)\s*[.!]?\s*$",
+    r"((?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d{1,2})?)\s*[.!]?\s*$",
     re.I,
 )
 
 _AMOUNT_FIRST_LINE = re.compile(
     r"^\s*(?:[-*]\s*)?(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£)?\s*"
-    r"([\d,]+(?:\.\d{1,2})?)\s+(.+?)\s*[.!]?\s*$",
+    r"((?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d{1,2})?)\s+(.+?)\s*[.!]?\s*$",
     re.I,
 )
 
@@ -75,14 +75,52 @@ def _detect_currency(message: str) -> str:
 def _parse_simple_lines(message: str) -> list[dict[str, str]]:
     """Parse compact natural-language invoice requests into line items."""
     cleaned = re.sub(
-        r"^\s*(?:(?:create|generate|make|draft)\s+(?:an?\s+)?invoice"
+        r"^\s*(?:(?:create|generate|make|draft|prepare)\s+(?:an?\s+)?(?:client\s+)?invoice"
         r"|i\s+need\s+(?:an?\s+)?(?:client\s+)?invoice)"
         r"\s*(?:for|from|line\s+items?)?\s*[:\-]?\s*",
         "",
         message,
         flags=re.I,
     )
-    parts = re.split(r"\s+and\s+|[,;]", cleaned, flags=re.I)
+    # Commas/semicolons separate compact line items. Keep "and" within a
+    # description (for example, "design and development") unless the preceding
+    # segment is already a complete description+amount pair.
+    comma_parts = re.split(r",(?!\d)|;", cleaned, flags=re.I)
+    conjunction_parts: list[str] = []
+    for comma_part in comma_parts:
+        and_parts = re.split(r"\s+and\s+", comma_part, flags=re.I)
+        current = and_parts[0]
+        for next_part in and_parts[1:]:
+            current_is_line_item = bool(
+                _AMOUNT_LINE.match(current.strip())
+                or _AMOUNT_FIRST_LINE.match(current.strip())
+            )
+            next_is_invoice_request = bool(
+                re.match(
+                    r"^\s*(?:(?:create|generate|make|draft|prepare)\s+(?:an?\s+)?(?:client\s+)?invoice|"
+                    r"i\s+need\s+(?:an?\s+)?(?:client\s+)?invoice)\b",
+                    next_part,
+                    re.I,
+                )
+            )
+            if current_is_line_item or next_is_invoice_request:
+                conjunction_parts.append(current)
+                current = next_part
+            else:
+                current = f"{current} and {next_part}"
+        conjunction_parts.append(current)
+
+    parts: list[str] = []
+    for conjunction_part in conjunction_parts:
+        plus_parts = re.split(r"\s+plus\s+", conjunction_part, flags=re.I)
+        if len(plus_parts) > 1 and all(
+            _AMOUNT_LINE.match(part.strip()) or _AMOUNT_FIRST_LINE.match(part.strip())
+            for part in plus_parts
+        ):
+            parts.extend(plus_parts)
+        else:
+            parts.append(conjunction_part)
+    
     items: list[dict[str, str]] = []
     for part in parts:
         text = part.strip().rstrip(".!?")
@@ -103,6 +141,13 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
         if val <= 0:
             continue
         desc = re.sub(r"^(?:for|of)\s+", "", desc.strip(), flags=re.I)
+        desc = re.sub(
+            r"^(?:and\s+)?(?:(?:create|generate|make|draft|prepare)\s+(?:an?\s+)?(?:client\s+)?invoice"
+            r"(?:\s+(?:for|from|line\s+items?))?|invoice\s+(?:a\s+)?client\s+for)\s*",
+            "",
+            desc,
+            flags=re.I,
+        )
         if desc:
             items.append({"description": desc, "amount": f"{val:.2f}"})
     return items
@@ -111,10 +156,23 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
 def _structured_from_message(message: str) -> StructuredInvoice | None:
     """Try full invoice parse on pasted OCR/PDF text; fall back to simple line format."""
     simple = _parse_simple_lines(message)
-    if simple and len(message.strip()) < 80:
+    explicit_multi_item_plus = bool(re.search(r"\bplus\b", message, re.I)) and len(simple) >= 2
+    explicit_client_invoice = bool(
+        re.search(r"\binvoice\s+(?:a\s+)?client\s+for\b", message, re.I)
+    )
+    if simple and (
+        len(message.strip()) < 80
+        or explicit_multi_item_plus
+        or explicit_client_invoice
+    ):
         line_items = [ParsedLineItem(description=x["description"], amount=Decimal(x["amount"])) for x in simple]
         total = sum((i.amount for i in line_items), start=Decimal("0"))
-        return StructuredInvoice(line_items=line_items, total=total, currency=_detect_currency(message))
+        return StructuredInvoice(
+            line_items=line_items,
+            subtotal=total,
+            total=total,
+            currency=_detect_currency(message),
+        )
 
     result = parse_invoice_text(message, source_type="text", filename="chat-message.txt")
     if result.invoice.line_items:
@@ -123,7 +181,12 @@ def _structured_from_message(message: str) -> StructuredInvoice | None:
     if simple:
         line_items = [ParsedLineItem(description=x["description"], amount=Decimal(x["amount"])) for x in simple]
         total = sum((i.amount for i in line_items), start=Decimal("0"))
-        return StructuredInvoice(line_items=line_items, total=total, currency=_detect_currency(message) if _detect_currency(message) != "USD" else result.invoice.currency)
+        return StructuredInvoice(
+            line_items=line_items,
+            subtotal=total,
+            total=total,
+            currency=_detect_currency(message) if _detect_currency(message) != "USD" else result.invoice.currency,
+        )
     return None
 
 
@@ -247,8 +310,10 @@ def run(
     invoice = _structured_from_message(request_text)
     request = request_text.lower()
     wants_expense_invoice = _wants_expense_invoice(request)
+    invoice_from_transactions = False
     if invoice is None and wants_expense_invoice:
         invoice = _expense_invoice_from_transactions(db, user_id)
+        invoice_from_transactions = invoice is not None
 
     rag_block = ""
     if rag_context and rag_context.strip():
@@ -263,11 +328,11 @@ def run(
             inv_id,
             source_note=(
                 "generated from recent user transactions"
-                if wants_expense_invoice
+                if invoice_from_transactions
                 else "parsed from message text"
             ),
         )
-        source = "transaction_summary" if wants_expense_invoice else "structured_parse"
+        source = "transaction_summary" if invoice_from_transactions else "structured_parse"
 
         total = invoice.total or sum((i.amount for i in invoice.line_items), start=Decimal("0"))
         return AgentResult(

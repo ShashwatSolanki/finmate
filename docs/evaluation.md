@@ -25,7 +25,7 @@ Tests cover important isolated behaviors including:
 - invoice artifact preservation
 - routing edge cases
 
-The backend suite covers authentication, budget validation, financial API behavior, data-backed agents, invoices, orchestration, and retrieval. Use the CI run as the current source of truth for test count and pass/fail status.
+The backend suite covers authentication, budget validation, financial API behavior, data-backed agents, invoices, orchestration, and retrieval. CI also runs the separate research harness tests from `research/evaluation/`, including scoring helpers, dataset integrity, and the destructive-database guard. Use the CI run as the current source of truth for test count and pass/fail status.
 
 ## 3. RAG evaluation
 
@@ -64,7 +64,7 @@ training/data/final_ai_eval.jsonl
 The evaluator checks:
 
 - HTTP success
-- expected specialist routing
+- expected specialist routing and actual execution-path metadata
 - reply-format compliance
 - confidence metadata
 - observed RAG usage
@@ -136,3 +136,38 @@ AI regression
    ↓
 frontend build
 ```
+
+
+## 10. Research benchmark (separate from regression tests)
+
+The controlled research benchmark lives in [`research/evaluation/`](../research/evaluation/README.md). It includes a deterministic synthetic dataset generator, per-case API/direct-model runner, gold-number and memory scoring, retrieval Hit@5/MRR measurements, latency capture, and paired bootstrap summaries. The summary also scores actual execution path from trusted runtime metadata separately from the agent label returned in the response. Numeric saved-memory answers are parsed from user-visible reply text with grouping-separator tolerance and numeric-token matching, rather than raw substring matching or metadata-only evidence. It is deliberately separate from CI because the runner can reset a dedicated test account's chat history, memory, transactions, budgets, and holdings before each case.
+
+For local latency investigations, FinMate logs model-load/cache, prompt-preparation, generation, decode, and postprocessing timings, plus token counts and execution device at info level. These diagnostics omit prompt and financial content, leaving warning logs for actionable problems.
+
+When the budget planner has no recent transaction categories, it uses its deterministic no-data response instead of invoking local generation to repeat that there is no transaction history. The LLM path remains enabled when transaction data exists.
+
+Income and investment amount extraction must require explicit semantic labels. An arbitrary currency amount (for example, a client invoice value) must not be interpreted as monthly income or investable capital; the agentic smoke test exposed this cross-domain parsing risk, so regression tests cover it.
+
+Natural-language invoice requests with conjunctions such as "configuration INR 400 plus support INR 500" must preserve each separately stated line item and derive the INR 900 subtotal/total. Validate the structured payload itself—including currency, line-item amounts, subtotal, and final total—rather than treating HTTP success or artifact presence as proof of invoice correctness. Numeric benchmark correctness is scored from visible reply prose only—not internal metadata or the hidden JSON contract tail. Category-spending totals follow the transactions API convention: negative transaction amounts are expenses and are reported as positive magnitudes, excluding credits/refunds; mixed-currency arithmetic is refused rather than silently combining currencies. Any additional numeric amount that does not map to a supported expense label makes deterministic remainder calculation abstain instead of silently omitting the item, regardless of whether that amount includes a currency marker. Explicit saved-profile fact lookups use user-authored or onboarding/profile evidence; assistant-generated prior replies are not treated as proof of a saved fact. When risk preference is absent from retrieved context, allocation wording must identify any moderate-risk split as illustrative and must not claim that it is the user's saved profile.
+
+For a controlled agentic-latency experiment, `FINMATE_AGENTIC_SYNTHESIS=false` bypasses only the final LLM synthesis call after specialist execution and is now the default. Set it to `true` only when explicitly testing synthesis.
+
+The 2026-10-10 21-case pilot recorded 21/21 HTTP successes and automated task completions with synthesis both off and on. Multi-agent mean latency was 0.036 seconds with synthesis off versus 50.197 seconds with it on; overall p95 rose from 0.0543 seconds to 57.2059 seconds. Reviewed synthesis-on responses returned the deterministic fallback wording rather than a materially improved synthesis. The synthesis prompt and acceptance guard previously disagreed about whether all specialist tags were required; the prompt was aligned and a mocked regression test added. However, the subsequent live three-agent smoke still took 44.351 seconds and returned the deterministic fallback. Because synthesis added substantial latency without a demonstrated answer-quality improvement in the reviewed pilot, final synthesis is now opt-in and defaults to false. Only repeat synthesis-on pilots after the generated output can be confirmed accepted and useful.
+
+The `FINMATE_USE_RAG` switch exists to support a semantic-retrieval ablation; it is enabled by default. The old `backend/scripts/evaluate_rag.py` fixture uses mocked embeddings and remains an implementation sanity check—not a live retrieval-quality result. Likewise, `backend/scripts/evaluate_ai.py` checks the response contract and routing metadata, but does not establish financial answer correctness.
+
+**Safety requirement:** use a disposable local evaluation database whose name includes `eval` or `test`, and a fresh synthetic user ID. The runner refuses destructive resets against other database names, bootstraps a non-login evaluation identity when needed, and mints a short-lived local access token if one is not supplied. This guard is a backstop, not a substitute for confirming the database is disposable. Save each run's raw JSONL output and environment settings, and never run the destructive reset option against staging/production or a real user's account. Read the research evaluation README for exact commands and limitations.
+
+
+## Latest validation run (2026-10-11)
+
+A fresh 21-case stratified API pilot was run against application commit `54b3fc0147637e91ff435857922a3e8031c3861a` using condition `full`, a fresh synthetic user, and the dedicated disposable `finmate_eval` PostgreSQL database. Server flags were `FINMATE_USE_RAG=true`, `FINMATE_AGENTIC_MODE=true`, `FINMATE_USE_LLM=true`, and `FINMATE_AGENTIC_SYNTHESIS=false`.
+
+- HTTP success: **21/21**
+- Automated task completion: **21/21**
+- Runner-reported failed cases: **0**
+- Dataset used: local `research/evaluation/benchmark-final-review.jsonl`
+- Raw results: local `research/evaluation/results/final-pilot-20261011-021636.jsonl`
+- Manifest: local `research/evaluation/results/final-pilot-20261011-021636.manifest.json`
+
+The raw results, manifest, and generated dataset are local evaluation artifacts and are not committed by this documentation update; preserve them for audit and reproducibility. This pilot exercised the scoring checks configured for its 21 selected cases. It is not a human audit of every claim and does not establish population-level financial correctness. Two non-fatal environment warnings appeared: a `RequestsDependencyWarning` about installed HTTP-related dependency versions and a Transformers warning that `TRANSFORMERS_CACHE` is deprecated in favor of `HF_HOME`. Neither stopped the run.

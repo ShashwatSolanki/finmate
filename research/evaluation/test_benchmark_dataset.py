@@ -1,0 +1,98 @@
+"""Structural checks for the synthetic benchmark dataset after generation."""
+import json
+from collections import Counter
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import unittest
+HERE=Path(__file__).resolve().parent
+class DatasetTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # Never overwrite a developer's untracked benchmark or preserved results.
+        cls._tempdir = tempfile.TemporaryDirectory(prefix="finmate-benchmark-tests-")
+        path = Path(cls._tempdir.name) / "benchmark.jsonl"
+        subprocess.run(
+            [sys.executable, str(HERE / "generate_benchmark.py"), "--output", str(path)],
+            check=True,
+        )
+        cls.rows=[json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tempdir.cleanup()
+    def test_120_case_balance(self):
+        self.assertEqual(len(self.rows),120)
+        self.assertEqual(len({r["case_id"] for r in self.rows}),120)
+        self.assertEqual(Counter(r["group"] for r in self.rows),{"numerical":40,"memory":40,"routing":40})
+
+    def test_generator_refuses_to_overwrite_existing_default_output(self):
+        with tempfile.TemporaryDirectory(prefix="finmate-generator-clobber-test-") as temp:
+            folder = Path(temp)
+            script = folder / "generate_benchmark.py"
+            script.write_text(
+                (HERE / "generate_benchmark.py").read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            first = subprocess.run(
+                [sys.executable, str(script)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(first.returncode, 0, first.stderr)
+            output = folder / "benchmark.jsonl"
+            original = output.read_bytes()
+
+            second = subprocess.run(
+                [sys.executable, str(script)],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(second.returncode, 0)
+            self.assertIn("refusing to overwrite", second.stderr.lower())
+            self.assertEqual(output.read_bytes(), original)
+    def test_invoice_gold_totals(self):
+        rows=[r for r in self.rows if r.get("gold_invoice")]
+        self.assertEqual(len(rows),20)
+        for r in rows:
+            g=r["gold_invoice"]
+            self.assertEqual(sum(g["line_amounts"]),g["subtotal"])
+            self.assertEqual(g["subtotal"],g["total"])
+            if r.get("gold_numeric_values"):
+                self.assertEqual(g["subtotal"],r["gold_numeric_values"][0])
+            self.assertEqual(len(g["line_descriptions"]),len(g["line_amounts"]))
+    def test_transaction_gold_values(self):
+        rows=[r for r in self.rows if r.get("subgroup")=="transaction_aggregation"]
+        for r in rows:
+            recent=sum(abs(x["amount"]) for x in r["transactions_fixture"] if x["category"]=="food" and x["days_ago"]<=30)
+            self.assertEqual(recent,r["gold_numeric_values"][0])
+            self.assertTrue(all(x["amount"] < 0 for x in r["transactions_fixture"]))
+    def test_absent_memory_abstention(self):
+        rows=[r for r in self.rows if r.get("expected_abstention")]
+        self.assertEqual(len(rows),8)
+        for r in rows:
+            self.assertIsNone(r["relevant_memory"])
+            self.assertIsNone(r["gold_memory_answer"])
+    def test_specialist_labels(self):
+        agents={"budget_planner","investment_analyser","invoice_generator"}
+        for r in self.rows:
+            if r.get("expected_agent"): self.assertIn(r["expected_agent"],agents)
+            self.assertLessEqual(len(r.get("expected_agents",[])),3)
+
+    def test_expected_execution_paths_match_case_intent(self):
+        numerical=[r for r in self.rows if r["group"]=="numerical"]
+        memory=[r for r in self.rows if r["group"]=="memory"]
+        general=[r for r in self.rows if r.get("subgroup")=="general_education"]
+        single=[r for r in self.rows if r.get("subgroup")=="single_specialist"]
+        multi=[r for r in self.rows if r.get("subgroup") in {"budget_investment","budget_invoice","three_domain"}]
+        self.assertTrue(all(r.get("expected_execution_path")=="specialist" for r in numerical))
+        self.assertTrue(all(r.get("expected_execution_path")=="profile_memory" for r in memory))
+        self.assertEqual(len(general),3)
+        self.assertTrue(all(r.get("expected_agent") is None for r in general))
+        self.assertTrue(all(r.get("expected_execution_path")=="general_llm" for r in general))
+        self.assertEqual(len(single),17)
+        self.assertTrue(all(r.get("expected_execution_path")=="specialist" for r in single))
+        self.assertEqual(len(multi),20)
+        self.assertTrue(all(r.get("expected_execution_path")=="agentic" for r in multi))
+if __name__=="__main__": unittest.main()

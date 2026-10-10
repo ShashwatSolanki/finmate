@@ -14,6 +14,7 @@ from app.agents.types import AgentName
 from app.api.deps import get_current_user
 from app.db.models import ChatMessage, ChatSession, MemoryChunk, User
 from app.db.session import get_db
+from app.config import settings
 from app.rag.memory_store import add_memory, search_memory
 
 router = APIRouter()
@@ -251,7 +252,11 @@ def chat_message(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> ChatResponse:
-    ctx_docs = search_memory(db, current.id, body.message, k=5, min_similarity=0.22)
+    ctx_docs = (
+        search_memory(db, current.id, body.message, k=5, min_similarity=0.22)
+        if settings.finmate_use_rag
+        else []
+    )
     recent_context = _build_recent_context(db, current.id, turns=3)
     onboarding_context = _latest_onboarding_context(db, current.id)
     rag = "\n---\n".join(ctx_docs) if ctx_docs else ""

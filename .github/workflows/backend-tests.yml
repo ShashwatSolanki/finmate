@@ -49,6 +49,9 @@ jobs:
       - name: Run backend test suite
         run: pytest -q
 
+      - name: Run research evaluation harness tests
+        run: python -m unittest discover -s ../research/evaluation -p 'test_*.py' -v
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

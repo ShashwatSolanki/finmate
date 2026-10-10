@@ -43,6 +43,8 @@ class Settings(BaseSettings):
 
     embedding_model_name: str = "sentence-transformers/all-MiniLM-L6-v2"
     finmate_use_embeddings: bool = True
+    # Disable semantic memory retrieval for controlled research ablations.
+    finmate_use_rag: bool = True
     intent_embedding_weight: float = 0.25
 
     alpha_vantage_api_key: str | None = None
@@ -56,6 +58,8 @@ class Settings(BaseSettings):
 
     # Bounded agentic execution for requests spanning multiple specialists.
     finmate_agentic_mode: bool = True
+    # Optional latency experiment: bypass only the final LLM synthesis after specialist execution.
+    finmate_agentic_synthesis: bool = False
     agentic_max_steps: int = 3
 
     # Path to tesseract.exe when not on PATH (common on Windows after installer)

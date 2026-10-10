@@ -1,0 +1,353 @@
+"""Run a reproducible FinMate API or direct-Qwen benchmark on synthetic data only."""
+from __future__ import annotations
+import argparse, hashlib, json, os, platform, re, statistics, subprocess, sys, time
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
+from pathlib import Path
+from typing import Any
+import httpx
+
+ROOT=Path(__file__).resolve().parents[2]
+BACKEND=ROOT/"backend"
+if str(BACKEND) not in sys.path: sys.path.insert(0,str(BACKEND))
+NUM_RE=re.compile(r"(?<![A-Za-z0-9,.])[-+]?(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d+)?%?(?!,\d)")
+
+def require_evaluation_database(database_url):
+    """Reject destructive benchmark runs outside a dedicated eval/test database."""
+    from sqlalchemy.engine import make_url
+    database_name=(make_url(database_url).database or "").lower()
+    if not re.search(r"(?:^|[^a-z0-9])(?:eval|test)(?:[^a-z0-9]|$)", database_name):
+        raise ValueError(f"Refusing destructive evaluation: database name {database_name!r} must contain 'eval' or 'test'. Use a dedicated disposable database.")
+    return database_name
+
+def load_jsonl(path):
+    rows=[]
+    for n,line in enumerate(Path(path).read_text(encoding="utf-8").splitlines(),1):
+        if line.strip():
+            try: rows.append(json.loads(line))
+            except json.JSONDecodeError as e: raise ValueError(f"Invalid JSONL line {n}: {e}") from e
+    return rows
+
+def numeric_values(text):
+    out=[]
+    for m in NUM_RE.finditer(text):
+        try: out.append(float(m.group(0).rstrip("%").replace(",","")))
+        except ValueError: pass
+    return out
+
+def contains_number(text,target,tol):
+    return any(abs(v-target)<=tol for v in numeric_values(text))
+
+def visible_answer_text(reply):
+    """Strip agent tags and the machine-readable JSON tail hidden by the chat UI."""
+    visible = []
+    for line in str(reply or "").splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        if text.startswith("[AGENT:") and text.endswith("]"):
+            continue
+        if text.startswith("{"):
+            break
+        visible.append(text)
+    return " ".join(visible)
+
+def numeric_answer_matches(reply, expected_values, tol=0.01):
+    """Score gold numbers from user-visible prose, never metadata or hidden JSON."""
+    if not expected_values:
+        return False
+    visible = visible_answer_text(reply)
+    return all(contains_number(visible, float(value), tol) for value in expected_values)
+
+def memory_answer_matches(text, expected, tol=0.01):
+    """Match saved-memory answers without numeric substring false positives."""
+    expected = str(expected or "").strip()
+    if not expected:
+        return False
+    visible = visible_answer_text(text)
+    if re.fullmatch(r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)", expected):
+        return contains_number(visible, float(expected), tol)
+    normalized_expected = expected.casefold()
+    if normalized_expected in {"conservative", "moderate", "medium", "aggressive", "low", "high"}:
+        return bool(
+            re.search(r"\bsaved(?:\s+investment)?\s+risk tolerance\b\s*(?:is|was|:|=)\s*"
+                      + re.escape(expected)
+                      + r"\b", visible, re.I)
+        )
+    if re.fullmatch(r"\d+\s+years?", normalized_expected):
+        return bool(
+            re.search(r"\bsaved(?:\s+investment)?\s+time horizon\b\s*(?:is|was|:|=)\s*"
+                      + re.escape(expected)
+                      + r"\b", visible, re.I)
+        )
+    return expected.casefold() in visible.casefold()
+
+_ABSTENTION_CUES = (
+    "not stored",
+    "not in your profile",
+    "don't have",
+    "do not have",
+    "not available",
+    "can't determine",
+    "cannot determine",
+    "don't see",
+    "do not see",
+    "not found",
+    "not provided",
+    "unable to tell",
+)
+
+def abstention_answer_matches(reply):
+    """Credit abstention only when the visible answer itself abstains."""
+    visible = visible_answer_text(reply).lower()
+    return any(cue in visible for cue in _ABSTENTION_CUES)
+
+def invoice_payload_correct(meta,gold,tol=0.01):
+    """Validate invoice currency, line items, subtotal, and final total."""
+    raw=meta.get("invoice_payload")
+    if not raw: return False
+    try:
+        payload=json.loads(raw) if isinstance(raw,str) else raw
+        if not isinstance(payload,dict) or str(payload.get("currency","")).upper()!=str(gold.get("currency","")).upper(): return False
+        line_items=payload.get("line_items",[])
+        amounts=sorted(round(float(x.get("amount",0)),2) for x in line_items)
+        expected=sorted(round(float(x),2) for x in gold.get("line_amounts",[]))
+        expected_descriptions=gold.get("line_descriptions")
+        if expected_descriptions is not None:
+            expected_line_amounts=gold.get("line_amounts",[])
+            if len(expected_descriptions) != len(expected_line_amounts):
+                return False
+            actual_pairs=sorted(
+                (str(x.get("description","")).strip().casefold(), round(float(x.get("amount",0)),2))
+                for x in line_items
+            )
+            expected_pairs=sorted(
+                (str(description).strip().casefold(), round(float(amount),2))
+                for description,amount in zip(expected_descriptions,expected_line_amounts)
+            )
+            if actual_pairs != expected_pairs:
+                return False
+        subtotal=payload.get("subtotal")
+        actual_total=payload.get("total")
+        expected_subtotal=gold.get("subtotal")
+        expected_total=gold.get("total", expected_subtotal)
+        if subtotal is None or actual_total is None or expected_subtotal is None or expected_total is None:
+            return False
+        return (
+            amounts==expected
+            and abs(float(subtotal)-float(expected_subtotal))<=tol
+            and abs(float(actual_total)-float(expected_total))<=tol
+        )
+    except (TypeError,ValueError,json.JSONDecodeError): return False
+
+def parse_agent(reply,api_agent=""):
+    if api_agent: return api_agent
+    m=re.search(r"\[AGENT:\s*(BUDGET|INVESTMENT|INVOICE)\s*\]",reply,re.I)
+    return {"BUDGET":"budget_planner","INVESTMENT":"investment_analyser","INVOICE":"invoice_generator"}.get(m.group(1).upper(),"") if m else ""
+
+def execution_path_matches(meta,expected):
+    """Require explicit trusted runtime metadata; never infer execution from an agent label."""
+    if not expected:
+        return None
+    actual=str((meta or {}).get("execution_path","")).strip().casefold()
+    return bool(actual) and actual == str(expected).strip().casefold()
+
+def is_synthetic_eval_user(user, user_id):
+    """Identify the exact synthetic principal created by this research harness."""
+    return bool(
+        user is not None
+        and getattr(user, "email", None) == f"research-eval-{user_id}@example.invalid"
+        and getattr(user, "auth_provider", None) == "google"
+        and getattr(user, "google_id", None) == f"research-eval-{user_id}"
+    )
+
+
+def access_token_matches_user_id(token, user_id):
+    """Require an API access token to belong to the synthetic eval principal."""
+    from uuid import UUID
+    from app.security.jwt_tokens import decode_token_subject
+    try:
+        expected_user_id = UUID(user_id)
+    except (TypeError, ValueError):
+        return False
+    return decode_token_subject(token) == expected_user_id
+
+
+def reset_and_seed(user_id,case):
+    from uuid import UUID
+    from app.db.models import Budget,ChatSession,InvestmentHolding,MemoryChunk,Transaction,User
+    from app.db.session import SessionLocal
+    from app.rag.memory_store import rank_memory
+    uid=UUID(user_id); db=SessionLocal()
+    try:
+        # The isolated eval database may not have an application user yet. Create a
+        # non-login synthetic principal so API auth and fixture foreign keys work.
+        existing_user = db.get(User,uid)
+        if existing_user is None:
+            db.add(User(id=uid,email=f"research-eval-{uid}@example.invalid",
+              display_name="Research Evaluation User",is_active=True,is_verified=True,
+              auth_provider="google",google_id=f"research-eval-{uid}"))
+            db.flush()
+        elif not is_synthetic_eval_user(existing_user, uid):
+            raise ValueError(
+                "Refusing destructive reset for a non-synthetic user. "
+                "Generate a fresh --user-id and use only a disposable evaluation database."
+            )
+        for session in db.query(ChatSession).filter(ChatSession.user_id==uid).all(): db.delete(session)
+        db.query(MemoryChunk).filter(MemoryChunk.user_id==uid).delete(synchronize_session=False)
+        db.query(Transaction).filter(Transaction.user_id==uid).delete(synchronize_session=False)
+        db.query(Budget).filter(Budget.user_id==uid).delete(synchronize_session=False)
+        db.query(InvestmentHolding).filter(InvestmentHolding.user_id==uid).delete(synchronize_session=False)
+        for content in case.get("memory_fixture",[]): db.add(MemoryChunk(user_id=uid,content=content,source="research_eval"))
+        today=date.today()
+        for item in case.get("transactions_fixture",[]):
+            db.add(Transaction(user_id=uid,amount=Decimal(str(item["amount"])),currency=item.get("currency","INR"),
+              category=item.get("category"),description=item.get("description","synthetic evaluation transaction"),
+              occurred_on=today-timedelta(days=int(item.get("days_ago",0)))))
+        db.commit()
+        if not case.get("relevant_memory"): return None,None
+        ranked=rank_memory(db,uid,case["message"],limit=5,min_similarity=0.22)
+        ranks=[i+1 for i,(txt,_score) in enumerate(ranked) if txt==case["relevant_memory"]]
+        return (1.0 if ranks else 0.0),(1.0/ranks[0] if ranks else 0.0)
+    finally: db.close()
+
+def select_pilot_cases(cases):
+    """Select a deterministic 21-case stratified pilot from the generated dataset."""
+    def take(group, subgroup, indices):
+        rows = [
+            row for row in cases
+            if row.get("group") == group
+            and (subgroup is None or row.get("subgroup") == subgroup)
+        ]
+        return [rows[index] for index in indices if index < len(rows)]
+
+    selected = []
+    selected += take("numerical", "transaction_aggregation", [0, 10])
+    selected += take("numerical", "invoice_subtotal", [0, 5])
+    selected += take("numerical", "balance_arithmetic", [0, 5])
+    selected += take("memory", "memory_income", [0])
+    selected += take("memory", "memory_risk", [2])
+    selected += take("memory", "memory_goal", [0])
+    selected += take("memory", "memory_absent", [0, 4])
+    selected += take("routing", "single_specialist", [0, 5, 10, 15])
+    selected += take("routing", "budget_investment", [0, 4])
+    selected += take("routing", "budget_invoice", [1, 5])
+    selected += take("routing", "three_domain", [2, 4])
+    return selected
+
+
+def run():
+    p=argparse.ArgumentParser()
+    p.add_argument("--condition",choices=["full","no_rag","no_agentic","no_llm","llm_only"],required=True)
+    p.add_argument("--base-url",default="http://127.0.0.1:8000")
+    p.add_argument("--token",default="",help="Optional token override; by default the runner mints a fresh local access token for the synthetic test user.")
+    p.add_argument("--user-id",default="")
+    p.add_argument("--reset-test-user-state",action="store_true")
+    p.add_argument("--dataset",type=Path,default=Path(__file__).with_name("benchmark.jsonl"))
+    p.add_argument("--output",type=Path,default=None)
+    p.add_argument("--limit",type=int,default=0,help="Take the first N cases for debugging only; not stratified.")
+    p.add_argument("--pilot",action="store_true",help="Select a deterministic stratified 21-case smoke pilot across numerical, memory/abstention, single-agent and multi-agent tasks.")
+    p.add_argument("--commit",default="")
+    p.add_argument("--environment-notes",default="")
+    args=p.parse_args()
+    if not args.dataset.exists(): raise SystemExit(f"Dataset not found: {args.dataset}. Run generate_benchmark.py first.")
+    cases=load_jsonl(args.dataset)
+    if args.pilot:
+        cases = select_pilot_cases(cases)
+    elif args.limit: cases=cases[:args.limit]
+    if not cases: raise SystemExit("Dataset is empty.")
+    api_mode=args.condition!="llm_only"
+    if api_mode and (not args.user_id or not args.reset_test_user_state):
+        raise SystemExit("API conditions require --user-id and --reset-test-user-state. Use a dedicated local evaluation database only.")
+    if api_mode:
+        from app.config import settings
+        try: require_evaluation_database(settings.database_url)
+        except ValueError as exc: raise SystemExit(str(exc)) from exc
+        from uuid import UUID
+        from app.security.jwt_tokens import create_access_token
+        try:
+            eval_user_id = UUID(args.user_id)
+        except ValueError as exc:
+            raise SystemExit(f"Invalid --user-id UUID: {args.user_id}") from exc
+        if not args.token:
+            args.token = create_access_token(eval_user_id)
+        elif not access_token_matches_user_id(args.token, args.user_id):
+            raise SystemExit(
+                "The supplied --token is not a valid access token for --user-id. "
+                "Use the local evaluation user's token and the same JWT_SECRET as the API."
+            )
+    api=httpx.Client(base_url=args.base_url.rstrip("/"),headers={"Authorization":f"Bearer {args.token}","Content-Type":"application/json"},timeout=180.0) if api_mode else None
+    rows=[]
+    try:
+        for i,case in enumerate(cases,1):
+            hit5=mrr=None
+            if api_mode: hit5,mrr=reset_and_seed(args.user_id,case)
+            start=time.perf_counter(); status=None; data={}; error=""
+            try:
+                if not api_mode:
+                    from app.ml.finmate import generate
+                    reply=generate(case["message"])
+                    data={"reply":reply,"agent":parse_agent(reply)}
+                else:
+                    response=api.post("/api/chat/message",json={"message":case["message"]}); status=response.status_code
+                    if status==200: data=response.json()
+                    else: error=f"HTTP {status}: {response.text[:500]}"
+            except Exception as exc: error=f"{type(exc).__name__}: {exc}"
+            latency=time.perf_counter()-start
+            reply=str(data.get("reply","")); meta=data.get("metadata") or {}
+            agent=parse_agent(reply,str(data.get("agent","")))
+            gold_nums=case.get("gold_numeric_values",[]); tol=float(case.get("tolerance",0.01))
+            numeric_ok=numeric_answer_matches(reply,gold_nums,tol) if gold_nums else None
+            gold_mem=str(case.get("gold_memory_answer") or "").strip()
+            memory_ok=memory_answer_matches(reply, gold_mem, tol) if gold_mem else None
+            route_ok=(agent==case["expected_agent"]) if case.get("expected_agent") else None
+            execution_path=str(meta.get("execution_path","")).strip()
+            expected_execution_path=case.get("expected_execution_path")
+            execution_path_ok=execution_path_matches(meta,expected_execution_path)
+            executed=[x for x in str(meta.get("agents_executed","")).split(",") if x]
+            agentic_ok=(executed==case.get("expected_agents",[])) if case.get("expected_source")=="agentic" else None
+            artifact_present=all(str(meta.get(k,"")).strip() for k in ("invoice_ref","invoice_payload","invoice_actions"))
+            artifacts_ok=artifact_present if case.get("requires_invoice_artifacts") else None
+            invoice_ok=invoice_payload_correct(meta,case["gold_invoice"],tol) if case.get("gold_invoice") else None
+            abstention_ok=None
+            if case.get("expected_abstention"):
+                abstention_ok=abstention_answer_matches(reply)
+            checks=[]
+            for val in (numeric_ok,memory_ok,route_ok,execution_path_ok,agentic_ok,artifacts_ok,invoice_ok,abstention_ok):
+                if val is not None: checks.append(val)
+            http_ok=(status==200) if api_mode else not bool(error)
+            rows.append({"case_id":case["case_id"],"group":case["group"],"subgroup":case.get("subgroup",""),
+              "condition":args.condition,"http_status":status,"http_ok":http_ok,"error":error,"latency_seconds":round(latency,4),
+              "agent":agent,"expected_agent":case.get("expected_agent"),"route_correct":route_ok,
+              "execution_path":execution_path,"expected_execution_path":expected_execution_path,
+              "execution_path_correct":execution_path_ok,"numeric_correct":numeric_ok,
+              "memory_correct":memory_ok,"abstention_correct":abstention_ok,"agentic_correct":agentic_ok,
+              "agents_executed":executed,"expected_agents":case.get("expected_agents"),"invoice_artifacts_present":artifacts_ok,
+              "invoice_payload_correct":invoice_ok,"rag_chunks_used":meta.get("rag_chunks_used"),
+              "retrieval_hit_at_5":hit5,"retrieval_reciprocal_rank":mrr,
+              "task_completed":bool(http_ok and checks and all(checks)),"gold_numeric_values":gold_nums,
+              "gold_memory_answer":case.get("gold_memory_answer"),"reply":reply,"metadata":meta,"case_spec":case})
+            print(f"[{i}/{len(cases)}] {case['case_id']} {'OK' if http_ok else 'FAIL'} route={agent or '-'} latency={latency:.2f}s",flush=True)
+    finally:
+        if api is not None: api.close()
+    output=args.output or Path(f"results_{args.condition}.jsonl")
+    output.parent.mkdir(parents=True,exist_ok=True)
+    raw=("\n".join(json.dumps(x,ensure_ascii=False,default=str) for x in rows)+"\n").encode()
+    output.write_bytes(raw)
+    commit=args.commit.strip()
+    if not commit:
+        try: commit=subprocess.run(["git","rev-parse","HEAD"],cwd=ROOT,capture_output=True,text=True,check=True).stdout.strip()
+        except Exception: commit="not-detected; set --commit explicitly"
+    manifest={"timestamp_utc":datetime.now(timezone.utc).isoformat(),"condition":args.condition,"cases_requested":len(cases),
+      "dataset_path":str(args.dataset.resolve()),"dataset_sha256":hashlib.sha256(args.dataset.read_bytes()).hexdigest(),
+      "results_path":str(output.resolve()),"results_sha256":hashlib.sha256(raw).hexdigest(),"repository_commit":commit,
+      "python_version":sys.version,"platform":platform.platform(),"api_base_url":args.base_url if api_mode else None,
+      "runner_environment_flags":{k:os.getenv(k) for k in ["FINMATE_USE_RAG","FINMATE_AGENTIC_MODE","FINMATE_USE_LLM","FINMATE_USE_EMBEDDINGS","FINMATE_LORA_PATH"]},
+      "note":"For API conditions, runner flags are not necessarily server flags. Record server settings in environment_notes. Secrets are deliberately excluded.",
+      "environment_notes":args.environment_notes}
+    manifest_path=output.with_suffix(".manifest.json")
+    manifest_path.write_text(json.dumps(manifest,indent=2),encoding="utf-8")
+    print(f"Saved raw results: {output}\nSaved manifest: {manifest_path}\nHTTP success: {sum(r['http_ok'] for r in rows)}/{len(rows)}\nTask completion: {sum(r['task_completed'] for r in rows)}/{len(rows)}")
+    return 0
+
+if __name__=="__main__": raise SystemExit(run())
