@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from app.agents.agentic_orchestrator import run_agentic_turn
+from app.agents.budget_planner import run as run_budget
 from app.agents.invoice_generator import run as run_invoice
 from app.agents.investment_analyser import _extract_risk_from_context, run as run_investment
 from app.agents.types import AgentName, AgentResult
@@ -130,6 +131,33 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(result.metadata["invoice_ref"], "EXP-20260920")
         self.assertIn("invoice_payload", result.metadata)
         self.assertEqual(result.metadata["invoice_actions"], "pdf,csv")
+
+    def test_budget_without_transactions_skips_llm_generation(self):
+        self.db.scalar.return_value = None
+        self.db.execute.return_value.all.return_value = []
+
+        with (
+            patch(
+                "app.agents.budget_planner.category_delta_vs_prior_month",
+                return_value=None,
+            ),
+            patch(
+                "app.agents.budget_planner.extract_monthly_income",
+                return_value=(None, None),
+            ),
+            patch("app.agents.budget_planner.settings.finmate_use_llm", True),
+            patch("app.agents.budget_planner.llm_available", return_value=True),
+            patch("app.agents.budget_planner.generate") as model_generate,
+        ):
+            result = run_budget(
+                self.user_id,
+                "Summarize my recent spending by category and suggest a budget cap.",
+                self.db,
+            )
+
+        self.assertEqual(result.metadata["source"], "db_aggregates")
+        self.assertIn("don't see any transactions", result.reply)
+        model_generate.assert_not_called()
 
 
 if __name__ == "__main__":
