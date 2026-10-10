@@ -23,7 +23,7 @@ def _amount_fact(context: str, label_pattern: str) -> tuple[str, str | None] | N
     pattern = re.compile(
         rf"\b(?:{label_pattern})\s*(?:is|:|=)?\s*"
         rf"(?:(?P<prefix>{_CURRENCY})\s*)?"
-        rf"(?P<amount>\d+(?:,\d{3})*(?:\.\d+)?)"
+        rf"(?P<amount>(?:\\d{1,3}(?:,\\d{3})+|\\d{1,2}(?:,\\d{2})*,\\d{3}|\\d+)(?:\\.\\d+)?)(?![\\d,])"
         rf"\s*(?P<suffix>{_CURRENCY})?\b",
         re.I,
     )
