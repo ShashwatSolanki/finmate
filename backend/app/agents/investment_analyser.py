@@ -67,7 +67,7 @@ def _extract_lump_sum(message: str) -> Decimal | None:
     currency_pattern = r"(?:₹|\$|€|£|\bINR\b|\bUSD\b|\bEUR\b|\bGBP\b)?\s*"
     investment_label = (
         r"\b(?:invest(?:ing)?|investment(?:\s+amount)?|lump[ -]?sum(?:\s+investment)?|"
-        r"investable\s+(?:amount|surplus)|(?:fixed|term)[ -]?deposit)\b"
+        r"investable\s+(?:amount|surplus)|allocat(?:e|ed|ing|ion)|(?:fixed|term)[ -]?deposit)\b"
     )
     match = re.search(
         investment_label
@@ -481,6 +481,80 @@ def _data_driven_market_reply(
     )
     return f"[AGENT: INVESTMENT]\n\n{prose}\n\n{json_tail}"
 
+def _portfolio_exposure_notes(portfolio: AgentResult, symbols: list[str]) -> list[str]:
+    """State existing ticker exposure explicitly and compute a share only when possible."""
+    saved_symbols = {
+        symbol.strip().upper()
+        for symbol in portfolio.metadata.get("tickers", "").split(",")
+        if symbol.strip()
+    }
+    visible = _visible_market_prose(portfolio.reply)
+    total_match = re.search(
+        r"Current value:\s*([\d,]+(?:\.\d+)?)\s+([A-Z]{3})",
+        visible,
+        re.I,
+    )
+    portfolio_total = None
+    portfolio_currency = None
+    if total_match:
+        try:
+            portfolio_total = Decimal(total_match.group(1).replace(",", ""))
+            portfolio_currency = total_match.group(2).upper()
+        except Exception:
+            portfolio_total = None
+
+    notes: list[str] = []
+    for symbol in symbols:
+        key = symbol.upper()
+        if key not in saved_symbols:
+            notes.append(
+                f"{key}: no existing holding is recorded in your saved portfolio; "
+                "the market snapshot below is a comparison for a possible new position."
+            )
+            continue
+
+        row = next(
+            (line for line in visible.splitlines() if line.strip().upper().startswith(f"{key} |")),
+            "",
+        )
+        row_match = re.search(
+            rf"^{re.escape(key)}\s*\|\s*([\d.]+)\s+units\s+\|\s+Avg cost:.*?"
+            rf"\|\s+Current:\s*([\d,]+(?:\.\d+)?)\s+([A-Z]{{3}})",
+            row,
+            re.I,
+        )
+        try:
+            if row_match:
+                quantity = Decimal(row_match.group(1))
+                price = Decimal(row_match.group(2).replace(",", ""))
+                quote_currency = row_match.group(3).upper()
+                position_value = quantity * price
+                if (
+                    portfolio_total is not None
+                    and portfolio_total > 0
+                    and portfolio_currency == quote_currency
+                ):
+                    share = position_value / portfolio_total * Decimal("100")
+                    notes.append(
+                        f"{key}: existing holding value is approximately "
+                        f"{position_value:,.2f} {quote_currency} ({share:.2f}% of the valued portfolio)."
+                    )
+                else:
+                    notes.append(
+                        f"{key}: an existing holding is recorded, but its share of the portfolio "
+                        "cannot be calculated reliably from the available same-currency valuations."
+                    )
+            else:
+                notes.append(
+                    f"{key}: an existing holding is recorded, but its current value is unavailable."
+                )
+        except Exception:
+            notes.append(
+                f"{key}: an existing holding is recorded, but its current value is unavailable."
+            )
+    return notes
+
+
 def run(
     user_id: UUID,
     message: str,
@@ -490,9 +564,50 @@ def run(
     request = _extract_original_request(message)
     tickers = pick_validated_tickers(request)
 
+    # Portfolio intent wins even when the user also names a ticker. Preserve the
+    # saved-position audit, then add a deterministic market snapshot for comparison.
+    if _is_portfolio_history_request(request):
+        portfolio = _portfolio_history_reply(db, user_id)
+        if not tickers:
+            return portfolio
+        analyses = [_analyze_symbol(symbol) for symbol in tickers]
+        market_reply = _data_driven_market_reply(analyses, rag_context, request)
+        portfolio_prose = _visible_market_prose(portfolio.reply)
+        market_prose = _visible_market_prose(market_reply)
+        exposure_lines = _portfolio_exposure_notes(portfolio, tickers)
+        reply = (
+            "[AGENT: INVESTMENT]\n\n"
+            "Saved portfolio snapshot:\n\n"
+            f"{portfolio_prose}\n\n"
+            "Requested market comparison:\n\n"
+            f"{market_prose}\n\n"
+            "Existing ticker exposure:\n"
+            + "\n".join(f"- {line}" for line in exposure_lines)
+            + "\n\n"
+            "Market data describes the named stock; it does not imply that an additional purchase is suitable."
+        )
+        metadata = dict(portfolio.metadata)
+        metadata.update(
+            {
+                "tickers": ",".join(tickers),
+                "requested_tickers": ",".join(tickers),
+                "market_data": "live" if any(analysis.ok for analysis in analyses) else "unavailable",
+                "source": "portfolio_market_comparison",
+            }
+        )
+        return AgentResult(
+            agent=AgentName.INVESTMENT_ANALYSER,
+            reply=reply,
+            planned_steps=[
+                "load_saved_portfolio",
+                "value_existing_holdings",
+                "fetch_requested_market_data",
+                "compare_existing_ticker_exposure",
+            ],
+            metadata=metadata,
+        )
+
     if not tickers:
-        if _is_portfolio_history_request(request):
-            return _portfolio_history_reply(db, user_id)
         reply = _portfolio_plan_reply(request, rag_context)
         return AgentResult(
             agent=AgentName.INVESTMENT_ANALYSER,
