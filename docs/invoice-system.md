@@ -85,9 +85,15 @@ Supported document sources include:
 
 The extraction path produces structured invoice data before the frontend displays or edits it.
 
-When an invoice is imported from the chat composer, the backend creates a user-side attachment message in the selected conversation. It persists the filename, source type, extraction confidence, and structured invoice JSON in the message metadata, and indexes a bounded text representation in recent conversation context so follow-up questions can use the extracted fields. Reloading or switching away from the conversation no longer removes the attachment preview.
+When an invoice is imported from the chat composer, the backend creates a user-side attachment message in the selected conversation. It persists the filename, source type, extraction confidence, and structured invoice JSON in the message metadata, and indexes a bounded text representation in recent conversation context so follow-up questions can use the extracted fields. When a later prompt refers to an uploaded invoice or receipt, the Invoice Generator looks up that saved extracted content instead of trying to parse the prompt itself.
 
 The uploaded PDF/image binary itself is not stored in chat history; the durable attachment consists of the extracted structured invoice and its source metadata. The browser's pending invoice handoff to Invoice Studio is a separate convenience for editing/exporting the imported result.
+
+### Receipt/table OCR and verification
+
+For receipts with an `Item / Qty / Price / Amount` table, the parser recognizes quantity, unit price, and line amount rows. Unpriced OCR lines between priced rows are joined to the adjacent item description, because long food names commonly wrap over multiple lines. A printed grand total is never treated as a product line item when a line-item table is present.
+
+Currency inference recognizes an explicit currency code/symbol, the `Rs.` prefix, and Indian receipt markers such as `CGST`, `SGST`, `IGST`, or `FSSAI`. CGST/SGST amounts are combined as tax amounts, not products. Extraction adds warnings and downgrades confidence when line-item sums disagree with the printed subtotal or when subtotal plus tax disagrees with the printed total. Treat high OCR confidence as a signal, not a substitute for checking the extracted fields and reconciliation.
 
 ## 7. OCR
 
