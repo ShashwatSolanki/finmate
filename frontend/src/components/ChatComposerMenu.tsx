@@ -22,6 +22,7 @@ type Props = {
     source: string,
     sourceType: string,
     confidence: string,
+    warnings: string[],
   ) => Promise<void>;
   onTransactionsImported: (rows: ImportedTransactionPreview[], source: string, importedCount: number) => void;
 };
@@ -83,7 +84,13 @@ export default function ChatComposerMenu({
       // Keep the structured result available to Invoice Studio without turning a
       // file import into a second, slow chat/LLM request.
       sessionStorage.setItem("finmate_pending_invoice", JSON.stringify(data.invoice));
-      await onInvoiceImported(data.invoice, file.name, data.source_type, data.confidence);
+      await onInvoiceImported(
+        data.invoice,
+        file.name,
+        data.source_type,
+        data.confidence,
+        data.warnings ?? [],
+      );
       // The saved attachment is visible in the conversation; avoid a second
       // floating status line that can visually collide with the fixed composer.
       onImportStatus(null);
@@ -121,6 +128,7 @@ export default function ChatComposerMenu({
           file.name,
           invoiceData.source_type,
           invoiceData.confidence,
+          invoiceData.warnings ?? [],
         );
         onImportStatus(null);
         return;
