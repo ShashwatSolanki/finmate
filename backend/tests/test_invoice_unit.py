@@ -78,8 +78,10 @@ class InvoiceParsingUnitTests(unittest.TestCase):
 
     def test_wrapped_indian_cafe_receipt_reconciles_four_items_and_gst(self):
         text = """The Hole in wall Cafe
+3, 8th Mn Road Koramangala 4th block, Bengaluru
 FSSAI Lic No. 11221334000684
 Date: 28/11/25
+Bill No.: 73430
 Item Qty. Price Amount
 Chicken Fajita 1 300.00 300.00
 Breakfast Tacos
@@ -103,6 +105,9 @@ Grand Total 7 1029.00
         invoice = result.invoice
 
         self.assertEqual(invoice.currency, "INR")
+        self.assertEqual(invoice.vendor_name, "The Hole in wall Cafe")
+        self.assertEqual(invoice.invoice_number, "73430")
+        self.assertEqual(invoice.invoice_date, "28/11/25")
         self.assertEqual(
             [(item.description, item.amount) for item in invoice.line_items],
             [
