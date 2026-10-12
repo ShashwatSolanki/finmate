@@ -341,70 +341,137 @@ def _portfolio_plan_reply(message: str, rag_context: str | None) -> str:
     )
 
 
-def _data_driven_market_reply(analyses: list[_SymbolAnalysis], rag_context: str | None) -> str:
-    """Build prose strictly from fetched market fields — never generic investing advice."""
+def _visible_market_prose(reply: str) -> str:
+    """Strip agent/JSON protocol lines before validating user-visible model prose."""
+    visible: list[str] = []
+    for line in (reply or "").replace("\r", "").splitlines():
+        text = line.strip()
+        if not text or (text.startswith("[AGENT:") and text.endswith("]")):
+            continue
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                parsed = __import__("json").loads(text)
+            except (ValueError, TypeError):
+                pass
+            else:
+                if isinstance(parsed, dict):
+                    continue
+        visible.append(text)
+    return "\n".join(visible).strip()
+
+
+def _market_reply_covers_verified_facts(
+    reply: str,
+    analyses: list[_SymbolAnalysis],
+    request: str,
+) -> bool:
+    """Reject a well-formatted answer that does not use the fetched market data."""
+    prose = _visible_market_prose(reply).casefold().replace(",", "")
+    if not prose:
+        return False
+
+    for analysis in analyses:
+        if analysis.symbol.casefold() not in prose:
+            return False
+        if analysis.ok and analysis.last is not None and analysis.sma20 is not None:
+            required_values = (f"{analysis.last:.2f}", f"{analysis.sma20:.2f}")
+            if any(value.replace(",", "") not in prose for value in required_values):
+                return False
+        elif not any(marker in prose for marker in ("unavailable", "could not fetch", "no live price history")):
+            return False
+
+    # If the user named an investment amount, require the answer to address it.
+    # Otherwise an unrelated but numerically fluent market summary could pass.
+    amount = _extract_lump_sum(request)
+    if amount is not None:
+        variants = {
+            f"{amount:,.2f}".replace(",", ""),
+            f"{amount:.2f}".replace(",", ""),
+            f"{amount:.0f}".replace(",", ""),
+        }
+        if not any(value in prose for value in variants):
+            return False
+    return True
+
+
+def _data_driven_market_reply(
+    analyses: list[_SymbolAnalysis],
+    rag_context: str | None,
+    request: str | None = None,
+) -> str:
+    """Build a readable answer from fetched market fields, never generated figures."""
     saved_risk = _extract_risk_from_context(rag_context)
-    ok = [a for a in analyses if a.ok and a.last is not None]
+    ok = [a for a in analyses if a.ok and a.last is not None and a.sma20 is not None]
+    failed = [a.symbol for a in analyses if a not in ok]
+    requested_amount = _extract_lump_sum(request or "")
+
     if not ok:
-        failed = ", ".join(a.symbol for a in analyses)
+        failed_names = ", ".join(failed) or "the requested ticker"
+        prose = (
+            f"I couldn't retrieve usable recent market data for {failed_names}, so I can't give a "
+            "data-backed price or trend assessment right now. Check the ticker and try again later."
+        )
+        if requested_amount is not None:
+            prose += (
+                f" You mentioned an amount of {requested_amount:,.2f}; confirm its currency and "
+                "your investment time horizon before making a decision."
+            )
         return (
             "[AGENT: INVESTMENT]\n\n"
-            f"Live quotes for {failed} are unavailable at the moment. "
-            "Check the symbol spelling or try again in a few minutes.\n\n"
-            '{"intent":"investment_info","steps":["Verify ticker symbol","Retry market data fetch","Decide entry size"],'
+            f"{prose}\n\n"
+            '{"intent":"investment_info","steps":["Verify ticker","Retry market data","Reassess with available data"],'
             '"tools_needed":["yfinance_lookup"],"notes":"market data unavailable"}'
         )
 
     blocks: list[str] = []
-    actions: list[str] = []
-    for a in ok:
-        blocks.append(a.text)
-        assert a.last is not None and a.sma20 is not None
-        if a.last > a.sma20:
-            actions.append(
-                f"{a.symbol} is above its 20-day SMA ({a.sma20:.2f}); momentum is positive — "
-                f"if you buy, scale in rather than lump-sum at {a.last:.2f}."
-            )
-        else:
-            actions.append(
-                f"{a.symbol} is below its 20-day SMA ({a.sma20:.2f}); "
-                f"last close {a.last:.2f} — consider waiting for stabilization or smaller tranches."
-            )
-        if a.pct is not None and abs(a.pct) >= Decimal("3"):
-            direction = "up" if a.pct > 0 else "down"
-            actions.append(f"{a.symbol} moved {abs(a.pct):.2f}% {direction} vs the prior session — avoid chasing.")
-
-    risk_note = (
-        f"Given your saved {saved_risk} risk tolerance, keep position sizes modest relative to your total portfolio "
-        "and maintain an emergency fund outside these names."
-        if saved_risk
-        else (
-            "Adjust position sizes to your own risk tolerance and maintain an emergency fund "
-            "outside these names."
+    observations: list[str] = []
+    for analysis in ok:
+        blocks.append(analysis.text)
+        assert analysis.last is not None and analysis.sma20 is not None
+        trend = "above" if analysis.last > analysis.sma20 else "below or at"
+        observations.append(
+            f"{analysis.symbol} is {trend} its 20-day simple moving average. "
+            "That is a short-term trend indicator, not a prediction or a buy/sell signal."
         )
-    )
+        if analysis.pct is not None and abs(analysis.pct) >= Decimal("3"):
+            direction = "up" if analysis.pct > 0 else "down"
+            observations.append(
+                f"{analysis.symbol} moved {abs(analysis.pct):.2f}% {direction} versus the previous session; "
+                "treat that as short-term volatility, not a forecast."
+            )
+
+    notes: list[str] = []
+    if failed:
+        notes.append(f"Recent price data was unavailable for: {', '.join(failed)}.")
+    if requested_amount is not None:
+        notes.append(
+            f"You mentioned an amount of {requested_amount:,.2f}. The quote alone cannot establish whether "
+            "that amount is suitable; confirm the currency and consider your time horizon, risk tolerance, "
+            "existing concentration, debt, and emergency savings before deciding."
+        )
+    if saved_risk:
+        notes.append(f"Your saved risk tolerance is {saved_risk}.")
+    else:
+        notes.append("Your risk tolerance and investment time horizon are not confirmed in the available profile.")
+    notes.append("This is market information, not a personalized recommendation to buy or sell.")
 
     prose = (
-        "Live market snapshot:\n\n"
+        "Latest available market snapshot:\n\n"
         + "\n\n".join(blocks)
         + "\n\n"
-        + " ".join(actions)
-        + " "
-        + risk_note
+        + " ".join(observations)
+        + "\n\n"
+        + " ".join(notes)
     )
     symbols = ",".join(a.symbol for a in ok)
     json_tail = (
-        '{"intent":"investment_info","steps":["Review last close vs 20d SMA","Size position to risk profile",'
-        '"Use staggered entries"],"tools_needed":["yfinance_lookup"],"notes":"built from live yfinance data for '
+        '{"intent":"investment_info","steps":["Review latest close and 20-day SMA","Check risk and time horizon",'
+        '"Decide only after evaluating the whole portfolio"],"tools_needed":["yfinance_lookup"],'
+        '"notes":"numbers and trend are taken from fetched market history for '
         + symbols
         + '"}'
     )
-    return (
-        "[AGENT: INVESTMENT]\n\n"
-        f"{prose}\n\n"
-        f"{json_tail}"
-    )
-
+    return f"[AGENT: INVESTMENT]\n\n{prose}\n\n{json_tail}"
 
 def run(
     user_id: UUID,
@@ -412,18 +479,13 @@ def run(
     db: Session,
     rag_context: str | None = None,
 ) -> AgentResult:
-    _ = db
     request = _extract_original_request(message)
     tickers = pick_validated_tickers(request)
-
-    rag_block = ""
-    if rag_context and rag_context.strip():
-        rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
     if not tickers:
         if _is_portfolio_history_request(request):
             return _portfolio_history_reply(db, user_id)
-        reply = _portfolio_plan_reply(message, rag_context)
+        reply = _portfolio_plan_reply(request, rag_context)
         return AgentResult(
             agent=AgentName.INVESTMENT_ANALYSER,
             reply=reply,
@@ -443,17 +505,32 @@ def run(
             },
         )
 
-    analyses = [_analyze_symbol(sym) for sym in tickers]
-    market_data = "\n\n---\n\n".join(a.text for a in analyses)
+    analyses = [_analyze_symbol(symbol) for symbol in tickers]
+    available = [
+        analysis
+        for analysis in analyses
+        if analysis.ok and analysis.last is not None and analysis.sma20 is not None
+    ]
 
-    if settings.finmate_use_llm:
+    if not available:
+        reply = _data_driven_market_reply(analyses, rag_context, request)
+        source = "market_data_unavailable"
+    elif settings.finmate_use_llm:
+        market_data = "\n\n---\n\n".join(analysis.text for analysis in analyses)
+        rag_block = (
+            "\n\n[Past context]\n" + rag_context.strip()[:2000]
+            if rag_context and rag_context.strip()
+            else ""
+        )
         enriched = (
-            f"{message}\n\n"
-            f"[Live market data]\n{market_data}\n\n"
+            f"Original user request: {request}\n\n"
+            f"[Verified market data]\n{market_data}\n\n"
             "[Response requirements]\n"
-            "- Quote at least two numbers from the live data per ticker.\n"
-            "- State last close and whether price is above or below the 20-day SMA.\n"
-            "- Tie any buy/wait advice to those numbers.\n"
+            "- Answer the actual question, including any proposed amount.\n"
+            "- For every available ticker, include its exact last close and 20-day SMA from the data above.\n"
+            "- If the amount's currency, time horizon, or risk tolerance is unknown, say so rather than assume.\n"
+            "- Do not invent prices, user holdings, expected returns, or a guaranteed outcome.\n"
+            "- Use clear paragraphs and line breaks; do not output JSON-only generic steps.\n"
             f"{rag_block}"
         )
         try:
@@ -462,18 +539,30 @@ def run(
                 system_extra=SYSTEM_EXTRA_INVESTMENT,
                 json_tools_fallback=["yfinance_lookup"],
             )
-            reply = ensure_investment_reply_shape(model_reply)
-            source = "llm"
+            shaped_reply = ensure_investment_reply_shape(model_reply)
+            if _market_reply_covers_verified_facts(shaped_reply, analyses, request):
+                reply = shaped_reply
+                source = "llm_verified_market_data"
+            else:
+                # The response-shape helper can produce generic fallback steps.
+                # Prefer a factual deterministic answer when the model omits verified
+                # prices, the moving average, a requested ticker, or the amount.
+                reply = _data_driven_market_reply(analyses, rag_context, request)
+                source = "verified_data_fallback"
         except Exception:
-            reply = _data_driven_market_reply(analyses, rag_context)
-            source = "live_data"
+            reply = _data_driven_market_reply(analyses, rag_context, request)
+            source = "verified_data_fallback"
     else:
-        reply = _data_driven_market_reply(analyses, rag_context)
-        source = "live_data"
+        reply = _data_driven_market_reply(analyses, rag_context, request)
+        source = "verified_data_fallback"
 
     return AgentResult(
         agent=AgentName.INVESTMENT_ANALYSER,
         reply=reply,
-        planned_steps=["resolve_tickers", "fetch_market_data", "compute_signals", "compose_reply"],
-        metadata={"tickers": ",".join(tickers), "market_data": "live", "source": source},
+        planned_steps=["resolve_tickers", "fetch_market_data", "verify_market-grounding", "compose_reply"],
+        metadata={
+            "tickers": ",".join(tickers),
+            "market_data": "live" if available else "unavailable",
+            "source": source,
+        },
     )
