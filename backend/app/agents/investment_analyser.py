@@ -377,6 +377,15 @@ def _market_reply_covers_verified_facts(
     prose = _visible_market_prose(reply).casefold().replace(",", "")
     if not prose:
         return False
+    # Tool-router/debug fragments can contain the right numbers while still not
+    # being a readable answer. Never accept those strings as verified prose.
+    if re.search(
+        r"\b(?:tokenized_tools|latest_[a-z0-9_]+_data|tools_needed|json_tools_fallback|"
+        r"tool_call|tool_result|function_call)\b|\[\s*tokenized_tools\s*\]",
+        prose,
+        re.I,
+    ):
+        return False
 
     for analysis in analyses:
         if analysis.symbol.casefold() not in prose:
