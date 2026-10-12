@@ -154,7 +154,8 @@ def test_invoice_import_is_persisted_as_user_attachment_and_recent_context(datab
     request_body = {
         "filename": "cafe-bill.png",
         "source_type": "image",
-        "confidence": "high",
+        "confidence": "medium",
+        "warnings": ["Line-item amounts do not match the printed subtotal; review OCR."],
         "invoice": {
             "invoice_number": "INV-204",
             "vendor_name": "Cafe Aurora",
@@ -186,6 +187,9 @@ def test_invoice_import_is_persisted_as_user_attachment_and_recent_context(datab
     assert saved["content"] == "Uploaded invoice: cafe-bill.png."
     assert saved["metadata"]["source"] == "invoice_import"
     assert saved["metadata"]["filename"] == "cafe-bill.png"
+    assert json.loads(saved["metadata"]["warnings"]) == [
+        "Line-item amounts do not match the printed subtotal; review OCR."
+    ]
     parsed_invoice = json.loads(saved["metadata"]["invoice_payload"])
     assert parsed_invoice["vendor_name"] == "Cafe Aurora"
     assert parsed_invoice["total"] == "450.00"
@@ -200,3 +204,5 @@ def test_invoice_import_is_persisted_as_user_attachment_and_recent_context(datab
     assert recent_context is not None
     assert "Cafe Aurora" in recent_context
     assert "Coffee and sandwich: 450.00 INR" in recent_context
+    assert "Extraction warnings:" in recent_context
+    assert "review OCR" in recent_context
