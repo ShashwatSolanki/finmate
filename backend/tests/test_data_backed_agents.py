@@ -257,6 +257,12 @@ Total: 1029.00 INR
         self.assertEqual(invoice.tax, Decimal("49.00"))
         self.assertEqual(invoice.total, Decimal("1029.00"))
         self.assertTrue(_references_uploaded_invoice("Review the invoice or receipt I uploaded."))
+        self.assertFalse(
+            _references_uploaded_invoice(
+                "Summarize my recorded expenses for the previous calendar month and prepare a report. "
+                "Clearly separate actual transactions from any uploaded invoice or receipt."
+            )
+        )
 
     def test_uploaded_receipt_followup_uses_saved_invoice_instead_of_parsing_prompt(self):
         saved_invoice = _invoice_from_memory_text(
