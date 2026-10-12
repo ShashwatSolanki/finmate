@@ -220,6 +220,7 @@ export default function ChatPage() {
       createdSessionId = created.id;
     }
 
+    let savedMessage: ChatMessage;
     try {
       const res = await apiFetch(`/api/conversations/${sessionId}/invoice-imports`, {
         method: "POST",
@@ -232,12 +233,7 @@ export default function ChatPage() {
         }),
       });
       if (!res.ok) throw new Error(await res.text());
-      const savedMessage = (await res.json()) as ChatMessage;
-
-      setMessages((previous) => [...previous, savedMessage]);
-      if (sessionId !== activeSessionId) setActiveSessionId(sessionId);
-      shouldAutoScrollRef.current = true;
-      await loadConversations();
+      savedMessage = (await res.json()) as ChatMessage;
     } catch (err) {
       // Do not leave an empty sidebar conversation behind if saving a first
       // attachment fails before any user turn exists.
@@ -249,6 +245,13 @@ export default function ChatPage() {
       }
       throw err;
     }
+
+    setMessages((previous) => [...previous, savedMessage]);
+    if (sessionId !== activeSessionId) setActiveSessionId(sessionId);
+    shouldAutoScrollRef.current = true;
+    // The attachment is already saved; a failed sidebar refresh must not undo
+    // or falsely report failure for the persisted conversation event.
+    void loadConversations().catch(() => undefined);
   }
 
   function onTransactionsImported(
