@@ -210,7 +210,7 @@ def test_multi_category_question_requests_clarification_instead_of_budget_advice
             rag_context="Monthly income: 50000 INR",
         )
 
-    assert "one spending category" in result.reply
+    assert "single spending category" in result.reply
     assert result.metadata["source"] == "transaction_query_clarification"
     assert "50/30/20" not in result.reply
 
