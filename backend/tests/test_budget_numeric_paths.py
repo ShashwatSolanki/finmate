@@ -1,7 +1,7 @@
 """Regression tests for exact numeric paths in the budget specialist."""
 
 import unittest
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from uuid import uuid4
 
@@ -111,6 +111,13 @@ class BudgetNumericPathTests(unittest.TestCase):
                 "How much did I spend on food and transport?", categories
             )
         )
+        # A category should still be recognized when it has no recent rows.
+        self.assertEqual(
+            _requested_transaction_category(
+                "How much did I spend on food in the last 30 days?", {}
+            ),
+            "food",
+        )
 
 
 def test_category_spending_uses_expense_debit_signs(database):
@@ -139,6 +146,34 @@ def test_category_spending_uses_expense_debit_signs(database):
 
     assert "You spent INR 825.00 on food" in result.reply
     assert "-825.00" not in result.reply
+
+
+def test_missing_category_does_not_fall_back_to_unrelated_income_budget(database):
+    user_id = uuid4()
+    with database.begin() as db:
+        db.add(User(id=user_id, email=f"{user_id}@example.test", password_hash="test-hash"))
+        db.add(
+            Transaction(
+                user_id=user_id,
+                amount=Decimal("-3600"),
+                currency="INR",
+                category="Rent",
+                occurred_on=date.today() - timedelta(days=60),
+            )
+        )
+
+    with database() as db:
+        result = run(
+            user_id,
+            "How much did I spend on food in the last 30 days?",
+            db,
+            rag_context="Monthly income: 50000 INR",
+        )
+
+    assert "couldn't find any recorded Food expenses in the last 30 days" in result.reply
+    assert "50/30/20" not in result.reply
+    assert result.metadata["source"] == "transaction_aggregate_no_match"
+    assert result.metadata["window_days"] == "30"
 
 
 if __name__ == "__main__":
