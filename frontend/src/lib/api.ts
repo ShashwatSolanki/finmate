@@ -213,6 +213,17 @@ export type ParseInvoiceResult = {
   warnings: string[];
 };
 
+export function parseInvoiceWarnings(raw?: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string").slice(0, 10);
+  } catch {
+    return [];
+  }
+}
+
 export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
