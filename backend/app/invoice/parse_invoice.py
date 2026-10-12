@@ -307,7 +307,7 @@ def _prepare_receipt_table_lines(lines: list[str]) -> tuple[list[str], bool]:
         return lines, True
 
     canonical_rows = [
-        f"{row['description']} {row['quantity']} {row['unit_price']} {row['amount']}"
+        f"{row['description']} {row['quantity']} x {row['unit_price']} = {row['amount']}"
         for row in parsed_rows
         if row["description"]
     ]
