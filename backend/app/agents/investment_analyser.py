@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from decimal import Decimal
 from uuid import UUID
@@ -266,8 +267,15 @@ def _analyze_symbol(symbol: str) -> _SymbolAnalysis:
         if fifty_two is not None and fifty_two_l is not None:
             extras.append(f"52-week range: {fifty_two_l} – {fifty_two} {cur}")
 
+        latest_session = h.index[-1]
+        try:
+            session_label = latest_session.date().isoformat()
+        except (AttributeError, ValueError):
+            session_label = str(latest_session)[:10]
+
         text = (
             f"{name} ({symbol})\n"
+            f"Latest available session: {session_label}\n"
             f"Last close: {last:.2f} {cur} ({chg:+.2f}, {pct:+.2f}% vs previous session)\n"
             f"20-day SMA: {sma20:.2f} — trading {trend} the short-term average."
         )
@@ -350,7 +358,7 @@ def _visible_market_prose(reply: str) -> str:
             continue
         if text.startswith("{") and text.endswith("}"):
             try:
-                parsed = __import__("json").loads(text)
+                parsed = json.loads(text)
             except (ValueError, TypeError):
                 pass
             else:
