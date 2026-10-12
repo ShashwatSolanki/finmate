@@ -106,7 +106,7 @@ Frontend preview / Invoice Studio
 PDF or CSV export
 ```
 
-An invoice imported from the chat composer is saved as a user-side message through `POST /api/conversations/{session_id}/invoice-imports`. The chat history displays the filename, extraction confidence, vendor/total when available, and expandable line items. The saved structured result survives conversation reloads; the original PDF/image bytes are not retained in chat history. The composer is disabled while parsing and saving, and a successful import is represented by the attachment bubble rather than a floating success line.
+An invoice imported from the chat composer is saved as a user-side message through `POST /api/conversations/{session_id}/invoice-imports`. The chat history displays the filename, extraction confidence, vendor/total when available, expandable line items, and any OCR/reconciliation warnings. The saved structured result and warning text survive conversation reloads; the original PDF/image bytes are not retained in chat history. The composer is disabled while parsing and saving, and a successful import is represented by the attachment bubble rather than a floating success line.
 
 ## 10. Session renewal
 
