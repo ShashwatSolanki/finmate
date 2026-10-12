@@ -1,3 +1,4 @@
+import json
 import re
 import uuid
 from datetime import datetime, timezone
@@ -39,6 +40,12 @@ class InvoiceImportCreate(BaseModel):
     source_type: Literal["pdf", "image", "csv"]
     confidence: Literal["high", "medium", "low"]
     invoice: StructuredInvoice
+    warnings: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("warnings")
+    @classmethod
+    def bound_warnings(cls, warnings: list[str]) -> list[str]:
+        return [warning.strip()[:300] for warning in warnings if warning.strip()][:10]
 
     @field_validator("invoice")
     @classmethod
@@ -116,6 +123,9 @@ def _invoice_memory_text(body: InvoiceImportCreate) -> str:
         lines.append(f"Total: {invoice.total} {invoice.currency}")
     if invoice.notes:
         lines.append(f"Notes: {invoice.notes}")
+    if body.warnings:
+        lines.append("Extraction warnings:")
+        lines.extend(f"- {warning}" for warning in body.warnings[:10])
     return "\n".join(lines)[:3500]
 
 
@@ -223,6 +233,7 @@ def create_invoice_import(
             "filename": body.filename,
             "source_type": body.source_type,
             "confidence": body.confidence,
+            "warnings": json.dumps(body.warnings, ensure_ascii=False),
             "invoice_payload": body.invoice.model_dump_json(),
         },
         created_at=created_at,
