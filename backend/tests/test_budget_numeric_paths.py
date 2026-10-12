@@ -118,6 +118,11 @@ class BudgetNumericPathTests(unittest.TestCase):
             ),
             "food",
         )
+        self.assertIsNone(
+            _requested_transaction_category(
+                "How much did I spend on food and transport?", {"food": Decimal("0")}
+            )
+        )
 
 
 def test_category_spending_uses_expense_debit_signs(database):
