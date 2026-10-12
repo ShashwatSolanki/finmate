@@ -110,6 +110,8 @@ Invoice cases additionally verify structured metadata such as:
 
 This is important because a fluent response without a usable invoice artifact is not sufficient for the application.
 
+Parser regression coverage includes wrapped receipt descriptions, Indian currency inference from GST/FSSAI markers, bill numbers and dates, correct separation of subtotal/tax/grand total from product rows, and arithmetic reconciliation. An explicit multi-item prompt with quantity/unit-price clauses must preserve every item and calculate the subtotal, stated percentage tax, and final total. Upload metadata and any extraction warnings must persist in conversation history and remain visible when the conversation is reloaded. Follow-up invoice questions must use the saved extracted fields, not attempt to parse the follow-up prompt as if it were the original file.
+
 ## 8. Testing philosophy
 
 The evaluation suite is an implementation regression suite.
