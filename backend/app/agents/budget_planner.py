@@ -98,24 +98,75 @@ def _extract_balance_remainder(message: str) -> tuple[Decimal, Decimal, dict[str
     return income - spent, income, expenses
 
 
-def _requested_transaction_category(message: str, category_totals: dict[str, Decimal]) -> str | None:
-    """Find an exact category named in a transaction-total question."""
+_CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
+    "food": ("food", "groceries", "grocery", "dining", "restaurant", "restaurants"),
+    "rent": ("rent", "housing"),
+    "transport": ("transport", "transportation", "travel", "fuel", "commute"),
+    "utilities": ("utilities", "utility", "electricity", "water", "internet"),
+    "healthcare": ("healthcare", "health", "medical", "pharmacy"),
+    "shopping": ("shopping", "clothing"),
+    "entertainment": ("entertainment", "subscriptions", "subscription"),
+}
+
+
+def _asks_for_transaction_total(message: str) -> bool:
     request = message.lower()
-    asks_for_total = (
+    return (
         bool(re.search(r"\bhow much\b", request))
         and bool(re.search(r"\b(spend|spent|spending|expense|expenses|transaction|transactions)\b", request))
     ) or bool(re.search(r"\b(total|sum)\b.*\b(spend|spent|spending|expense|expenses)\b", request))
-    if not asks_for_total:
+
+
+def _contains_category_term(text: str, term: str) -> bool:
+    return bool(re.search(rf"(?<![a-z]){re.escape(term)}(?![a-z])", text.casefold()))
+
+
+def _requested_transaction_category(message: str, category_totals: dict[str, Decimal]) -> str | None:
+    """Resolve one category even when it has no recent transactions.
+
+    category_totals may include zero-valued historical category names. That lets
+    the caller distinguish no activity in the reporting window from no such
+    category in recent aggregates.
+    """
+    request = message.casefold()
+    if not _asks_for_transaction_total(request):
         return None
 
+    categories = [category.casefold() for category in category_totals if category != "uncategorized"]
     matches = [
         category
-        for category in sorted(category_totals, key=len, reverse=True)
-        if category != "uncategorized"
-        and re.search(rf"(?<![a-z]){re.escape(category)}(?![a-z])", request)
+        for category in sorted(set(categories), key=len, reverse=True)
+        if _contains_category_term(request, category)
     ]
-    # Do not silently answer a multi-category question with only one category.
-    return matches[0] if len(matches) == 1 else None
+    # Exact category matches take priority; don't reduce multi-category questions
+    # to one category.
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        return None
+
+    matched_groups: list[tuple[str, tuple[str, ...]]] = []
+    for canonical, aliases in _CATEGORY_ALIASES.items():
+        triggered = tuple(alias for alias in aliases if _contains_category_term(request, alias))
+        if triggered:
+            matched_groups.append((canonical, triggered))
+
+    if len(matched_groups) != 1:
+        return None
+
+    canonical, triggered_aliases = matched_groups[0]
+    observed = [
+        category
+        for category in sorted(set(categories), key=len, reverse=True)
+        if any(_contains_category_term(category, alias) for alias in triggered_aliases)
+    ]
+    if len(observed) == 1:
+        return observed[0]
+    if len(observed) > 1:
+        return None
+    # The category can be absent from all stored records. Return its intent so
+    # the caller can report missing data instead of changing the subject.
+    return canonical
 
 
 def _format_amount(value: Decimal) -> str:
@@ -178,8 +229,22 @@ def run(
         category_display.setdefault(key, display)
         by_cat[key] = by_cat.get(key, Decimal("0")) + Decimal(str(total))
 
-    # Category-specific totals are calculated by SQL, not inferred by the model.
-    requested_category = _requested_transaction_category(message, by_cat)
+    # Include historical category names for intent resolution; the spending
+    # query still applies the requested 30-day reporting window.
+    historical_categories = db.scalars(
+        select(Transaction.category)
+        .where(Transaction.user_id == user_id, Transaction.category.is_not(None))
+        .distinct()
+    ).all()
+    category_catalog = {
+        str(category).strip().casefold(): Decimal("0")
+        for category in historical_categories
+        if str(category).strip()
+    }
+    category_catalog.update(by_cat)
+
+    # Category-specific totals are calculated by SQL, never inferred by the model.
+    requested_category = _requested_transaction_category(message, category_catalog)
     if requested_category is not None:
         matching_rows = db.execute(
             select(
@@ -192,41 +257,66 @@ def run(
             .where(
                 Transaction.user_id == user_id,
                 Transaction.occurred_on >= start,
-                func.lower(Transaction.category) == requested_category,
+                func.lower(func.trim(Transaction.category)) == requested_category,
+                Transaction.amount < 0,
             )
             .group_by(Transaction.currency)
         ).all()
-        if matching_rows:
-            totals = [(str(cur or currency), Decimal(str(total))) for cur, total in matching_rows]
-            if len(totals) == 1:
-                result_currency, total = totals[0]
-                prose = (
-                    f"You spent {result_currency} {_format_amount(total)} on {requested_category} "
-                    "in the last 30 days, based on transactions recorded in your account."
-                )
-            else:
-                prose = (
-                    f"Your {requested_category} spending in the last 30 days is split by currency: "
-                    + "; ".join(f"{cur} {_format_amount(total)}" for cur, total in totals)
-                    + ". These currencies are not combined."
-                )
+        requested_display = category_display.get(requested_category, requested_category.title())
+        if not matching_rows:
+            prose = (
+                f"I couldn't find any recorded {requested_display} expenses in the last 30 days. "
+                "That is not an all-time total; older transactions or transactions filed under a different "
+                "category are outside this result. I won't estimate spending from unrelated categories."
+            )
             reply = (
                 "[AGENT: BUDGET]\n\n"
                 f"{prose}\n\n"
-                '{"intent":"transaction_category_total","steps":["Filter transactions by date and category","Sum amounts by currency"],'
-                '"tools_needed":["list_transactions"],"notes":"computed from database transactions"}'
+                '{"intent":"transaction_category_total","steps":["Filter transactions by date and category","Report no matching expense records"],'
+                '"tools_needed":["list_transactions"],"notes":"no matching category expenses in the requested window"}'
             )
             return AgentResult(
                 agent=AgentName.BUDGET_PLANNER,
                 reply=reply,
-                planned_steps=["filter_transactions_30d_by_category", "sum_category_amounts"],
+                planned_steps=["filter_transactions_30d_by_category", "report_no_matching_expenses"],
                 metadata={
-                    "source": "transaction_aggregate",
+                    "source": "transaction_aggregate_no_match",
                     "window_days": "30",
                     "category": requested_category,
-                    "numeric_currency_groups": str(len(totals)),
+                    "numeric_currency_groups": "0",
                 },
             )
+
+        totals = [(str(cur or currency), Decimal(str(total))) for cur, total in matching_rows]
+        if len(totals) == 1:
+            result_currency, total = totals[0]
+            prose = (
+                f"You spent {result_currency} {_format_amount(total)} on {requested_display} "
+                "in the last 30 days, based on recorded debit transactions."
+            )
+        else:
+            prose = (
+                f"Your {requested_display} spending in the last 30 days is split by currency: "
+                + "; ".join(f"{cur} {_format_amount(total)}" for cur, total in totals)
+                + ". These currencies are not combined."
+            )
+        reply = (
+            "[AGENT: BUDGET]\n\n"
+            f"{prose}\n\n"
+            '{"intent":"transaction_category_total","steps":["Filter transactions by date and category","Sum expense debits by currency"],'
+            '"tools_needed":["list_transactions"],"notes":"computed from database transactions"}'
+        )
+        return AgentResult(
+            agent=AgentName.BUDGET_PLANNER,
+            reply=reply,
+            planned_steps=["filter_transactions_30d_by_category", "sum_category_amounts"],
+            metadata={
+                "source": "transaction_aggregate",
+                "window_days": "30",
+                "category": requested_category,
+                "numeric_currency_groups": str(len(totals)),
+            },
+        )
 
     total_flow = sum(by_cat.values(), start=Decimal("0"))
     top = sorted(by_cat.items(), key=lambda x: abs(x[1]), reverse=True)[:8]
