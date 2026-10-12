@@ -213,7 +213,6 @@ def create_invoice_import(
     """Persist a parsed invoice as a user attachment in conversation history."""
     session = _session_for_user(db, current.id, session_id)
     created_at = datetime.now(timezone.utc)
-    item_count = len(body.invoice.line_items)
     message = ChatMessage(
         session_id=session.id,
         role="user",
