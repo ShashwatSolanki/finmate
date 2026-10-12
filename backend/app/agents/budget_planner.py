@@ -110,11 +110,45 @@ _CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
 
 
 def _asks_for_transaction_total(message: str) -> bool:
-    request = message.lower()
-    return (
-        bool(re.search(r"\bhow much\b", request))
-        and bool(re.search(r"\b(spend|spent|spending|expense|expenses|transaction|transactions)\b", request))
-    ) or bool(re.search(r"\b(total|sum)\b.*\b(spend|spent|spending|expense|expenses)\b", request))
+    """Match a direct total-spending question, not any request that mentions expenses."""
+    request = message.casefold()
+    return bool(
+        re.search(
+            r"\bhow much\b.{0,35}\b(?:spend|spent|spending|expenses?|transactions?)\b",
+            request,
+        )
+        or re.search(
+            r"\b(?:total|sum)\b.{0,35}\b(?:spend|spent|spending|expenses?)\b",
+            request,
+        )
+        or re.search(
+            r"\b(?:spend|spent|spending|expenses?)\b.{0,35}\b(?:total|sum)\b",
+            request,
+        )
+    )
+
+
+def _asks_for_spending_report(message: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:summari[sz]e|summary|compare|month[- ]over[- ]month|calendar month|"
+            r"previous month|month before|by category|category totals|recorded transactions|"
+            r"recorded expenses|transaction history|expense summary|spending picture)\b",
+            message,
+            re.I,
+        )
+    )
+
+
+def _explicitly_requests_budget_plan(message: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:propose|create|set|suggest|design|recommend)\b.{0,35}\b(?:budget|budget caps?|allocation|split)\b",
+            message,
+            re.I,
+        )
+        or re.search(r"\b50\s*/\s*30\s*/\s*20\b|\bsplit into needs, wants, and savings\b", message, re.I)
+    )
 
 
 def _contains_category_term(text: str, term: str) -> bool:
@@ -386,6 +420,18 @@ def run(
 
     def _db_reply() -> str:
         if not lines:
+            if _asks_for_spending_report(message) and not _explicitly_requests_budget_plan(message):
+                detail = (
+                    "I don't have enough recorded transaction data to produce the requested category totals "
+                    "or compare the requested calendar months. This does not mean your spending was zero. "
+                    "Import your transactions from Settings, then rerun the report."
+                )
+                return (
+                    "[AGENT: BUDGET]\n\n"
+                    f"{detail}\n\n"
+                    '{"intent":"spending_report_unavailable","steps":["Check transaction history","Import missing transactions","Recalculate the requested period"],'
+                    '"tools_needed":["list_transactions"],"notes":"insufficient recorded transactions for requested report"}'
+                )
             if income is not None:
                 return _income_budget_reply()
             return (
