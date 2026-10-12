@@ -39,12 +39,9 @@ class InvoiceParsingUnitTests(unittest.TestCase):
         self.assertEqual(item.unit_price, Decimal("250.00"))
         self.assertEqual(item.amount, Decimal("750.00"))
 
-    def test_currency_symbol_detection(self):
-        # "Rs." is a currency prefix used only when parsing individual line-item
-        # amounts, not one of the whole-document currency symbols/codes that
-        # _detect_currency looks for, so it correctly falls back to USD here.
+    def test_rupee_prefix_is_detected_as_inr(self):
         result = parse_invoice_text("Item Rs. 799.00", source_type="pdf", filename="inv.pdf")
-        self.assertEqual(result.invoice.currency, "USD")
+        self.assertEqual(result.invoice.currency, "INR")
 
     def test_currency_symbol_rupee_sign_detected_as_inr(self):
         result = parse_invoice_text("Item \u20b9799.00", source_type="pdf", filename="inv.pdf")
@@ -78,6 +75,62 @@ class InvoiceParsingUnitTests(unittest.TestCase):
 
         matching = [i for i in result.invoice.line_items if "website design" in i.description.lower()]
         self.assertEqual(len(matching), 1)
+
+    def test_wrapped_indian_cafe_receipt_reconciles_four_items_and_gst(self):
+        text = """The Hole in wall Cafe
+FSSAI Lic No. 11221334000684
+Date: 28/11/25
+Item Qty. Price Amount
+Chicken Fajita 1 300.00 300.00
+Breakfast Tacos
+French Toast With 1 190.00 190.00
+Lemon Cream
+Cheese And
+Blueberry
+Compote
+The Breakfast 1 210.00 210.00
+Bake
+Tiramisu Those 1 280.00 280.00
+Pancakes
+Total Qty: 4
+Sub
+Total 980.00
+SGST 2.5% 24.50
+CGST 2.5% 24.50
+Grand Total 7 1029.00
+"""
+        result = parse_invoice_text(text, source_type="image", filename="test_bill.jpg")
+        invoice = result.invoice
+
+        self.assertEqual(invoice.currency, "INR")
+        self.assertEqual(
+            [(item.description, item.amount) for item in invoice.line_items],
+            [
+                ("Chicken Fajita Breakfast Tacos", Decimal("300.00")),
+                ("French Toast With Lemon Cream Cheese And Blueberry Compote", Decimal("190.00")),
+                ("The Breakfast Bake", Decimal("210.00")),
+                ("Tiramisu Those Pancakes", Decimal("280.00")),
+            ],
+        )
+        self.assertEqual(invoice.subtotal, Decimal("980.00"))
+        self.assertEqual(invoice.tax, Decimal("49.00"))
+        self.assertEqual(invoice.total, Decimal("1029.00"))
+        self.assertEqual(result.confidence, "high")
+        self.assertFalse(any("does not match" in warning.lower() for warning in result.warnings))
+
+    def test_inconsistent_line_items_lower_confidence_and_add_warning(self):
+        text = (
+            "Item Qty. Price Amount\n"
+            "Chicken Fajita 1 300.00 300.00\n"
+            "Subtotal: 980.00\n"
+            "SGST 2.5% 24.50\n"
+            "CGST 2.5% 24.50\n"
+            "Grand Total: 1029.00"
+        )
+        result = parse_invoice_text(text, source_type="image", filename="bad-ocr.jpg")
+
+        self.assertEqual(result.confidence, "medium")
+        self.assertTrue(any("does not match" in warning.lower() for warning in result.warnings))
 
     def test_no_line_items_produces_warning_and_low_confidence(self):
         result = parse_invoice_text("Just some unrelated text with no amounts.", source_type="pdf", filename="inv.pdf")
