@@ -14,7 +14,12 @@ from app.agents.invoice_generator import (
     _structured_from_message,
     run as run_invoice,
 )
-from app.agents.investment_analyser import _extract_risk_from_context, run as run_investment
+from app.agents.investment_analyser import (
+    _SymbolAnalysis,
+    _extract_lump_sum,
+    _extract_risk_from_context,
+    run as run_investment,
+)
 from app.agents.types import AgentName, AgentResult
 
 
@@ -75,6 +80,57 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(result.metadata["source"], "portfolio_holdings")
         self.assertEqual(result.metadata["holdings_count"], "1")
         self.assertIn("Unrealized P/L: +250.00 USD (+25.00%)", result.reply)
+
+    def test_lump_sum_parser_recognizes_allocating_an_amount(self):
+        prompt = "Assess whether allocating INR 10,000 to Microsoft fits my monthly budget."
+        self.assertEqual(_extract_lump_sum(prompt), Decimal("10000"))
+
+    def test_portfolio_comparison_with_ticker_preserves_saved_portfolio(self):
+        portfolio = AgentResult(
+            AgentName.INVESTMENT_ANALYSER,
+            "[AGENT: INVESTMENT]\n\nPortfolio Snapshot\n\n"
+            "AAPL | 10 units | Avg cost: 100.00 USD | Current: 125.00 USD | "
+            "P/L: +250.00 USD (+25.00%)\n\n"
+            "Total invested (valued holdings): 1,000.00 USD\n"
+            "Current value: 1,250.00 USD\n"
+            "Unrealized P/L: +250.00 USD (+25.00%)\nHoldings valued: 1/1",
+            metadata={
+                "tickers": "AAPL",
+                "source": "portfolio_holdings",
+                "holdings_count": "1",
+                "valued_holdings": "1",
+            },
+        )
+        analysis = _SymbolAnalysis(
+            "MSFT",
+            True,
+            "Microsoft Corporation (MSFT)\n"
+            "Latest available session: 2026-10-12\n"
+            "Last close: 541.00 USD (+1.00, +0.18% vs previous session)\n"
+            "20-day SMA: 510.00 — trading above the short-term average.",
+            Decimal("541.00"),
+            Decimal("510.00"),
+            Decimal("0.18"),
+        )
+
+        with (
+            patch("app.agents.investment_analyser._portfolio_history_reply", return_value=portfolio),
+            patch("app.agents.investment_analyser._analyze_symbol", return_value=analysis),
+        ):
+            result = run_investment(
+                self.user_id,
+                "Review my saved investment portfolio and compare it with Microsoft (MSFT). "
+                "Show my existing MSFT exposure if any, the latest market snapshot, and concentration risks.",
+                self.db,
+            )
+
+        self.assertEqual(result.metadata["source"], "portfolio_market_comparison")
+        self.assertIn("Saved portfolio snapshot", result.reply)
+        self.assertIn("Requested market comparison", result.reply)
+        self.assertIn("Last close: 541.00 USD", result.reply)
+        self.assertIn("no existing holding is recorded", result.reply)
+        self.assertNotIn("[tokenized_tools]", result.reply)
+        self.assertNotIn('{"intent"', result.reply)
 
     def test_plus_separated_invoice_items_survive_multi_domain_prompt(self):
         invoice = _structured_from_message(
