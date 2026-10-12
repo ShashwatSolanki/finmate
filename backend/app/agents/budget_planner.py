@@ -151,6 +151,22 @@ def _explicitly_requests_budget_plan(message: str) -> bool:
     )
 
 
+def _asks_for_investable_surplus(message: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:investable surplus|amount available to invest|money available for investing|"
+            r"available for monthly investing|how much can i invest|how much money can i invest|"
+            r"afford to invest|available to invest)\b",
+            message,
+            re.I,
+        )
+        or (
+            re.search(r"\bhow much\b.{0,55}\b(?:available|surplus)\b", message, re.I)
+            and re.search(r"\b(?:invest|investing|investment)\b", message, re.I)
+        )
+    )
+
+
 def _contains_category_term(text: str, term: str) -> bool:
     return bool(re.search(rf"(?<![a-z]){re.escape(term)}(?![a-z])", text.casefold()))
 
@@ -420,6 +436,21 @@ def run(
 
     def _db_reply() -> str:
         if not lines:
+            if _asks_for_investable_surplus(message):
+                if income is not None:
+                    income_note = f" Your saved monthly income is {income:,.2f} {budget_currency},"
+                else:
+                    income_note = ""
+                return (
+                    "[AGENT: BUDGET]\n\n"
+                    "I can't reliably estimate your investable surplus because there is no recorded expense "
+                    "history for the period in question."
+                    f"{income_note} but unrecorded expenses cannot safely be treated as zero. "
+                    "Import your actual expenses or add missing amounts before deciding how much is available "
+                    "to invest.\n\n"
+                    '{"intent":"investable_surplus_unavailable","steps":["Retrieve recorded expenses","Calculate verified cash flow","Estimate investable surplus only when inputs exist"],'
+                    '"tools_needed":["list_transactions"],"notes":"insufficient recorded expenses; missing costs are not assumed to be zero"}'
+                )
             if _asks_for_spending_report(message) and not _explicitly_requests_budget_plan(message):
                 detail = (
                     "I don't have enough recorded transaction data to produce the requested category totals "
