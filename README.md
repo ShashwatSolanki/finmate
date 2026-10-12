@@ -10,7 +10,7 @@ Multi-agent personal finance assistant: **FastAPI + PostgreSQL** backend, **Reac
 - **Chat** — routes to Budget Planner, Investment Analyser, or Invoice Generator
 - **Budget** — 30-day aggregates, month-over-month spending insights
 - **Investment** — ticker/company detection, Yahoo Finance data, portfolio grounding, risk-based allocation
-- **Invoice** — chat-created drafts with PDF/CSV exports; PDF/image/invoice-CSV parsing; editable Invoice Studio
+- **Invoice** — chat-created drafts with PDF/CSV exports; PDF/image/invoice-CSV parsing; editable Invoice Studio; saved upload context for follow-up questions; receipt total/tax reconciliation warnings
 - **Memory (RAG)** — PostgreSQL + sentence-transformer similarity search (not Chroma/pgvector)
 - **UI** — login/register, chat, conversation sidebar, settings, invoice workflows
 - **Chat import/export** — invoice/document and CSV import plus transaction/conversation export
