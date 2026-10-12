@@ -132,25 +132,32 @@ def _requested_transaction_category(message: str, category_totals: dict[str, Dec
     if not _asks_for_transaction_total(request):
         return None
 
-    categories = [category.casefold() for category in category_totals if category != "uncategorized"]
-    matches = [
-        category
-        for category in sorted(set(categories), key=len, reverse=True)
-        if _contains_category_term(request, category)
+    categories = [
+        category.casefold()
+        for category in category_totals
+        if category.casefold() != "uncategorized"
     ]
-    # Exact category matches take priority; don't reduce multi-category questions
-    # to one category.
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        return None
-
     matched_groups: list[tuple[str, tuple[str, ...]]] = []
     for canonical, aliases in _CATEGORY_ALIASES.items():
         triggered = tuple(alias for alias in aliases if _contains_category_term(request, alias))
         if triggered:
             matched_groups.append((canonical, triggered))
 
+    # Detect multiple requested domains before matching against stored categories.
+    # Otherwise 'food and transport' could be reduced to 'food' when there are no
+    # stored transport rows to match.
+    if len(matched_groups) > 1:
+        return None
+
+    matches = [
+        category
+        for category in sorted(set(categories), key=len, reverse=True)
+        if _contains_category_term(request, category)
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        return None
     if len(matched_groups) != 1:
         return None
 
