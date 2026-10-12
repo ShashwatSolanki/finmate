@@ -1,11 +1,11 @@
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from app.agents.agentic_orchestrator import build_plan
@@ -61,25 +61,45 @@ def _canonical_json_tail(agent: AgentName) -> str:
 
 
 def _enforce_reply_contract(reply: str, agent: AgentName) -> str:
+    """Keep machine-readable markers out of the prose without flattening its layout."""
     raw = (reply or "").replace("\r", "").strip()
     tag = _normalized_tag(agent)
-    lines = [ln.rstrip() for ln in raw.split("\n") if ln.strip()]
-    if not lines:
+    if not raw:
         return f"{tag}\n\nI can help with your request.\n\n{_canonical_json_tail(agent)}"
 
-    # Keep prose from non-tag / non-json lines only.
-    prose_lines: list[str] = []
+    # Preserve headings, portfolio rows, bullets, and paragraph breaks. Joining
+    # every non-empty line with spaces turned structured financial answers into
+    # one unreadable paragraph.
+    paragraphs: list[str] = []
+    current_lines: list[str] = []
     json_line = ""
-    for ln in lines:
-        t = ln.strip()
-        if t.startswith("[AGENT:") and t.endswith("]"):
-            continue
-        if t.startswith("{") and t.endswith("}"):
-            json_line = t
-            continue
-        prose_lines.append(t)
 
-    prose = " ".join(prose_lines).strip() or "I can help with your request."
+    def flush_paragraph() -> None:
+        if current_lines:
+            paragraphs.append("\n".join(current_lines))
+            current_lines.clear()
+
+    for line in raw.split("\n"):
+        text = line.strip()
+        if not text:
+            flush_paragraph()
+            continue
+        if text.startswith("[AGENT:") and text.endswith("]"):
+            flush_paragraph()
+            continue
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                json.loads(text)
+            except json.JSONDecodeError:
+                current_lines.append(text)
+            else:
+                flush_paragraph()
+                json_line = text
+            continue
+        current_lines.append(text)
+
+    flush_paragraph()
+    prose = "\n\n".join(paragraphs).strip() or "I can help with your request."
     if not json_line:
         json_line = _canonical_json_tail(agent)
     return f"{tag}\n\n{prose}\n\n{json_line}"
@@ -89,7 +109,13 @@ def _build_recent_context(db: Session, user_id, turns: int = 3) -> str | None:
     rows = db.scalars(
         select(MemoryChunk)
         .where(MemoryChunk.user_id == user_id, MemoryChunk.source == "chat")
-        .order_by(MemoryChunk.created_at.desc())
+        .order_by(
+            MemoryChunk.created_at.desc(),
+            # Reverse tie order so the later assistant message follows its user turn
+            # after this newest-first result is reversed for the prompt.
+            case((MemoryChunk.content.like("Assistant (%"), 0), else_=1),
+            MemoryChunk.id.desc(),
+        )
         .limit(max(6, turns * 4))
     ).all()
     if not rows:
@@ -142,7 +168,11 @@ def _latest_assistant_agent(db: Session, user_id) -> AgentName | None:
     rows = db.scalars(
         select(MemoryChunk)
         .where(MemoryChunk.user_id == user_id, MemoryChunk.source == "chat")
-        .order_by(MemoryChunk.created_at.desc())
+        .order_by(
+            MemoryChunk.created_at.desc(),
+            case((MemoryChunk.content.like("Assistant (%"), 0), else_=1),
+            MemoryChunk.id.desc(),
+        )
         .limit(12)
     ).all()
     for row in rows:
@@ -228,22 +258,35 @@ def _get_or_create_session(db: Session, user_id: uuid.UUID, session_id: uuid.UUI
 
 
 def _clean_assistant_display(reply: str) -> str:
-    lines = reply.replace("\r", "").split("\n")
-    out: list[str] = []
-    for line in lines:
-        t = line.strip()
-        if not t:
+    """Remove protocol metadata while retaining readable paragraph/list structure."""
+    paragraphs: list[str] = []
+    current_lines: list[str] = []
+
+    def flush_paragraph() -> None:
+        if current_lines:
+            paragraphs.append("\n".join(current_lines))
+            current_lines.clear()
+
+    for line in reply.replace("\r", "").split("\n"):
+        text = line.strip()
+        if not text:
+            flush_paragraph()
             continue
-        if t.startswith("[AGENT:") and t.endswith("]"):
+        if text.startswith("[AGENT:") and text.endswith("]"):
+            flush_paragraph()
             continue
-        if t.startswith("{") and t.endswith("}"):
+        if text.startswith("{") and text.endswith("}"):
             try:
-                json.loads(t)
-                continue
+                json.loads(text)
             except json.JSONDecodeError:
-                pass
-        out.append(t)
-    return "\n".join(out).strip() or reply.strip()
+                current_lines.append(text)
+            else:
+                flush_paragraph()
+            continue
+        current_lines.append(text)
+
+    flush_paragraph()
+    return "\n\n".join(paragraphs).strip() or reply.strip()
 
 
 @router.post("/message", response_model=ChatResponse)
@@ -319,7 +362,17 @@ def chat_message(
         meta["memory_persisted"] = "true"
 
     session = _get_or_create_session(db, current.id, body.session_id, body.message)
-    db.add(ChatMessage(session_id=session.id, role="user", content=body.message))
+    # Explicit timestamps prevent PostgreSQL's transaction-stable now() default
+    # from giving the user message and its reply identical timestamps.
+    turn_time = datetime.now(timezone.utc)
+    db.add(
+        ChatMessage(
+            session_id=session.id,
+            role="user",
+            content=body.message,
+            created_at=turn_time,
+        )
+    )
     display_reply = _clean_assistant_display(result.reply)
     db.add(
         ChatMessage(
@@ -328,6 +381,7 @@ def chat_message(
             content=display_reply,
             agent=result.agent.value,
             metadata_=meta,
+            created_at=turn_time + timedelta(microseconds=1),
         )
     )
     if session.title == "New chat" or not session.title.strip():

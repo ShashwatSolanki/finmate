@@ -1,0 +1,202 @@
+"""Regression tests for readable chat replies and deterministic history ordering."""
+
+from datetime import datetime, timezone
+import json
+import uuid
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from app.agents.types import AgentName
+from app.api.deps import get_current_user, get_db
+from app.api.routes.chat import _build_recent_context, _clean_assistant_display, _enforce_reply_contract
+from app.api.routes.conversations import router as conversations_router
+from app.db.models import ChatMessage, ChatSession, MemoryChunk, User
+
+
+def test_reply_contract_preserves_portfolio_rows_and_paragraphs():
+    raw = (
+        "[AGENT: INVESTMENT]\n\n"
+        "Portfolio Snapshot\n\n"
+        "HDFCBANK.NS | 15 units | Current: 709.40 INR\n"
+        "INFY.NS | 10 units | Current: 1,020.00 INR\n"
+        "TCS.NS | 5 units | Current: 2,125.00 INR\n\n"
+        "Total invested: 67,500.00 INR\n"
+        "Current value: 42,987.50 INR\n"
+        "Unrealized P/L: -24,512.50 INR (-36.31%)\n\n"
+        "Note: P/L is unrealized.\n\n"
+        '{"intent":"investment_info","steps":["check holdings"],"tools_needed":[],"notes":"test"}'
+    )
+
+    normalized = _enforce_reply_contract(raw, AgentName.INVESTMENT_ANALYSER)
+    visible = _clean_assistant_display(normalized)
+
+    assert "HDFCBANK.NS | 15 units | Current: 709.40 INR\nINFY.NS | 10 units" in visible
+    assert "Portfolio Snapshot\n\nHDFCBANK.NS" in visible
+    assert "Current value: 42,987.50 INR\nUnrealized P/L: -24,512.50 INR" in visible
+    assert "[AGENT:" not in visible
+    assert '"intent"' not in visible
+
+
+def test_recent_memory_context_orders_tied_user_and_assistant_snippets(database):
+    user = User(
+        id=uuid.uuid4(),
+        email="memory-order@example.test",
+        password_hash="test-hash",
+        is_verified=True,
+    )
+    same_timestamp = datetime(2026, 10, 12, 10, 0, 0, tzinfo=timezone.utc)
+
+    with database.begin() as db:
+        db.add(user)
+        db.flush()
+        db.add_all(
+            [
+                MemoryChunk(
+                    user_id=user.id,
+                    source="chat",
+                    content="Assistant (investment_analyser): latest answer",
+                    created_at=same_timestamp,
+                ),
+                MemoryChunk(
+                    user_id=user.id,
+                    source="chat",
+                    content="User: latest question",
+                    created_at=same_timestamp,
+                ),
+            ]
+        )
+
+    with database() as db:
+        context = _build_recent_context(db, user.id, turns=1)
+
+    assert context == "User: latest question\nAssistant (investment_analyser): latest answer"
+
+
+def test_conversation_history_puts_user_turn_before_reply_when_timestamps_tie(database):
+    user = User(
+        id=uuid.uuid4(),
+        email="chat-order@example.test",
+        password_hash="test-hash",
+        is_verified=True,
+    )
+    session = ChatSession(user_id=user.id, title="Ordering test")
+    same_timestamp = datetime(2026, 10, 12, 10, 0, 0, tzinfo=timezone.utc)
+
+    with database.begin() as db:
+        db.add(user)
+        db.add(session)
+        db.flush()
+        # Insert the assistant first to prove ordering doesn't depend on insertion order or UUID.
+        db.add_all(
+            [
+                ChatMessage(
+                    session_id=session.id,
+                    role="assistant",
+                    content="Here is the answer.",
+                    created_at=same_timestamp,
+                ),
+                ChatMessage(
+                    session_id=session.id,
+                    role="user",
+                    content="How is my portfolio looking?",
+                    created_at=same_timestamp,
+                ),
+            ]
+        )
+        db.flush()
+        session_id = session.id
+
+    app = FastAPI()
+    app.include_router(conversations_router, prefix="/api/conversations")
+
+    def override_db():
+        with database() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    with TestClient(app) as client:
+        response = client.get(f"/api/conversations/{session_id}/messages")
+
+    assert response.status_code == 200
+    messages = response.json()
+    assert [message["role"] for message in messages] == ["user", "assistant"]
+    assert messages[0]["content"] == "How is my portfolio looking?"
+
+
+
+def test_invoice_import_is_persisted_as_user_attachment_and_recent_context(database):
+    user = User(
+        id=uuid.uuid4(),
+        email="invoice-attachment@example.test",
+        password_hash="test-hash",
+        is_verified=True,
+    )
+    session = ChatSession(user_id=user.id, title="New chat")
+
+    with database.begin() as db:
+        db.add(user)
+        db.add(session)
+        db.flush()
+        session_id = session.id
+
+    app = FastAPI()
+    app.include_router(conversations_router, prefix="/api/conversations")
+
+    def override_db():
+        with database() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: user
+    request_body = {
+        "filename": "cafe-bill.png",
+        "source_type": "image",
+        "confidence": "high",
+        "invoice": {
+            "invoice_number": "INV-204",
+            "vendor_name": "Cafe Aurora",
+            "currency": "INR",
+            "line_items": [
+                {
+                    "description": "Coffee and sandwich",
+                    "quantity": 1,
+                    "unit_price": "450.00",
+                    "amount": "450.00",
+                }
+            ],
+            "subtotal": "450.00",
+            "tax": "0.00",
+            "total": "450.00",
+        },
+    }
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/conversations/{session_id}/invoice-imports",
+            json=request_body,
+        )
+        history_response = client.get(f"/api/conversations/{session_id}/messages")
+
+    assert response.status_code == 201
+    saved = response.json()
+    assert saved["role"] == "user"
+    assert saved["content"] == "Uploaded invoice: cafe-bill.png."
+    assert saved["metadata"]["source"] == "invoice_import"
+    assert saved["metadata"]["filename"] == "cafe-bill.png"
+    parsed_invoice = json.loads(saved["metadata"]["invoice_payload"])
+    assert parsed_invoice["vendor_name"] == "Cafe Aurora"
+    assert parsed_invoice["total"] == "450.00"
+
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert len(history) == 1
+    assert history[0]["metadata"]["source"] == "invoice_import"
+
+    with database() as db:
+        recent_context = _build_recent_context(db, user.id, turns=1)
+    assert recent_context is not None
+    assert "Cafe Aurora" in recent_context
+    assert "Coffee and sandwich: 450.00 INR" in recent_context

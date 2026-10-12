@@ -85,6 +85,10 @@ Supported document sources include:
 
 The extraction path produces structured invoice data before the frontend displays or edits it.
 
+When an invoice is imported from the chat composer, the backend creates a user-side attachment message in the selected conversation. It persists the filename, source type, extraction confidence, and structured invoice JSON in the message metadata, and indexes a bounded text representation in recent conversation context so follow-up questions can use the extracted fields. Reloading or switching away from the conversation no longer removes the attachment preview.
+
+The uploaded PDF/image binary itself is not stored in chat history; the durable attachment consists of the extracted structured invoice and its source metadata. The browser's pending invoice handoff to Invoice Studio is a separate convenience for editing/exporting the imported result.
+
 ## 7. OCR
 
 Image/scanned document extraction uses Tesseract through `pytesseract`.

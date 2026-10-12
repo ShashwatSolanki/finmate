@@ -158,4 +158,27 @@ describe("API helpers", () => {
       "Price is {not valid JSON}",
     );
   });
+
+  it("preserves portfolio rows and paragraph breaks while removing protocol metadata", () => {
+    const raw = [
+      "[AGENT: INVESTMENT]",
+      "",
+      "Portfolio Snapshot",
+      "",
+      "HDFC | 15 units | Current: 709.40 INR",
+      "INFY | 10 units | Current: 1,020.00 INR",
+      "",
+      "Total invested: 67,500.00 INR",
+      "Current value: 42,987.50 INR",
+      '{"intent":"investment_info","steps":["check holdings"]}',
+    ].join("\n");
+
+    expect(cleanAssistantText(raw)).toBe(
+      "Portfolio Snapshot\n\n" +
+        "HDFC | 15 units | Current: 709.40 INR\n" +
+        "INFY | 10 units | Current: 1,020.00 INR\n\n" +
+        "Total invested: 67,500.00 INR\n" +
+        "Current value: 42,987.50 INR",
+    );
+  });
 });

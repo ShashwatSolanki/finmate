@@ -1221,3 +1221,116 @@ input:focus, textarea:focus, select:focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+
+/* Parsed invoices are rendered as durable user attachments inside chat bubbles. */
+.invoice-attachment-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+  margin-bottom: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.bubble.user .invoice-attachment-card {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.invoice-attachment-header {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.invoice-attachment-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 2.25rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 1.25rem;
+}
+
+.invoice-attachment-file {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.invoice-attachment-file strong {
+  overflow-wrap: anywhere;
+  font-size: 0.9rem;
+}
+
+.invoice-attachment-file small {
+  opacity: 0.78;
+  font-size: 0.75rem;
+  text-transform: capitalize;
+}
+
+.invoice-attachment-summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+.invoice-attachment-summary strong {
+  font-weight: 700;
+}
+
+.invoice-attachment-details {
+  border-top: 1px solid rgba(148, 163, 184, 0.28);
+  padding-top: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.bubble.user .invoice-attachment-details {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.invoice-attachment-details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.invoice-attachment-fields,
+.invoice-attachment-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.8rem;
+  margin-top: 0.5rem;
+  opacity: 0.88;
+}
+
+.invoice-attachment-details ul {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.55rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.invoice-attachment-details li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.invoice-attachment-details li strong {
+  flex-shrink: 0;
+  text-align: right;
+}

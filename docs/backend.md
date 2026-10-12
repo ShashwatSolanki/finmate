@@ -196,6 +196,7 @@ POST   /api/conversations
 PATCH  /api/conversations/{session_id}
 DELETE /api/conversations/{session_id}
 GET    /api/conversations/{session_id}/messages
+POST   /api/conversations/{session_id}/invoice-imports
 ```
 
 ## 6. Important backend responsibilities
@@ -209,9 +210,11 @@ The chat route:
 - loads onboarding context
 - loads recent conversation context
 - invokes orchestration
-- enforces response format
+- enforces the agent tag/JSON contract while preserving paragraphs and list rows
 - calculates/attaches metadata
-- persists conversation state
+- persists conversation state with explicit user-before-assistant timestamps
+
+Conversation history uses a deterministic role tie-break for legacy messages with equal timestamps (user turn before assistant reply). The budget specialist reports no matching category expenses rather than falling back to an unrelated budget template. Investment model replies must include verified quote/SMA figures and, when present in the request, the investment amount; otherwise deterministic market-data prose is returned.
 
 ### Transaction route
 

@@ -14,9 +14,15 @@ type Props = {
   disabled?: boolean;
   activeSessionId: string | null;
   messages: ChatMessage[];
-  onImportStatus: (msg: string) => void;
+  onImportStatus: (msg: string | null) => void;
   onImportError: (msg: string | null) => void;
-  onInvoiceImported: (invoice: StructuredInvoice, source: string) => void;
+  onBusyChange: (busy: boolean) => void;
+  onInvoiceImported: (
+    invoice: StructuredInvoice,
+    source: string,
+    sourceType: string,
+    confidence: string,
+  ) => Promise<void>;
   onTransactionsImported: (rows: ImportedTransactionPreview[], source: string, importedCount: number) => void;
 };
 
@@ -34,6 +40,7 @@ export default function ChatComposerMenu({
   messages,
   onImportStatus,
   onImportError,
+  onBusyChange,
   onInvoiceImported,
   onTransactionsImported,
 }: Props) {
@@ -60,7 +67,9 @@ export default function ChatComposerMenu({
   async function handleInvoiceFile(file: File) {
     if (!token) return;
     setBusy(true);
+    onBusyChange(true);
     onImportError(null);
+    onImportStatus(null);
     try {
       const form = new FormData();
       form.append("file", file);
@@ -74,15 +83,15 @@ export default function ChatComposerMenu({
       // Keep the structured result available to Invoice Studio without turning a
       // file import into a second, slow chat/LLM request.
       sessionStorage.setItem("finmate_pending_invoice", JSON.stringify(data.invoice));
-      onInvoiceImported(data.invoice, file.name);
-
-      onImportStatus(
-        `Parsed ${data.source_type.toUpperCase()} invoice — ${data.invoice.line_items.length} line items (${data.confidence} confidence). Open Settings → Invoice Studio to review, edit, or download it.`,
-      );
+      await onInvoiceImported(data.invoice, file.name, data.source_type, data.confidence);
+      // The saved attachment is visible in the conversation; avoid a second
+      // floating status line that can visually collide with the fixed composer.
+      onImportStatus(null);
     } catch (err) {
       onImportError(err instanceof Error ? err.message : "Invoice parse failed");
     } finally {
       setBusy(false);
+      onBusyChange(false);
       setImportOpen(false);
     }
   }
@@ -90,7 +99,9 @@ export default function ChatComposerMenu({
   async function handleCsvFile(file: File) {
     if (!token) return;
     setBusy(true);
+    onBusyChange(true);
     onImportError(null);
+    onImportStatus(null);
     try {
       const csvText = await file.text();
       const header = csvText.split(/\r?\n/, 1)[0].toLowerCase();
@@ -105,8 +116,13 @@ export default function ChatComposerMenu({
         if (!invoiceResponse.ok) throw new Error(await invoiceResponse.text());
         const invoiceData = (await invoiceResponse.json()) as ParseInvoiceResult;
         sessionStorage.setItem("finmate_pending_invoice", JSON.stringify(invoiceData.invoice));
-        onInvoiceImported(invoiceData.invoice, file.name);
-        onImportStatus(`Imported invoice CSV — ${invoiceData.invoice.line_items.length} line items. Ready to export or edit in Invoice Studio.`);
+        await onInvoiceImported(
+          invoiceData.invoice,
+          file.name,
+          invoiceData.source_type,
+          invoiceData.confidence,
+        );
+        onImportStatus(null);
         return;
       }
       const res = await apiFetch("/api/transactions/import/csv", {
@@ -132,6 +148,7 @@ export default function ChatComposerMenu({
       onImportError(err instanceof Error ? err.message : "CSV import failed");
     } finally {
       setBusy(false);
+      onBusyChange(false);
       setImportOpen(false);
     }
   }
@@ -139,6 +156,7 @@ export default function ChatComposerMenu({
   async function exportTransactions() {
     if (!token) return;
     setBusy(true);
+    onBusyChange(true);
     onImportError(null);
     try {
       const res = await apiFetch("/api/transactions/export/csv", { headers: authHeaders(token) });
@@ -150,6 +168,7 @@ export default function ChatComposerMenu({
       onImportError(err instanceof Error ? err.message : "Export failed");
     } finally {
       setBusy(false);
+      onBusyChange(false);
       setExportOpen(false);
     }
   }

@@ -22,6 +22,17 @@ const AGENTS = [
   { value: "investment_analyser", label: "Investment" },
 ] as const;
 
+function readImportedInvoice(metadata?: Record<string, string> | null): StructuredInvoice | null {
+  if (metadata?.source !== "invoice_import" || !metadata.invoice_payload) return null;
+  try {
+    const parsed = JSON.parse(metadata.invoice_payload) as Partial<StructuredInvoice>;
+    if (typeof parsed.currency !== "string" || !Array.isArray(parsed.line_items)) return null;
+    return parsed as StructuredInvoice;
+  } catch {
+    return null;
+  }
+}
+
 export default function ChatPage() {
   const { token } = useAuth();
   const threadRef = useRef<HTMLDivElement>(null);
@@ -33,6 +44,7 @@ export default function ChatPage() {
   const [agent, setAgent] = useState("");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -186,28 +198,60 @@ export default function ChatPage() {
     }
   }
 
-  function onInvoiceImported(invoice: StructuredInvoice, source: string) {
-    const linePreview = invoice.line_items.map((item) => `• ${item.description} — ${item.amount} ${invoice.currency}`).join("\n");
-    const content = [
-      `Imported invoice ${invoice.invoice_number || "draft"} from ${source}.`,
-      invoice.vendor_name ? `From: ${invoice.vendor_name}` : null,
-      invoice.bill_to ? `Bill to: ${invoice.bill_to}` : null,
-      "",
-      linePreview,
-      "",
-      `Subtotal: ${invoice.subtotal ?? "—"} ${invoice.currency}`,
-      `GST / tax: ${invoice.tax ?? "0.00"} ${invoice.currency}`,
-      `Total: ${invoice.total ?? "—"} ${invoice.currency}`,
-    ].filter((line): line is string => line !== null).join("\n");
-    setMessages((previous) => [...previous, {
-      id: `invoice-${Date.now()}`,
-      role: "assistant",
-      content,
-      agent: "invoice_generator",
-      metadata: { source: "invoice_csv_import", invoice_payload: JSON.stringify(invoice), invoice_actions: "pdf,csv" },
-      created_at: new Date().toISOString(),
-    }]);
+  async function onInvoiceImported(
+    invoice: StructuredInvoice,
+    source: string,
+    sourceType: string,
+    confidence: string,
+  ) {
+    if (!token) throw new Error("Please sign in again before saving this invoice.");
+
+    let sessionId = activeSessionId;
+    let createdSessionId: string | null = null;
+    if (!sessionId) {
+      const createRes = await apiFetch("/api/conversations", {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({ title: `Invoice: ${source}`.slice(0, 200) }),
+      });
+      if (!createRes.ok) throw new Error(await createRes.text());
+      const created = (await createRes.json()) as Conversation;
+      sessionId = created.id;
+      createdSessionId = created.id;
+    }
+
+    let savedMessage: ChatMessage;
+    try {
+      const res = await apiFetch(`/api/conversations/${sessionId}/invoice-imports`, {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          filename: source,
+          source_type: sourceType,
+          confidence,
+          invoice,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      savedMessage = (await res.json()) as ChatMessage;
+    } catch (err) {
+      // Do not leave an empty sidebar conversation behind if saving a first
+      // attachment fails before any user turn exists.
+      if (createdSessionId) {
+        await apiFetch(`/api/conversations/${createdSessionId}`, {
+          method: "DELETE",
+          headers: authHeaders(token),
+        }).catch(() => undefined);
+      }
+      throw err;
+    }
+
+    setMessages((previous) => [...previous, savedMessage]);
+    if (sessionId !== activeSessionId) setActiveSessionId(sessionId);
     shouldAutoScrollRef.current = true;
+    // The attachment is already saved; a failed sidebar refresh must not undo
+    // or falsely report failure for the persisted conversation event.
+    void loadConversations().catch(() => undefined);
   }
 
   function onTransactionsImported(
@@ -290,20 +334,73 @@ export default function ChatPage() {
             </div>
           )}
 
-          {messages.map((m) => (
-            <div key={m.id} className={`bubble-row ${m.role}`}>
-              <div className={`bubble ${m.role}`}>
-                {m.role === "assistant" && m.agent && (
-                  <span className="agent-badge">{m.agent.replace(/_/g, " ")}</span>
-                )}
-                <p>{m.content}</p>
-                {m.role === "assistant" && m.metadata && <InvoiceExportActions metadata={m.metadata} />}
-                {m.role === "assistant" && m.metadata && (
-                  <MessageMetadata metadata={m.metadata} />
-                )}
+          {messages.map((m) => {
+            const importedInvoice = m.role === "user" ? readImportedInvoice(m.metadata) : null;
+            return (
+              <div key={m.id} className={`bubble-row ${m.role}`}>
+                <div className={`bubble ${m.role}`}>
+                  {m.role === "assistant" && m.agent && (
+                    <span className="agent-badge">{m.agent.replace(/_/g, " ")}</span>
+                  )}
+                  {importedInvoice && (
+                    <div className="invoice-attachment-card">
+                      <div className="invoice-attachment-header">
+                        <span className="invoice-attachment-icon" aria-hidden="true">▤</span>
+                        <div className="invoice-attachment-file">
+                          <strong>{m.metadata?.filename || "Invoice file"}</strong>
+                          <small>
+                            {(m.metadata?.source_type || "invoice").toUpperCase()} invoice ·{" "}
+                            {m.metadata?.confidence || "unknown"} confidence
+                          </small>
+                        </div>
+                      </div>
+                      <div className="invoice-attachment-summary">
+                        <span>
+                          {importedInvoice.line_items.length} line item
+                          {importedInvoice.line_items.length === 1 ? "" : "s"}
+                        </span>
+                        {importedInvoice.vendor_name && <span>{importedInvoice.vendor_name}</span>}
+                        {importedInvoice.total !== null && (
+                          <strong>Total: {importedInvoice.total} {importedInvoice.currency}</strong>
+                        )}
+                      </div>
+                      <details className="invoice-attachment-details">
+                        <summary>View extracted details</summary>
+                        {(importedInvoice.invoice_number || importedInvoice.invoice_date || importedInvoice.bill_to) && (
+                          <div className="invoice-attachment-fields">
+                            {importedInvoice.invoice_number && <span>Invoice #{importedInvoice.invoice_number}</span>}
+                            {importedInvoice.invoice_date && <span>Date: {importedInvoice.invoice_date}</span>}
+                            {importedInvoice.bill_to && <span>Bill to: {importedInvoice.bill_to}</span>}
+                          </div>
+                        )}
+                        <ul>
+                          {importedInvoice.line_items.map((item, index) => (
+                            <li key={`${item.description}-${index}`}>
+                              <span>{item.description}</span>
+                              <strong>{item.amount} {importedInvoice.currency}</strong>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="invoice-attachment-totals">
+                          {importedInvoice.subtotal !== null && (
+                            <span>Subtotal: {importedInvoice.subtotal} {importedInvoice.currency}</span>
+                          )}
+                          {importedInvoice.tax !== null && (
+                            <span>Tax: {importedInvoice.tax} {importedInvoice.currency}</span>
+                          )}
+                        </div>
+                      </details>
+                    </div>
+                  )}
+                  <p>{m.content}</p>
+                  {m.role === "assistant" && m.metadata && <InvoiceExportActions metadata={m.metadata} />}
+                  {m.role === "assistant" && m.metadata && (
+                    <MessageMetadata metadata={m.metadata} />
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {loading && (
             <div className="bubble-row assistant">
@@ -325,15 +422,17 @@ export default function ChatPage() {
 
         <form className="chat-composer" onSubmit={onSend}>
           <ChatComposerMenu
-            disabled={loading}
+            disabled={loading || importBusy}
             activeSessionId={activeSessionId}
             messages={messages}
             onImportStatus={setStatus}
             onImportError={setError}
+            onBusyChange={setImportBusy}
             onInvoiceImported={onInvoiceImported}
             onTransactionsImported={onTransactionsImported}
           />
           <textarea
+            disabled={loading || importBusy}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Message FinMate…"
@@ -345,7 +444,7 @@ export default function ChatPage() {
               }
             }}
           />
-          <button type="submit" className="btn-primary" disabled={loading || !input.trim()}>
+          <button type="submit" className="btn-primary" disabled={loading || importBusy || !input.trim()}>
             Send
           </button>
         </form>

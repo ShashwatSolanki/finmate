@@ -58,10 +58,12 @@ Typical workflow:
 4. aggregate spending by category
 5. calculate spending insights
 6. add relevant RAG context
-7. optionally generate a natural-language response
-8. fall back to deterministic output if generation fails
+7. recognize category-total questions even when a category has no recent rows
+8. calculate expense totals from debit transactions, grouped by currency
+9. optionally generate a natural-language response for advice/general summaries
+10. fall back to deterministic output if generation fails
 
-The transaction database remains the source of truth.
+For a category-total question with no matching expenses in the last 30 days, the agent reports the missing records and the reporting window. It must not replace the requested lookup with an unrelated income-based budget split. The transaction database remains the source of truth.
 
 ## 5. Investment Agent
 
@@ -84,8 +86,10 @@ The agent supports:
 - session/52-week ranges
 - stored portfolio analysis
 - risk-based allocation mode
+- validation that generated replies include the requested ticker and verified close/SMA figures
+- deterministic market-data fallback when generated prose omits the requested amount or quote facts
 
-Portfolio questions are grounded in stored `InvestmentHolding` records.
+Portfolio questions are grounded in stored `InvestmentHolding` records. Market replies label the latest available trading session. Model output is accepted only when its visible prose covers verified market figures for the requested tickers; a valid agent tag/JSON shape alone is not enough. If the model omits required facts, the specialist returns a deterministic explanation built from fetched market data.
 
 ## 6. Invoice Agent
 

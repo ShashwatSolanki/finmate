@@ -38,7 +38,7 @@ The chat interface is responsible for:
 7. showing invoice export actions when artifacts exist
 8. supporting document/CSV import from the composer
 
-The backend response contains machine-readable tags and JSON. The frontend removes those implementation details before displaying the natural-language response.
+The backend response contains machine-readable agent tags and a JSON metadata tail. The API strips those protocol lines while preserving paragraphs, headings, and one-row-per-line portfolio output. Conversation history is ordered deterministically; existing rows with identical timestamps are displayed with the user turn first.
 
 ## 5. Settings
 
@@ -105,6 +105,8 @@ Frontend preview / Invoice Studio
        ↓
 PDF or CSV export
 ```
+
+An invoice imported from the chat composer is saved as a user-side message through `POST /api/conversations/{session_id}/invoice-imports`. The chat history displays the filename, extraction confidence, vendor/total when available, and expandable line items. The saved structured result survives conversation reloads; the original PDF/image bytes are not retained in chat history. The composer is disabled while parsing and saving, and a successful import is represented by the attachment bubble rather than a floating success line.
 
 ## 10. Session renewal
 
