@@ -1334,3 +1334,27 @@ input:focus, textarea:focus, select:focus {
   flex-shrink: 0;
   text-align: right;
 }
+
+
+.invoice-attachment-warnings {
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #fdba74;
+  border-radius: 9px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 0.8rem;
+}
+
+.invoice-attachment-warnings strong {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.invoice-attachment-warnings ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.invoice-attachment-warnings li + li {
+  margin-top: 0.2rem;
+}
