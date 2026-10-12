@@ -13,6 +13,7 @@ from app.agents.budget_planner import (
     run as run_budget,
 )
 from app.agents.invoice_generator import (
+    _expense_reporting_window,
     _invoice_from_memory_text,
     _references_uploaded_invoice,
     _structured_from_message,
@@ -288,7 +289,20 @@ Total: 1029.00 INR
         self.assertIn("The Hole in wall Cafe", result.reply)
         self.assertIn("1029.00 INR", result.reply)
 
-    def test_expense_invoice_without_transactions_explains_missing_data(self):
+    def test_previous_calendar_month_window_uses_complete_calendar_boundaries(self):
+        today = date.today()
+        month_start = date(today.year, today.month, 1)
+        expected_end = month_start - timedelta(days=1)
+        expected_start = date(expected_end.year, expected_end.month, 1)
+
+        start, end, label = _expense_reporting_window(
+            "Summarize my recorded expenses for the previous calendar month."
+        )
+
+        self.assertEqual((start, end), (expected_start, expected_end))
+        self.assertIn("previous calendar month", label)
+
+    def test_expense_invoice_without_transactions_explains_missing_data_for_requested_period(self):
         self.db.scalars.return_value.all.return_value = []
         with patch("app.agents.invoice_generator.settings.finmate_use_llm", False):
             result = run_invoice(
@@ -297,8 +311,12 @@ Total: 1029.00 INR
                 self.db,
             )
 
+        start, end, _label = _expense_reporting_window("previous calendar month")
         self.assertEqual(result.metadata["source"], "missing_transaction_history")
         self.assertIn("no matching recorded expense transactions", result.reply.lower())
+        self.assertIn("previous calendar month", result.reply.lower())
+        self.assertEqual(result.metadata["period_start"], start.isoformat())
+        self.assertEqual(result.metadata["period_end"], end.isoformat())
         self.assertNotIn("could not detect invoice line items", result.reply.lower())
 
     def test_expense_invoice_uses_recent_transactions(self):
