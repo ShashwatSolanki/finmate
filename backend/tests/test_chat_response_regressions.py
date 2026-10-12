@@ -1,6 +1,7 @@
 """Regression tests for readable chat replies and deterministic history ordering."""
 
 from datetime import datetime, timezone
+import json
 import uuid
 
 from fastapi import FastAPI
@@ -123,3 +124,79 @@ def test_conversation_history_puts_user_turn_before_reply_when_timestamps_tie(da
     messages = response.json()
     assert [message["role"] for message in messages] == ["user", "assistant"]
     assert messages[0]["content"] == "How is my portfolio looking?"
+
+
+
+def test_invoice_import_is_persisted_as_user_attachment_and_recent_context(database):
+    user = User(
+        id=uuid.uuid4(),
+        email="invoice-attachment@example.test",
+        password_hash="test-hash",
+        is_verified=True,
+    )
+    session = ChatSession(user_id=user.id, title="New chat")
+
+    with database.begin() as db:
+        db.add(user)
+        db.add(session)
+        db.flush()
+        session_id = session.id
+
+    app = FastAPI()
+    app.include_router(conversations_router, prefix="/api/conversations")
+
+    def override_db():
+        with database() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: user
+    request_body = {
+        "filename": "cafe-bill.png",
+        "source_type": "image",
+        "confidence": "high",
+        "invoice": {
+            "invoice_number": "INV-204",
+            "vendor_name": "Cafe Aurora",
+            "currency": "INR",
+            "line_items": [
+                {
+                    "description": "Coffee and sandwich",
+                    "quantity": 1,
+                    "unit_price": "450.00",
+                    "amount": "450.00",
+                }
+            ],
+            "subtotal": "450.00",
+            "tax": "0.00",
+            "total": "450.00",
+        },
+    }
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/conversations/{session_id}/invoice-imports",
+            json=request_body,
+        )
+        history_response = client.get(f"/api/conversations/{session_id}/messages")
+
+    assert response.status_code == 201
+    saved = response.json()
+    assert saved["role"] == "user"
+    assert saved["content"] == "Uploaded invoice: cafe-bill.png."
+    assert saved["metadata"]["source"] == "invoice_import"
+    assert saved["metadata"]["filename"] == "cafe-bill.png"
+    parsed_invoice = json.loads(saved["metadata"]["invoice_payload"])
+    assert parsed_invoice["vendor_name"] == "Cafe Aurora"
+    assert parsed_invoice["total"] == "450.00"
+
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert len(history) == 1
+    assert history[0]["metadata"]["source"] == "invoice_import"
+
+    with database() as db:
+        recent_context = _build_recent_context(db, user.id, turns=1)
+    assert recent_context is not None
+    assert "Cafe Aurora" in recent_context
+    assert "Coffee and sandwich: 450.00 INR" in recent_context
