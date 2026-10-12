@@ -8,9 +8,9 @@ from fastapi.testclient import TestClient
 
 from app.agents.types import AgentName
 from app.api.deps import get_current_user, get_db
-from app.api.routes.chat import _clean_assistant_display, _enforce_reply_contract
+from app.api.routes.chat import _build_recent_context, _clean_assistant_display, _enforce_reply_contract
 from app.api.routes.conversations import router as conversations_router
-from app.db.models import ChatMessage, ChatSession, User
+from app.db.models import ChatMessage, ChatSession, MemoryChunk, User
 
 
 def test_reply_contract_preserves_portfolio_rows_and_paragraphs():
@@ -35,6 +35,41 @@ def test_reply_contract_preserves_portfolio_rows_and_paragraphs():
     assert "Current value: 42,987.50 INR\nUnrealized P/L: -24,512.50 INR" in visible
     assert "[AGENT:" not in visible
     assert '"intent"' not in visible
+
+
+def test_recent_memory_context_orders_tied_user_and_assistant_snippets(database):
+    user = User(
+        id=uuid.uuid4(),
+        email="memory-order@example.test",
+        password_hash="test-hash",
+        is_verified=True,
+    )
+    same_timestamp = datetime(2026, 10, 12, 10, 0, 0, tzinfo=timezone.utc)
+
+    with database.begin() as db:
+        db.add(user)
+        db.flush()
+        db.add_all(
+            [
+                MemoryChunk(
+                    user_id=user.id,
+                    source="chat",
+                    content="Assistant (investment_analyser): latest answer",
+                    created_at=same_timestamp,
+                ),
+                MemoryChunk(
+                    user_id=user.id,
+                    source="chat",
+                    content="User: latest question",
+                    created_at=same_timestamp,
+                ),
+            ]
+        )
+
+    with database() as db:
+        context = _build_recent_context(db, user.id, turns=1)
+
+    assert context == "User: latest question\nAssistant (investment_analyser): latest answer"
 
 
 def test_conversation_history_puts_user_turn_before_reply_when_timestamps_tie(database):
