@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from app.agents.agentic_orchestrator import run_agentic_turn
-from app.agents.budget_planner import run as run_budget
+from app.agents.budget_planner import _asks_for_transaction_total, run as run_budget
 from app.agents.invoice_generator import (
     _invoice_from_memory_text,
     _references_uploaded_invoice,
@@ -315,6 +315,39 @@ Total: 1029.00 INR
         self.assertEqual(result.metadata["invoice_ref"], "EXP-20260920")
         self.assertIn("invoice_payload", result.metadata)
         self.assertEqual(result.metadata["invoice_actions"], "pdf,csv")
+
+    def test_no_transaction_history_does_not_turn_spending_report_into_budget_split(self):
+        self.db.scalar.return_value = None
+        self.db.execute.return_value.all.return_value = []
+        self.db.scalars.return_value.all.return_value = []
+
+        with (
+            patch("app.agents.budget_planner.category_delta_vs_prior_month", return_value=None),
+            patch(
+                "app.agents.budget_planner.extract_monthly_income",
+                return_value=(Decimal("50000"), "INR"),
+            ),
+            patch("app.agents.budget_planner.settings.finmate_use_llm", False),
+        ):
+            result = run_budget(
+                self.user_id,
+                "Compare my spending in the most recent complete calendar month with the month before it. "
+                "Show category totals and percentage changes where mathematically valid.",
+                self.db,
+            )
+
+        self.assertEqual(result.metadata["source"], "db_aggregates")
+        self.assertIn("not mean your spending was zero", result.reply)
+        self.assertNotIn("50/30/20", result.reply)
+
+    def test_investable_surplus_prompt_is_not_misclassified_as_category_total(self):
+        prompt = (
+            "Using my saved monthly income and recorded expenses, estimate how much money is available "
+            "for monthly investing without assuming missing expenses are zero. Assess whether allocating "
+            "INR 10,000 to Microsoft is consistent with that budget."
+        )
+        self.assertFalse(_asks_for_transaction_total(prompt))
+        self.assertTrue(_asks_for_transaction_total("How much did I spend on food in the last 30 days?"))
 
     def test_budget_without_transactions_skips_llm_generation(self):
         self.db.scalar.return_value = None
