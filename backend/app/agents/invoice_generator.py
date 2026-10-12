@@ -270,10 +270,21 @@ def _invoice_from_memory_text(text: str) -> StructuredInvoice | None:
         return found.group(1).strip() if found else None
 
     items: list[ParsedLineItem] = []
+    extraction_warnings: list[str] = []
+    in_warnings = False
     in_items = False
     stop_labels = re.compile(r"^(?:subtotal|tax|total|notes?)\s*:", re.I)
     for line in text.splitlines():
         clean = line.strip()
+        if clean.casefold() == "extraction warnings:":
+            in_warnings = True
+            continue
+        if in_warnings:
+            if clean.startswith("- "):
+                extraction_warnings.append(clean[2:].strip())
+                continue
+            if clean:
+                in_warnings = False
         if clean.casefold() == "line items:":
             in_items = True
             continue
@@ -324,6 +335,10 @@ def _invoice_from_memory_text(text: str) -> StructuredInvoice | None:
     )
     total = total_value if total_value is not None else subtotal + (tax or Decimal("0"))
 
+    notes_parts = [field("Notes")] if field("Notes") else []
+    if extraction_warnings:
+        notes_parts.append("OCR extraction warnings: " + "; ".join(extraction_warnings[:10]))
+
     return StructuredInvoice(
         invoice_number=field("Invoice number"),
         invoice_date=field("Invoice date"),
@@ -335,7 +350,7 @@ def _invoice_from_memory_text(text: str) -> StructuredInvoice | None:
         subtotal=subtotal,
         tax=tax,
         total=total,
-        notes=field("Notes"),
+        notes="\n".join(notes_parts) if notes_parts else None,
     )
 
 
@@ -512,6 +527,8 @@ def _format_reply(invoice: StructuredInvoice, inv_id: str, *, source_note: str) 
         lines.append(f"Tax: {invoice.tax:.2f} {invoice.currency}")
     if invoice.total is not None:
         lines.append(f"Total: {invoice.total:.2f} {invoice.currency}")
+    if invoice.notes:
+        lines.append(f"Notes: {invoice.notes}")
 
     payload = {
         "invoice_number": invoice.invoice_number or inv_id,
