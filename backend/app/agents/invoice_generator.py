@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.types import AgentName, AgentResult
-from app.db.models import Transaction
+from app.db.models import MemoryChunk, Transaction
 from app.config import settings
 from app.invoice.parse_invoice import parse_invoice_text
 from app.invoice.schemas import ParsedLineItem, StructuredInvoice
@@ -28,6 +28,15 @@ _AMOUNT_LINE = re.compile(
 _AMOUNT_FIRST_LINE = re.compile(
     r"^\s*(?:[-*]\s*)?(?:₹|Rs\.?|INR|USD|EUR|GBP|\$|€|£)?\s*"
     r"((?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d{1,2})?)\s+(.+?)\s*[.!]?\s*$",
+    re.I,
+)
+
+_EXPLICIT_ITEM_CLAUSE = re.compile(
+    r"(?P<description>[A-Z][^,:;\n.]{1,100}?)\s*:\s*"
+    r"(?P<quantity>\d+(?:\.\d+)?)\s*(?:units?|items?)?\s*(?:at|@|x|×)\s*"
+    r"(?:(?:INR|Rs\.?|USD|EUR|GBP|₹|\$|€|£)\s*)?"
+    r"(?P<unit_price>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)"
+    r"\s*(?:each|per\s+(?:unit|item))?",
     re.I,
 )
 
@@ -153,8 +162,198 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
     return items
 
 
+def _explicit_items_from_request(message: str) -> list[ParsedLineItem]:
+    """Parse explicit 'Item: 2 units at INR 1,200 each' clauses without an LLM."""
+    items: list[ParsedLineItem] = []
+    for match in _EXPLICIT_ITEM_CLAUSE.finditer(message):
+        description = re.sub(
+            r"^(?:(?:and|add|include|plus)\s+)+",
+            "",
+            match.group("description").strip(),
+            flags=re.I,
+        )
+        if not description:
+            continue
+        try:
+            quantity = Decimal(match.group("quantity"))
+            unit_price = Decimal(match.group("unit_price").replace(",", ""))
+        except InvalidOperation:
+            continue
+        if quantity <= 0 or unit_price <= 0:
+            continue
+        amount = (quantity * unit_price).quantize(Decimal("0.01"))
+        items.append(
+            ParsedLineItem(
+                description=description,
+                quantity=float(quantity),
+                unit_price=unit_price,
+                amount=amount,
+            )
+        )
+    unique: list[ParsedLineItem] = []
+    seen: set[tuple[str, float | None, Decimal | None, Decimal]] = set()
+    for item in items:
+        key = (item.description.casefold(), item.quantity, item.unit_price, item.amount)
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique
+
+
+def _tax_from_rate(message: str, subtotal: Decimal) -> Decimal | None:
+    """Calculate tax only when the request explicitly states a percentage."""
+    match = re.search(r"\b(\d+(?:\.\d+)?)\s*%\s*(?:tax|gst|vat)\b", message, re.I)
+    if not match:
+        match = re.search(r"\b(?:tax|gst|vat)\s+(?:at|of)\s*(\d+(?:\.\d+)?)\s*%", message, re.I)
+    if not match:
+        return None
+    try:
+        rate = Decimal(match.group(1))
+    except InvalidOperation:
+        return None
+    if rate < 0 or rate > 100:
+        return None
+    return (subtotal * rate / Decimal("100")).quantize(Decimal("0.01"))
+
+
+def _extract_parties_and_due_date(message: str) -> tuple[str | None, str | None, str | None]:
+    vendor = None
+    bill_to = None
+    parties = re.search(
+        r"\bfrom\s+(.+?)\s+to\s+(.+?)(?=,\s*(?:due|dated|invoice date)\b|;|\n|$)",
+        message,
+        re.I,
+    )
+    if parties:
+        vendor = parties.group(1).strip(" ,.")
+        bill_to = parties.group(2).strip(" ,.")
+    due = None
+    due_days = re.search(r"\bdue\s+(\d{1,3})\s+days?\s+from\s+today\b", message, re.I)
+    if due_days:
+        due = (date.today() + timedelta(days=int(due_days.group(1)))).isoformat()
+    return vendor, bill_to, due
+
+
+def _references_uploaded_invoice(request: str) -> bool:
+    return bool(
+        re.search(r"\b(?:invoice|receipt|bill|document)\b.{0,55}\b(?:uploaded|attached|imported|above|earlier)\b", request, re.I)
+        or re.search(r"\b(?:uploaded|attached|imported)\b.{0,55}\b(?:invoice|receipt|bill|document|image|file)\b", request, re.I)
+    )
+
+
+def _invoice_from_memory_text(text: str) -> StructuredInvoice | None:
+    """Rebuild a structured invoice from the bounded memory text of a saved upload."""
+    if "uploaded invoice file:" not in text.casefold():
+        return None
+
+    def field(label: str) -> str | None:
+        found = re.search(rf"(?im)^\s*{re.escape(label)}\s*:\s*(.+?)\s*$", text)
+        return found.group(1).strip() if found else None
+
+    items: list[ParsedLineItem] = []
+    in_items = False
+    stop_labels = re.compile(r"^(?:subtotal|tax|total|notes?)\s*:", re.I)
+    for line in text.splitlines():
+        clean = line.strip()
+        if clean.casefold() == "line items:":
+            in_items = True
+            continue
+        if in_items and stop_labels.match(clean):
+            in_items = False
+        if not in_items or not clean.startswith("-"):
+            continue
+        match = re.match(
+            r"^\s*-\s*(.+):\s*([\d,]+(?:\.\d{1,2})?)\s*(INR|USD|EUR|GBP|CAD|AUD|JPY|CHF|SGD)?\s*$",
+            clean,
+            re.I,
+        )
+        if not match:
+            continue
+        description, amount_raw, _currency = match.groups()
+        try:
+            amount = Decimal(amount_raw.replace(",", ""))
+        except InvalidOperation:
+            continue
+        if amount <= 0:
+            continue
+        items.append(ParsedLineItem(description=description.strip(), amount=amount))
+
+    if not items:
+        return None
+
+    currency = (field("Currency") or _detect_currency(text)).upper()
+    subtotal_raw = field("Subtotal")
+    tax_raw = field("Tax")
+    total_raw = field("Total")
+    try:
+        subtotal = Decimal(subtotal_raw.replace(",", "")) if subtotal_raw else sum(
+            (item.amount for item in items), start=Decimal("0")
+        )
+        tax = Decimal(tax_raw.replace(",", "")) if tax_raw else None
+        total = Decimal(total_raw.replace(",", "")) if total_raw else subtotal + (tax or Decimal("0"))
+    except InvalidOperation:
+        return None
+
+    return StructuredInvoice(
+        invoice_number=field("Invoice number"),
+        invoice_date=field("Invoice date"),
+        due_date=field("Due date"),
+        vendor_name=field("Vendor"),
+        bill_to=field("Bill to"),
+        currency=currency,
+        line_items=items,
+        subtotal=subtotal,
+        tax=tax,
+        total=total,
+        notes=field("Notes"),
+    )
+
+
+def _invoice_from_recent_upload(db: Session, user_id: UUID) -> StructuredInvoice | None:
+    """Load the most recent parsable saved invoice when the user refers to an upload."""
+    try:
+        rows = db.scalars(
+            select(MemoryChunk)
+            .where(
+                MemoryChunk.user_id == user_id,
+                MemoryChunk.source == "chat",
+                MemoryChunk.content.ilike("%Uploaded invoice file:%"),
+            )
+            .order_by(MemoryChunk.created_at.desc(), MemoryChunk.id.desc())
+            .limit(10)
+        ).all()
+    except Exception:
+        return None
+    if not isinstance(rows, (list, tuple)):
+        return None
+    for row in rows:
+        memory_text = getattr(row, "content", None)
+        if not isinstance(memory_text, str):
+            continue
+        invoice = _invoice_from_memory_text(memory_text)
+        if invoice is not None:
+            return invoice
+    return None
+
+
 def _structured_from_message(message: str) -> StructuredInvoice | None:
-    """Try full invoice parse on pasted OCR/PDF text; fall back to simple line format."""
+    """Parse explicit item clauses first, then pasted OCR/PDF text and simple lines."""
+    explicit_items = _explicit_items_from_request(message)
+    if explicit_items:
+        subtotal = sum((item.amount for item in explicit_items), start=Decimal("0"))
+        tax = _tax_from_rate(message, subtotal)
+        vendor, bill_to, due_date = _extract_parties_and_due_date(message)
+        return StructuredInvoice(
+            vendor_name=vendor,
+            bill_to=bill_to,
+            due_date=due_date,
+            currency=_detect_currency(message),
+            line_items=explicit_items,
+            subtotal=subtotal,
+            tax=tax,
+            total=subtotal + (tax or Decimal("0")),
+        )
+
     simple = _parse_simple_lines(message)
     explicit_multi_item_plus = bool(re.search(r"\bplus\b", message, re.I)) and len(simple) >= 2
     explicit_client_invoice = bool(
@@ -246,6 +445,8 @@ def _format_reply(invoice: StructuredInvoice, inv_id: str, *, source_note: str) 
         lines.append(f"Bill to: {invoice.bill_to}")
     if invoice.invoice_date:
         lines.append(f"Date: {invoice.invoice_date}")
+    if invoice.due_date:
+        lines.append(f"Due date: {invoice.due_date}")
     lines.append("")
     lines.append("Line items:")
     for li in invoice.line_items[:12]:
@@ -276,6 +477,8 @@ def _format_reply(invoice: StructuredInvoice, inv_id: str, *, source_note: str) 
         ],
         "subtotal": str(invoice.subtotal) if invoice.subtotal is not None else None,
         "tax": str(invoice.tax) if invoice.tax is not None else None,
+        "total": str(invoice.total) if invoice.total is not None else None,
+        "notes": invoice.notes,
     }
 
     prose = (
@@ -307,8 +510,12 @@ def run(
     _ = db
     inv_id = str(uuid.uuid4())[:8].upper()
     request_text = _extract_original_request(message)
-    invoice = _structured_from_message(request_text)
     request = request_text.lower()
+    wants_uploaded_invoice = _references_uploaded_invoice(request_text)
+    invoice = _invoice_from_recent_upload(db, user_id) if wants_uploaded_invoice else None
+    invoice_from_uploaded_context = invoice is not None
+    if invoice is None:
+        invoice = _structured_from_message(request_text)
     wants_expense_invoice = _wants_expense_invoice(request)
     invoice_from_transactions = False
     if invoice is None and wants_expense_invoice:
@@ -329,10 +536,18 @@ def run(
             source_note=(
                 "generated from recent user transactions"
                 if invoice_from_transactions
+                else "reconstructed from a previously uploaded invoice saved in this conversation"
+                if invoice_from_uploaded_context
                 else "parsed from message text"
             ),
         )
-        source = "transaction_summary" if invoice_from_transactions else "structured_parse"
+        source = (
+            "transaction_summary"
+            if invoice_from_transactions
+            else "uploaded_invoice_context"
+            if invoice_from_uploaded_context
+            else "structured_parse"
+        )
 
         total = invoice.total or sum((i.amount for i in invoice.line_items), start=Decimal("0"))
         return AgentResult(
@@ -348,6 +563,22 @@ def run(
                 "invoice_payload": invoice.model_dump_json(),
                 "invoice_actions": "pdf,csv",
             },
+        )
+
+    if wants_expense_invoice:
+        reply = (
+            "[AGENT: INVOICE]\n\n"
+            "I couldn't prepare an expense summary because there are no matching recorded expense transactions "
+            "in the last 30 days. Uploaded invoices and receipts are separate from transaction history; import "
+            "transactions first if you want them included.\n\n"
+            '{"intent":"expense_summary_unavailable","steps":["Check recent recorded transactions","Import expenses if needed"],'
+            '"tools_needed":["list_transactions"],"notes":"no matching recorded expenses"}'
+        )
+        return AgentResult(
+            agent=AgentName.INVOICE_GENERATOR,
+            reply=reply,
+            planned_steps=["query_recent_expenses", "report_missing_transaction_data"],
+            metadata={"invoice_ref": inv_id, "parsed_items_count": "0", "source": "missing_transaction_history"},
         )
 
     upload_hint = (
