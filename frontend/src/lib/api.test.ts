@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { API_BASE_URL, apiFetch, apiUrl, authHeaders, authHeadersMultipart, cleanAssistantText, REFRESH_TOKEN_KEY, TOKEN_KEY } from "./api";
+import { API_BASE_URL, apiFetch, apiUrl, authHeaders, authHeadersMultipart, cleanAssistantText, parseInvoiceWarnings, REFRESH_TOKEN_KEY, TOKEN_KEY } from "./api";
 
 
 const storage = new Map<string, string>();
@@ -157,6 +157,15 @@ describe("API helpers", () => {
     expect(cleanAssistantText("[AGENT: INVESTMENT]\nPrice is {not valid JSON}")).toBe(
       "Price is {not valid JSON}",
     );
+  });
+
+  it("parses invoice extraction warnings and safely ignores invalid metadata", () => {
+    expect(parseInvoiceWarnings(JSON.stringify(["Line items do not match subtotal.", "Review OCR."]))).toEqual([
+      "Line items do not match subtotal.",
+      "Review OCR.",
+    ]);
+    expect(parseInvoiceWarnings("{invalid")).toEqual([]);
+    expect(parseInvoiceWarnings(JSON.stringify({ warning: "not a list" }))).toEqual([]);
   });
 
   it("preserves portfolio rows and paragraph breaks while removing protocol metadata", () => {
