@@ -86,8 +86,10 @@ The agent supports:
 - session/52-week ranges
 - stored portfolio analysis
 - risk-based allocation mode
+- validation that generated replies include the requested ticker and verified close/SMA figures
+- deterministic market-data fallback when generated prose omits the requested amount or quote facts
 
-Portfolio questions are grounded in stored `InvestmentHolding` records.
+Portfolio questions are grounded in stored `InvestmentHolding` records. Market replies label the latest available trading session. Model output is accepted only when its visible prose covers verified market figures for the requested tickers; a valid agent tag/JSON shape alone is not enough. If the model omits required facts, the specialist returns a deterministic explanation built from fetched market data.
 
 ## 6. Invoice Agent
 
