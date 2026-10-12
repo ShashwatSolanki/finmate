@@ -106,6 +106,8 @@ Frontend preview / Invoice Studio
 PDF or CSV export
 ```
 
+An invoice imported from the chat composer is saved as a user-side message through `POST /api/conversations/{session_id}/invoice-imports`. The chat history displays the filename, extraction confidence, vendor/total when available, and expandable line items. The saved structured result survives conversation reloads; the original PDF/image bytes are not retained in chat history. The composer is disabled while parsing and saving, and a successful import is represented by the attachment bubble rather than a floating success line.
+
 ## 10. Session renewal
 
 Authenticated requests use the shared `apiFetch` wrapper. If a protected request returns HTTP 401, the wrapper coordinates one refresh-token request, stores the rotated token pair, and retries the original request once. Concurrent requests in the same browser tab share the same refresh operation. Where the browser supports the Web Locks API, tabs also serialize refresh attempts and a waiting tab reuses the already-rotated access token. Invalid refresh tokens clear the local session; transient network failures do not immediately sign the user out.
