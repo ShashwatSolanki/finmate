@@ -295,17 +295,28 @@ def _invoice_from_memory_text(text: str) -> StructuredInvoice | None:
         return None
 
     currency = (field("Currency") or _detect_currency(text)).upper()
-    subtotal_raw = field("Subtotal")
-    tax_raw = field("Tax")
-    total_raw = field("Total")
-    try:
-        subtotal = Decimal(subtotal_raw.replace(",", "")) if subtotal_raw else sum(
-            (item.amount for item in items), start=Decimal("0")
-        )
-        tax = Decimal(tax_raw.replace(",", "")) if tax_raw else None
-        total = Decimal(total_raw.replace(",", "")) if total_raw else subtotal + (tax or Decimal("0"))
-    except InvalidOperation:
-        return None
+
+    def amount_field(label: str) -> Decimal | None:
+        raw = field(label)
+        if raw is None:
+            return None
+        cleaned = re.sub(
+            r"(?i)\b(?:INR|USD|EUR|GBP|CAD|AUD|JPY|CHF|SGD)\b|[₹$€£¥,]",
+            "",
+            raw,
+        ).strip()
+        try:
+            return Decimal(cleaned)
+        except InvalidOperation:
+            return None
+
+    subtotal_value = amount_field("Subtotal")
+    tax = amount_field("Tax")
+    total_value = amount_field("Total")
+    subtotal = subtotal_value if subtotal_value is not None else sum(
+        (item.amount for item in items), start=Decimal("0")
+    )
+    total = total_value if total_value is not None else subtotal + (tax or Decimal("0"))
 
     return StructuredInvoice(
         invoice_number=field("Invoice number"),
