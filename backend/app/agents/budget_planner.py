@@ -252,6 +252,25 @@ def run(
 
     # Category-specific totals are calculated by SQL, never inferred by the model.
     requested_category = _requested_transaction_category(message, category_catalog)
+    if (
+        requested_category is None
+        and _asks_for_transaction_total(message)
+        and re.search(r"\b(?:on|for)\s+[a-z]", message, re.I)
+    ):
+        reply = (
+            "[AGENT: BUDGET]\n\n"
+            "I couldn't resolve that as a single spending category. Please ask about one category at a time, "
+            "or ask for a spending summary to see the categories recorded in your account. "
+            "I won't substitute an unrelated budget split for a transaction-total question.\n\n"
+            '{"intent":"transaction_category_clarification","steps":["Resolve requested category","Query recorded expenses"],'
+            '"tools_needed":["list_transactions"],"notes":"request includes an ambiguous or unsupported category"}'
+        )
+        return AgentResult(
+            agent=AgentName.BUDGET_PLANNER,
+            reply=reply,
+            planned_steps=["resolve_single_spending_category", "request_clarification"],
+            metadata={"source": "transaction_query_clarification", "window_days": "30"},
+        )
     if requested_category is not None:
         matching_rows = db.execute(
             select(
