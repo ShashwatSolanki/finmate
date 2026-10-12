@@ -11,7 +11,7 @@ _CURRENCY_SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP", "₹": "INR", "¥": 
 _CURRENCY_CODE = re.compile(r"\b(USD|EUR|GBP|INR|JPY|CAD|AUD|CHF|SGD)\b", re.I)
 
 _INV_NUM = re.compile(
-    r"(?:invoice\s*(?:#|no\.?|number)?[:\s]*)([A-Z0-9][A-Z0-9\-_/]{2,24})",
+    r"(?:(?:invoice|bill)\s*(?:#|no\.?|number)?[:\s]*)([A-Z0-9][A-Z0-9\-_/]{2,24})",
     re.I,
 )
 _DATE = re.compile(
@@ -314,6 +314,42 @@ def _prepare_receipt_table_lines(lines: list[str]) -> tuple[list[str], bool]:
     return [*lines[: header_index + 1], *canonical_rows, *lines[end_index:]], True
 
 
+def _infer_receipt_vendor(lines: list[str]) -> str | None:
+    """Use a plausible title line above a receipt table when no vendor label exists."""
+    header_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.search(r"\bitem\b", line, re.I)
+            and re.search(r"\b(?:qty|quantity)\b", line, re.I)
+            and re.search(r"\b(?:price|amount)\b", line, re.I)
+        ),
+        None,
+    )
+    if header_index is None:
+        return None
+
+    for line in lines[:header_index]:
+        candidate = line.strip(" -|:")
+        if not candidate or len(candidate) > 100:
+            continue
+        if not re.search(r"[A-Za-z]{3}", candidate):
+            continue
+        if re.search(
+            r"\b(?:fssai|gstin|gst|lic(?:ence|ense)?\s*no|phone|mobile|email|www|https?://|"
+            r"road|rd\.?|street|st\.?|main\s*road|address|invoice|bill\s*no|date|cashier|"
+            r"table\s*no|total|subtotal|grand\s*total|dine\s*in)\b",
+            candidate,
+            re.I,
+        ):
+            continue
+        if re.search(r"\d{3,}", candidate):
+            continue
+        # First plausible title-like line before the address/details is the receipt merchant.
+        return candidate
+    return None
+
+
 def _confidence(
     items: list[ParsedLineItem],
     total: Decimal | None,
@@ -354,6 +390,8 @@ def parse_invoice_text(
     invoice_number = _first_match(_INV_NUM, normalized)
     invoice_date = _first_match(_DATE, normalized)
     vendor_name = _first_match(_VENDOR, normalized)
+    if vendor_name is None and has_item_table:
+        vendor_name = _infer_receipt_vendor(lines)
     bill_to = _first_match(_BILL_TO, normalized)
 
     line_items = _parse_line_items(item_parse_lines)
