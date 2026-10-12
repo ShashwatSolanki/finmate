@@ -161,7 +161,7 @@ def _requested_transaction_category(message: str, category_totals: dict[str, Dec
     if len(matched_groups) != 1:
         return None
 
-    canonical, triggered_aliases = matched_groups[0]
+    canonical, _ = matched_groups[0]
     # Once the user's category intent is known, use the full synonym group to
     # match recorded category labels (e.g. 'food' should find 'Groceries').
     aliases = _CATEGORY_ALIASES[canonical]
