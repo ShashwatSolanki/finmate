@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from app.agents.agentic_orchestrator import build_plan
@@ -109,7 +109,13 @@ def _build_recent_context(db: Session, user_id, turns: int = 3) -> str | None:
     rows = db.scalars(
         select(MemoryChunk)
         .where(MemoryChunk.user_id == user_id, MemoryChunk.source == "chat")
-        .order_by(MemoryChunk.created_at.desc())
+        .order_by(
+            MemoryChunk.created_at.desc(),
+            # Reverse tie order so the later assistant message follows its user turn
+            # after this newest-first result is reversed for the prompt.
+            case((MemoryChunk.content.like("Assistant (%"), 0), else_=1),
+            MemoryChunk.id.desc(),
+        )
         .limit(max(6, turns * 4))
     ).all()
     if not rows:
@@ -162,7 +168,11 @@ def _latest_assistant_agent(db: Session, user_id) -> AgentName | None:
     rows = db.scalars(
         select(MemoryChunk)
         .where(MemoryChunk.user_id == user_id, MemoryChunk.source == "chat")
-        .order_by(MemoryChunk.created_at.desc())
+        .order_by(
+            MemoryChunk.created_at.desc(),
+            case((MemoryChunk.content.like("Assistant (%"), 0), else_=1),
+            MemoryChunk.id.desc(),
+        )
         .limit(12)
     ).all()
     for row in rows:
