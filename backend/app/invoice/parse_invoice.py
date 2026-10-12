@@ -56,12 +56,21 @@ _SUBTOTAL = re.compile(
     re.I,
 )
 _TAX = re.compile(
-    rf"(?:tax|vat|gst)\s*(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+\.\d{{2}})",
+    rf"(?:tax|vat|(?:c|s|i)?gst)\s*(?:\d+(?:\.\d+)?\s*%)?\s*"
+    rf"(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+\.\d{{2}})",
     re.I,
 )
 
 _SKIP_LINE = re.compile(
-    r"^(invoice|bill\s*to|ship\s*to|description|qty|quantity|amount|unit\s*price|subtotal|total|tax|vat|(?:c|s|i)?gst|notes?|payment)\b",
+    r"^(invoice|bill\s*to|ship\s*to|description|qty|quantity|amount|unit\s*price|subtotal|grand\s*total|total|tax|vat|(?:c|s|i)?gst|notes?|payment)\b",
+    re.I,
+)
+
+# Receipt/OCR table rows with a quantity, unit price, and line amount.
+_RECEIPT_ITEM_ROW = re.compile(
+    rf"^(?P<description>.+?)\s+(?P<quantity>\d+(?:\.\d+)?)\s+"
+    rf"(?P<unit_price>(?:{_CURRENCY_PREFIX}\s*)?[\d,]+\.\d{{2}})\s+"
+    rf"(?P<amount>(?:{_CURRENCY_PREFIX}\s*)?[\d,]+\.\d{{2}})\s*$",
     re.I,
 )
 
@@ -105,7 +114,15 @@ def _detect_currency(text: str) -> str:
         if sym in text:
             return code
     m = _CURRENCY_CODE.search(text)
-    return m.group(1).upper() if m else "USD"
+    if m:
+        return m.group(1).upper()
+    # Indian restaurant receipts often lose the rupee glyph during OCR, but the
+    # CGST/SGST/IGST labels are a reliable signal that amounts are denominated in INR.
+    if re.search(r"\b(?:CGST|SGST|IGST|FSSAI)\b", text, re.I):
+        return "INR"
+    if re.search(r"\bRs[.,]?\s*\d", text, re.I):
+        return "INR"
+    return "USD"
 
 
 def _first_match(pattern: re.Pattern[str], text: str) -> str | None:
@@ -219,12 +236,94 @@ def _parse_line_items(lines: list[str]) -> list[ParsedLineItem]:
     return items[:30]
 
 
-def _confidence(items: list[ParsedLineItem], total: Decimal | None) -> str:
-    if items and total is not None:
-        return "high"
-    if items:
+def _prepare_receipt_table_lines(lines: list[str]) -> tuple[list[str], bool]:
+    """Join wrapped item descriptions around OCR rows with aligned numeric columns.
+
+    Receipt OCR frequently puts the first line of a description beside its price,
+    then emits the remaining description words on following lines before the next
+    priced row. Those continuation lines belong to the previous item, not a new row.
+    """
+    header_index = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.search(r"\bitem\b", line, re.I)
+            and re.search(r"\b(?:qty|quantity)\b", line, re.I)
+            and re.search(r"\b(?:price|amount)\b", line, re.I)
+        ),
+        None,
+    )
+    if header_index is None:
+        return lines, False
+
+    end_index = len(lines)
+    for index in range(header_index + 1, len(lines)):
+        line = lines[index]
+        if (
+            re.match(r"^\s*(?:sub\s*$|subtotal\b|grand\s*total\b|total\b)", line, re.I)
+            or re.match(r"^\s*(?:c?gst|sgst|igst|tax|vat)\b", line, re.I)
+        ):
+            end_index = index
+            break
+
+    parsed_rows: list[dict[str, str]] = []
+    pending_description: list[str] = []
+    for line in lines[header_index + 1 : end_index]:
+        match = _RECEIPT_ITEM_ROW.match(line)
+        if not match:
+            # Ignore a repeated table header, but retain otherwise unpriced text as
+            # a likely wrapped description line.
+            if re.search(r"\bitem\b", line, re.I) and re.search(r"\b(?:qty|quantity|price|amount)\b", line, re.I):
+                continue
+            pending_description.append(line.strip())
+            continue
+
+        description = match.group("description").strip(" |:-")
+        if parsed_rows and pending_description:
+            parsed_rows[-1]["description"] = " ".join(
+                [parsed_rows[-1]["description"], *pending_description]
+            ).strip()
+        elif not parsed_rows and pending_description:
+            description = " ".join([*pending_description, description]).strip()
+        pending_description.clear()
+
+        parsed_rows.append(
+            {
+                "description": description,
+                "quantity": match.group("quantity"),
+                "unit_price": match.group("unit_price"),
+                "amount": match.group("amount"),
+            }
+        )
+
+    if pending_description and parsed_rows:
+        parsed_rows[-1]["description"] = " ".join(
+            [parsed_rows[-1]["description"], *pending_description]
+        ).strip()
+
+    if not parsed_rows:
+        # Keep the old line-based parser as a fallback, but let the caller know a
+        # table was present so a printed grand total isn't fabricated into an item.
+        return lines, True
+
+    canonical_rows = [
+        f"{row['description']} {row['quantity']} {row['unit_price']} {row['amount']}"
+        for row in parsed_rows
+        if row["description"]
+    ]
+    return [*lines[: header_index + 1], *canonical_rows, *lines[end_index:]], True
+
+
+def _confidence(
+    items: list[ParsedLineItem],
+    total: Decimal | None,
+    warnings: list[str] | None = None,
+) -> str:
+    if not items:
+        return "low"
+    if warnings or total is None:
         return "medium"
-    return "low"
+    return "high"
 
 
 def parse_invoice_text(
@@ -240,7 +339,16 @@ def parse_invoice_text(
     # "n1,499.00"). Only replace it when it directly prefixes a money value,
     # never in ordinary prose such as vendor names or descriptions.
     normalized = re.sub(r"(?<![A-Za-z])n\s*(?=\d[\d,]*\.\d{2}\b)", "₹", normalized)
+    # Occasionally OCR inserts a spurious digit between "Grand Total" and the
+    # amount (e.g. "Grand Total 7 1029.00"). Strip only that narrow, label-adjacent
+    # artifact before extracting totals; keep the original preview for user review.
+    total_text = re.sub(
+        r"(?im)^(\s*grand\s*total)\s+\d{1,3}\s+(?=(?:₹\s*)?[\d,]+\.\d{2}\s*$)",
+        r"\1 ",
+        normalized,
+    )
     lines = [ln.strip() for ln in normalized.split("\n") if ln.strip()]
+    item_parse_lines, has_item_table = _prepare_receipt_table_lines(lines)
 
     currency = _detect_currency(normalized)
     invoice_number = _first_match(_INV_NUM, normalized)
@@ -248,12 +356,12 @@ def parse_invoice_text(
     vendor_name = _first_match(_VENDOR, normalized)
     bill_to = _first_match(_BILL_TO, normalized)
 
-    line_items = _parse_line_items(lines)
+    line_items = _parse_line_items(item_parse_lines)
 
     # Table rows from pdfplumber use " | ". OCR table detection can be inconsistent and only
     # insert "|" on some rows, but this still helps recover rows the line-by-line parser missed.
     existing_keys = {f"{_normalize_desc_for_dedup(i.description)}:{i.amount}" for i in line_items}
-    for line in lines:
+    for line in item_parse_lines:
         if " | " in line and not _SKIP_LINE.match(line):
             cells = [c.strip() for c in line.split("|")]
             if len(cells) >= 2:
@@ -271,12 +379,16 @@ def parse_invoice_text(
     # one tax total, never as invoice line items.
     tax_values = [_to_decimal(m.group(1)) for m in _TAX.finditer(normalized)]
     tax = sum((value for value in tax_values if value is not None), start=Decimal("0")) or None
-    total_matches = [_to_decimal(m.group(1)) for m in _TOTAL.finditer(normalized)]
+    total_matches = [_to_decimal(m.group(1)) for m in _TOTAL.finditer(total_text)]
     total_matches = [t for t in total_matches if t is not None]
     total = total_matches[-1] if total_matches else None
 
-    if not line_items and total is not None:
+    if not line_items and total is not None and not has_item_table:
         line_items.append(ParsedLineItem(description="Invoice total (single line)", amount=total))
+        warnings.append(
+            "No individual line items were detected; the printed total is retained as a placeholder. "
+            "Review the invoice before exporting it."
+        )
 
     if line_items and total is None:
         total = sum((i.amount for i in line_items), start=Decimal("0"))
@@ -287,6 +399,19 @@ def parse_invoice_text(
 
     if not line_items:
         warnings.append("No line items detected — edit fields manually or upload a clearer document.")
+    elif len(line_items) > 1:
+        item_sum = sum((item.amount for item in line_items), start=Decimal("0"))
+        if subtotal is not None and abs(item_sum - subtotal) > Decimal("0.02"):
+            warnings.append(
+                f"Line-item amounts sum to {item_sum:.2f}, which does not match the printed "
+                f"subtotal {subtotal:.2f}. Review OCR before exporting."
+            )
+    if subtotal is not None and tax is not None and total is not None:
+        if abs((subtotal + tax) - total) > Decimal("0.02"):
+            warnings.append(
+                f"Printed subtotal plus tax ({subtotal + tax:.2f}) does not match the printed "
+                f"total ({total:.2f}). Review the extracted fields."
+            )
 
     invoice = StructuredInvoice(
         invoice_number=invoice_number,
@@ -306,7 +431,7 @@ def parse_invoice_text(
     return ParseInvoiceResult(
         source_type=source_type,
         filename=filename,
-        confidence=_confidence(line_items, total),
+        confidence=_confidence(line_items, total, warnings),
         extracted_text_preview=preview,
         invoice=invoice,
         warnings=warnings,
