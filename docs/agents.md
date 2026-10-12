@@ -58,10 +58,12 @@ Typical workflow:
 4. aggregate spending by category
 5. calculate spending insights
 6. add relevant RAG context
-7. optionally generate a natural-language response
-8. fall back to deterministic output if generation fails
+7. recognize category-total questions even when a category has no recent rows
+8. calculate expense totals from debit transactions, grouped by currency
+9. optionally generate a natural-language response for advice/general summaries
+10. fall back to deterministic output if generation fails
 
-The transaction database remains the source of truth.
+For a category-total question with no matching expenses in the last 30 days, the agent reports the missing records and the reporting window. It must not replace the requested lookup with an unrelated income-based budget split. The transaction database remains the source of truth.
 
 ## 5. Investment Agent
 
