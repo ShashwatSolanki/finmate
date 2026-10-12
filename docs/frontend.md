@@ -38,7 +38,7 @@ The chat interface is responsible for:
 7. showing invoice export actions when artifacts exist
 8. supporting document/CSV import from the composer
 
-The backend response contains machine-readable tags and JSON. The frontend removes those implementation details before displaying the natural-language response.
+The backend response contains machine-readable agent tags and a JSON metadata tail. The API strips those protocol lines while preserving paragraphs, headings, and one-row-per-line portfolio output. Conversation history is ordered deterministically; existing rows with identical timestamps are displayed with the user turn first.
 
 ## 5. Settings
 
