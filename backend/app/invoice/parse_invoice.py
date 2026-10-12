@@ -399,7 +399,7 @@ def parse_invoice_text(
 
     if not line_items:
         warnings.append("No line items detected — edit fields manually or upload a clearer document.")
-    elif len(line_items) > 1:
+    elif line_items:
         item_sum = sum((item.amount for item in line_items), start=Decimal("0"))
         if subtotal is not None and abs(item_sum - subtotal) > Decimal("0.02"):
             warnings.append(
