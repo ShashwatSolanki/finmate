@@ -181,5 +181,32 @@ def test_missing_category_does_not_fall_back_to_unrelated_income_budget(database
     assert result.metadata["window_days"] == "30"
 
 
+def test_multi_category_question_requests_clarification_instead_of_budget_advice(database):
+    user_id = uuid4()
+    with database.begin() as db:
+        db.add(User(id=user_id, email=f"{user_id}@example.test", password_hash="test-hash"))
+        db.add(
+            Transaction(
+                user_id=user_id,
+                amount=Decimal("-1200"),
+                currency="INR",
+                category="Rent",
+                occurred_on=date.today(),
+            )
+        )
+
+    with database() as db:
+        result = run(
+            user_id,
+            "How much did I spend on food and transport?",
+            db,
+            rag_context="Monthly income: 50000 INR",
+        )
+
+    assert "one spending category" in result.reply
+    assert result.metadata["source"] == "transaction_query_clarification"
+    assert "50/30/20" not in result.reply
+
+
 if __name__ == "__main__":
     unittest.main()
