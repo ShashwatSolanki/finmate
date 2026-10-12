@@ -119,6 +119,7 @@ class DataBackedAgentTests(unittest.TestCase):
         )
 
         with (
+            patch("app.agents.investment_analyser.pick_validated_tickers", return_value=["MSFT"]),
             patch("app.agents.investment_analyser._portfolio_history_reply", return_value=portfolio),
             patch("app.agents.investment_analyser._analyze_symbol", return_value=analysis),
         ):
