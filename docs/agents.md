@@ -65,6 +65,8 @@ Typical workflow:
 
 For a category-total question with no matching expenses in the last 30 days, the agent reports the missing records and the reporting window. It must not replace the requested lookup with an unrelated income-based budget split. The transaction database remains the source of truth.
 
+For category and month-over-month spending reports, an empty transaction set is reported as insufficient recorded data; it is not converted into a 50/30/20 budget recommendation. The 50/30/20 split is reserved for explicit budget-planning requests.
+
 ## 5. Investment Agent
 
 File:
