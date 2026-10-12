@@ -93,7 +93,9 @@ The uploaded PDF/image binary itself is not stored in chat history; the durable 
 
 For receipts with an `Item / Qty / Price / Amount` table, the parser recognizes quantity, unit price, and line amount rows. Unpriced OCR lines between priced rows are joined to the adjacent item description, because long food names commonly wrap over multiple lines. A printed grand total is never treated as a product line item when a line-item table is present.
 
-Currency inference recognizes an explicit currency code/symbol, the `Rs.` prefix, and Indian receipt markers such as `CGST`, `SGST`, `IGST`, or `FSSAI`. CGST/SGST amounts are combined as tax amounts, not products. Extraction adds warnings and downgrades confidence when line-item sums disagree with the printed subtotal or when subtotal plus tax disagrees with the printed total. Treat high OCR confidence as a signal, not a substitute for checking the extracted fields and reconciliation.
+Currency inference recognizes an explicit currency code/symbol, the `Rs.` prefix, and Indian receipt markers such as `CGST`, `SGST`, `IGST`, or `FSSAI`. CGST/SGST amounts are combined as tax amounts, not products. Extraction adds warnings and downgrades confidence when line-item sums disagree with the printed subtotal or when subtotal plus tax disagrees with the printed total. A plausible merchant/title line and bill number are extracted when present. Treat high OCR confidence as a signal, not a substitute for checking the extracted fields and reconciliation.
+
+Invoice requests with explicit quantity/unit-price clauses are parsed into each item rather than relying on a language model to keep all rows. Explicit percentage tax is calculated from the parsed subtotal. When a request asks for an invoice-style summary of recorded expenses, its stated period is respected (including a complete previous calendar month); uploaded receipts are not silently counted as saved transactions.
 
 ## 7. OCR
 
