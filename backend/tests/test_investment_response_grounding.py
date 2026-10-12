@@ -73,3 +73,24 @@ def test_market_reply_grounding_rejects_generic_text_without_quote_numbers():
         [analysis],
         "Should I invest 10000 on Microsoft?",
     )
+
+
+def test_market_reply_grounding_rejects_raw_tool_trace_even_when_numbers_match():
+    analysis = investment_analyser._SymbolAnalysis(
+        "MSFT",
+        True,
+        "Microsoft Corporation (MSFT)\nLast close: 541.34 USD\n20-day SMA: 511.90",
+        Decimal("541.34"),
+        Decimal("511.90"),
+        Decimal("1.17"),
+    )
+
+    raw_tool_output = (
+        '[tokenized_tools]="yfinance_lookup", '
+        '[latest_msft_data]=["Close: 541.34", "SMA: 511.90"], [...]'
+    )
+    assert not investment_analyser._market_reply_covers_verified_facts(
+        raw_tool_output,
+        [analysis],
+        "Review my portfolio and compare it with Microsoft (MSFT).",
+    )
