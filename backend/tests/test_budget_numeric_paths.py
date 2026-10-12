@@ -118,6 +118,13 @@ class BudgetNumericPathTests(unittest.TestCase):
             ),
             "food",
         )
+        self.assertEqual(
+            _requested_transaction_category(
+                "How much did I spend on food in the last 30 days?",
+                {"groceries": Decimal("0")},
+            ),
+            "groceries",
+        )
         self.assertIsNone(
             _requested_transaction_category(
                 "How much did I spend on food and transport?", {"food": Decimal("0")}
