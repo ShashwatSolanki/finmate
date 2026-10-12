@@ -251,6 +251,12 @@ def _references_uploaded_invoice(request: str) -> bool:
             request,
             re.I,
         )
+        or re.search(
+            r"\bseparat(?:e|ely|ing)\b.{0,90}"
+            r"\b(?:uploaded|attached|imported)\b.{0,30}\b(?:invoice|receipt|bill|document)\b",
+            request,
+            re.I,
+        )
     )
 
 
