@@ -9,6 +9,7 @@ import {
   apiFetch,
   authHeaders,
   cleanAssistantText,
+  parseInvoiceWarnings,
   type ChatMessage,
   type ChatResponse,
   type Conversation,
@@ -203,6 +204,7 @@ export default function ChatPage() {
     source: string,
     sourceType: string,
     confidence: string,
+    warnings: string[],
   ) {
     if (!token) throw new Error("Please sign in again before saving this invoice.");
 
@@ -230,6 +232,7 @@ export default function ChatPage() {
           source_type: sourceType,
           confidence,
           invoice,
+          warnings,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -336,6 +339,7 @@ export default function ChatPage() {
 
           {messages.map((m) => {
             const importedInvoice = m.role === "user" ? readImportedInvoice(m.metadata) : null;
+            const invoiceWarnings = importedInvoice ? parseInvoiceWarnings(m.metadata?.warnings) : [];
             return (
               <div key={m.id} className={`bubble-row ${m.role}`}>
                 <div className={`bubble ${m.role}`}>
@@ -364,6 +368,16 @@ export default function ChatPage() {
                           <strong>Total: {importedInvoice.total} {importedInvoice.currency}</strong>
                         )}
                       </div>
+                      {invoiceWarnings.length > 0 && (
+                        <div className="invoice-attachment-warnings" role="note">
+                          <strong>Review extraction</strong>
+                          <ul>
+                            {invoiceWarnings.map((warning, index) => (
+                              <li key={`${warning}-${index}`}>{warning}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                       <details className="invoice-attachment-details">
                         <summary>View extracted details</summary>
                         {(importedInvoice.invoice_number || importedInvoice.invoice_date || importedInvoice.bill_to) && (
