@@ -109,12 +109,20 @@ Grand Total 7 1029.00
         self.assertEqual(invoice.invoice_number, "73430")
         self.assertEqual(invoice.invoice_date, "28/11/25")
         self.assertEqual(
-            [(item.description, item.amount) for item in invoice.line_items],
             [
-                ("Chicken Fajita Breakfast Tacos", Decimal("300.00")),
-                ("French Toast With Lemon Cream Cheese And Blueberry Compote", Decimal("190.00")),
-                ("The Breakfast Bake", Decimal("210.00")),
-                ("Tiramisu Those Pancakes", Decimal("280.00")),
+                (item.description, item.quantity, item.unit_price, item.amount)
+                for item in invoice.line_items
+            ],
+            [
+                ("Chicken Fajita Breakfast Tacos", 1.0, Decimal("300.00"), Decimal("300.00")),
+                (
+                    "French Toast With Lemon Cream Cheese And Blueberry Compote",
+                    1.0,
+                    Decimal("190.00"),
+                    Decimal("190.00"),
+                ),
+                ("The Breakfast Bake", 1.0, Decimal("210.00"), Decimal("210.00")),
+                ("Tiramisu Those Pancakes", 1.0, Decimal("280.00"), Decimal("280.00")),
             ],
         )
         self.assertEqual(invoice.subtotal, Decimal("980.00"))
