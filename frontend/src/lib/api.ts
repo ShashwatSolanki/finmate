@@ -235,20 +235,30 @@ export function authHeaders(token: string | null): HeadersInit {
 }
 
 export function cleanAssistantText(raw: string): string {
-  const lines = raw.replace(/\r/g, "").split("\n").map((l) => l.trimEnd());
-  const filtered = lines.filter((line) => {
+  const lines = raw.replace(/\r/g, "").split("\n");
+  const visible: string[] = [];
+  let blankPending = false;
+
+  for (const line of lines) {
     const t = line.trim();
-    if (!t) return false;
-    if (/^\[AGENT:\s*[A-Z_]+\]$/i.test(t)) return false;
+    if (!t) {
+      if (visible.length > 0) blankPending = true;
+      continue;
+    }
+    if (/^\[AGENT:\s*[A-Z_]+\]$/i.test(t)) continue;
     if (t.startsWith("{") && t.endsWith("}")) {
       try {
         JSON.parse(t);
-        return false;
+        continue;
       } catch {
-        return true;
+        // Keep malformed JSON-like prose. Only valid metadata JSON is removed.
       }
     }
-    return true;
-  });
-  return filtered.join("\n").trim();
+
+    if (blankPending && visible.length > 0) visible.push("");
+    visible.push(t);
+    blankPending = false;
+  }
+
+  return visible.join("\n").trim();
 }
