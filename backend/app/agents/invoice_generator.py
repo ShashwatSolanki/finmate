@@ -235,9 +235,21 @@ def _extract_parties_and_due_date(message: str) -> tuple[str | None, str | None,
 
 
 def _references_uploaded_invoice(request: str) -> bool:
+    """Recognize a request to inspect an existing upload, not a passing mention of one."""
     return bool(
-        re.search(r"\b(?:invoice|receipt|bill|document)\b.{0,55}\b(?:uploaded|attached|imported|above|earlier)\b", request, re.I)
-        or re.search(r"\b(?:uploaded|attached|imported)\b.{0,55}\b(?:invoice|receipt|bill|document|image|file)\b", request, re.I)
+        re.search(
+            r"\b(?:invoice|receipt|bill|document)\b.{0,55}\b(?:uploaded|attached|imported|above|earlier)\b",
+            request,
+            re.I,
+        )
+        or re.search(
+            r"\b(?:review|inspect|extract|read|check|audit|reconcile|summari[sz]e|use|using|"
+            r"based on|look at|show me|tell me|what is|what's)\b.{0,80}"
+            r"\b(?:my|the|this|that)?\s*(?:uploaded|attached|imported)\b.{0,30}"
+            r"\b(?:invoice|receipt|bill|document|image|file)\b",
+            request,
+            re.I,
+        )
     )
 
 
