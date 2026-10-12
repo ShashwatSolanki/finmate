@@ -1,13 +1,19 @@
 """Regression tests for data-backed investment and invoice behavior."""
 
 import unittest
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from app.agents.agentic_orchestrator import run_agentic_turn
 from app.agents.budget_planner import run as run_budget
-from app.agents.invoice_generator import _structured_from_message, run as run_invoice
+from app.agents.invoice_generator import (
+    _invoice_from_memory_text,
+    _references_uploaded_invoice,
+    _structured_from_message,
+    run as run_invoice,
+)
 from app.agents.investment_analyser import _extract_risk_from_context, run as run_investment
 from app.agents.types import AgentName, AgentResult
 
@@ -133,6 +139,107 @@ class DataBackedAgentTests(unittest.TestCase):
         )
         self.assertEqual(invoice.subtotal, Decimal("3200.00"))
         self.assertEqual(invoice.total, Decimal("3200.00"))
+
+    def test_full_natural_language_invoice_preserves_all_items_and_tax(self):
+        invoice = _structured_from_message(
+            "Create an invoice from Shashwat Solanki to Acme Technologies, due 30 days from today. "
+            "Add Website Development: 2 units at INR 12,000 each, "
+            "Hosting: 1 unit at INR 2,000, and SEO Audit: 1 unit at INR 3,000. "
+            "Apply 18% tax to the subtotal."
+        )
+
+        self.assertIsNotNone(invoice)
+        assert invoice is not None
+        self.assertEqual(invoice.vendor_name, "Shashwat Solanki")
+        self.assertEqual(invoice.bill_to, "Acme Technologies")
+        self.assertEqual(invoice.due_date, (date.today() + timedelta(days=30)).isoformat())
+        self.assertEqual(invoice.currency, "INR")
+        self.assertEqual(
+            [
+                (item.description, item.quantity, item.unit_price, item.amount)
+                for item in invoice.line_items
+            ],
+            [
+                ("Website Development", 2.0, Decimal("12000"), Decimal("24000.00")),
+                ("Hosting", 1.0, Decimal("2000"), Decimal("2000.00")),
+                ("SEO Audit", 1.0, Decimal("3000"), Decimal("3000.00")),
+            ],
+        )
+        self.assertEqual(invoice.subtotal, Decimal("29000.00"))
+        self.assertEqual(invoice.tax, Decimal("5220.00"))
+        self.assertEqual(invoice.total, Decimal("34220.00"))
+
+    def test_uploaded_receipt_memory_reconstructs_the_full_invoice(self):
+        memory_text = """User: Uploaded invoice file: test_bill.jpg
+Source type: image; extraction confidence: high.
+Invoice date: 28/11/25
+Vendor: The Hole in wall Cafe
+Line items:
+- Chicken Fajita Breakfast Tacos: 300.00 INR
+- French Toast With Lemon Cream Cheese And Blueberry Compote: 190.00 INR
+- The Breakfast Bake: 210.00 INR
+- Tiramisu Those Pancakes: 280.00 INR
+Subtotal: 980.00 INR
+Tax: 49.00 INR
+Total: 1029.00 INR
+"""
+        invoice = _invoice_from_memory_text(memory_text)
+
+        self.assertIsNotNone(invoice)
+        assert invoice is not None
+        self.assertEqual(invoice.vendor_name, "The Hole in wall Cafe")
+        self.assertEqual(invoice.currency, "INR")
+        self.assertEqual([item.amount for item in invoice.line_items], [
+            Decimal("300.00"), Decimal("190.00"), Decimal("210.00"), Decimal("280.00")
+        ])
+        self.assertEqual(invoice.subtotal, Decimal("980.00"))
+        self.assertEqual(invoice.tax, Decimal("49.00"))
+        self.assertEqual(invoice.total, Decimal("1029.00"))
+        self.assertTrue(_references_uploaded_invoice("Review the invoice or receipt I uploaded."))
+
+    def test_uploaded_receipt_followup_uses_saved_invoice_instead_of_parsing_prompt(self):
+        saved_invoice = _invoice_from_memory_text(
+            """User: Uploaded invoice file: test_bill.jpg
+Source type: image; extraction confidence: high.
+Vendor: The Hole in wall Cafe
+Line items:
+- Chicken Fajita Breakfast Tacos: 300.00 INR
+- French Toast With Lemon Cream Cheese And Blueberry Compote: 190.00 INR
+- The Breakfast Bake: 210.00 INR
+- Tiramisu Those Pancakes: 280.00 INR
+Subtotal: 980.00 INR
+Tax: 49.00 INR
+Total: 1029.00 INR
+"""
+        )
+        with (
+            patch("app.agents.invoice_generator._invoice_from_recent_upload", return_value=saved_invoice),
+            patch("app.agents.invoice_generator.settings.finmate_use_llm", False),
+        ):
+            result = run_invoice(
+                self.user_id,
+                "Review the invoice or receipt I uploaded and show the extracted total.",
+                self.db,
+            )
+
+        self.assertEqual(result.metadata["source"], "uploaded_invoice_context")
+        self.assertEqual(result.metadata["parsed_items_count"], "4")
+        self.assertEqual(result.metadata["parsed_total"], "1029.00")
+        self.assertIn("The Hole in wall Cafe", result.reply)
+        self.assertIn("1029.00 INR", result.reply)
+
+    def test_expense_invoice_without_transactions_explains_missing_data(self):
+        self.db.scalars.return_value.all.return_value = []
+        with patch("app.agents.invoice_generator.settings.finmate_use_llm", False):
+            result = run_invoice(
+                self.user_id,
+                "Summarize my recorded expenses for the previous calendar month and prepare an invoice-style report.",
+                self.db,
+            )
+
+        self.assertEqual(result.metadata["source"], "missing_transaction_history")
+        self.assertIn("no matching recorded expense transactions", result.reply.lower())
+        self.assertNotIn("could not detect invoice line items", result.reply.lower())
 
     def test_expense_invoice_uses_recent_transactions(self):
         invoice = MagicMock()
