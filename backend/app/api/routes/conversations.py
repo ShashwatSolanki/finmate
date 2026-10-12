@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -160,6 +160,12 @@ def list_messages(
     rows = db.scalars(
         select(ChatMessage)
         .where(ChatMessage.session_id == session_id)
-        .order_by(ChatMessage.created_at.asc())
+        .order_by(
+            ChatMessage.created_at.asc(),
+            # Historical rows may have equal timestamps because PostgreSQL now() is
+            # stable for a whole transaction. In that tie, show the user turn first.
+            case((ChatMessage.role == "user", 0), else_=1),
+            ChatMessage.id.asc(),
+        )
     ).all()
     return [MessageOut.from_row(row) for row in rows]
