@@ -401,13 +401,37 @@ def _structured_from_message(message: str) -> StructuredInvoice | None:
     return None
 
 
-def _expense_invoice_from_transactions(db: Session, user_id: UUID) -> StructuredInvoice | None:
-    """Build an exportable invoice-style expense summary from recent transactions."""
+def _expense_reporting_window(request: str | None) -> tuple[date, date, str]:
+    """Resolve the requested period for expense-backed invoice summaries."""
+    today = date.today()
+    if request and re.search(
+        r"\b(?:previous|prior|last|most recent complete)\s+(?:full\s+)?calendar\s+month\b|"
+        r"\bmonth before (?:it|this)\b",
+        request,
+        re.I,
+    ):
+        this_month_start = date(today.year, today.month, 1)
+        end = this_month_start - timedelta(days=1)
+        start = date(end.year, end.month, 1)
+        label = f"previous calendar month ({start.isoformat()} to {end.isoformat()})"
+        return start, end, label
+    start = today - timedelta(days=30)
+    return start, today, f"last 30 days ({start.isoformat()} to {today.isoformat()})"
+
+
+def _expense_invoice_from_transactions(
+    db: Session,
+    user_id: UUID,
+    request: str | None = None,
+) -> StructuredInvoice | None:
+    """Build an exportable invoice-style expense summary from recorded transactions."""
+    start, end, period_label = _expense_reporting_window(request)
     rows = db.scalars(
         select(Transaction)
         .where(
             Transaction.user_id == user_id,
-            Transaction.occurred_on >= date.today() - timedelta(days=30),
+            Transaction.occurred_on >= start,
+            Transaction.occurred_on <= end,
             Transaction.amount < 0,
         )
         .order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc())
@@ -439,10 +463,10 @@ def _expense_invoice_from_transactions(db: Session, user_id: UUID) -> Structured
         subtotal=subtotal,
         total=subtotal,
         notes=(
-            f"Generated from expense transactions in {currency} over the last 30 days. "
+            f"Generated from expense transactions in {currency} over {period_label}. "
             "Transactions in other currencies were excluded to avoid mixing currencies."
             if len({(row.currency or "USD").upper() for row in rows}) > 1
-            else "Generated from expense transactions in this currency over the last 30 days."
+            else f"Generated from expense transactions in this currency over {period_label}."
         ),
     )
 
@@ -531,7 +555,7 @@ def run(
     wants_expense_invoice = _wants_expense_invoice(request)
     invoice_from_transactions = False
     if invoice is None and wants_expense_invoice:
-        invoice = _expense_invoice_from_transactions(db, user_id)
+        invoice = _expense_invoice_from_transactions(db, user_id, request_text)
         invoice_from_transactions = invoice is not None
 
     rag_block = ""
@@ -578,10 +602,11 @@ def run(
         )
 
     if wants_expense_invoice:
+        _period_start, _period_end, period_label = _expense_reporting_window(request_text)
         reply = (
             "[AGENT: INVOICE]\n\n"
-            "I couldn't prepare an expense summary because there are no matching recorded expense transactions "
-            "in the last 30 days. Uploaded invoices and receipts are separate from transaction history; import "
+            f"I couldn't prepare an expense summary because there are no matching recorded expense transactions "
+            f"for {period_label}. Uploaded invoices and receipts are separate from transaction history; import "
             "transactions first if you want them included.\n\n"
             '{"intent":"expense_summary_unavailable","steps":["Check recent recorded transactions","Import expenses if needed"],'
             '"tools_needed":["list_transactions"],"notes":"no matching recorded expenses"}'
@@ -590,7 +615,13 @@ def run(
             agent=AgentName.INVOICE_GENERATOR,
             reply=reply,
             planned_steps=["query_recent_expenses", "report_missing_transaction_data"],
-            metadata={"invoice_ref": inv_id, "parsed_items_count": "0", "source": "missing_transaction_history"},
+            metadata={
+                "invoice_ref": inv_id,
+                "parsed_items_count": "0",
+                "source": "missing_transaction_history",
+                "period_start": _period_start.isoformat(),
+                "period_end": _period_end.isoformat(),
+            },
         )
 
     upload_hint = (
