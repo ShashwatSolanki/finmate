@@ -369,6 +369,18 @@ def _infer_receipt_vendor(lines: list[str]) -> str | None:
             continue
         if re.search(r"\d{3,}", candidate):
             continue
+        tokens = re.findall(r"[A-Za-z]+", candidate)
+        title_case_tokens = sum(
+            token[0].isupper() and token[1:].islower()
+            for token in tokens
+            if len(token) > 1
+        )
+        # OCR may convert a horizontal rule/logo into several short uppercase
+        # fragments ("SSE ESS SR aR ER"). Prefer a plausible title-like line.
+        if len(tokens) >= 4 and title_case_tokens == 0 and sum(token.isupper() for token in tokens) >= len(tokens) - 1:
+            continue
+        if len(tokens) >= 4 and title_case_tokens == 0 and sum(len(token) <= 3 for token in tokens) >= len(tokens) - 1:
+            continue
         # First plausible title-like line before the address/details is the receipt merchant.
         return candidate
     return None
