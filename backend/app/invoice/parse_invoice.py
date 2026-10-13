@@ -11,7 +11,7 @@ _CURRENCY_SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP", "₹": "INR", "¥": 
 _CURRENCY_CODE = re.compile(r"\b(USD|EUR|GBP|INR|JPY|CAD|AUD|CHF|SGD)\b", re.I)
 
 _INV_NUM = re.compile(
-    r"(?:(?:invoice|bill)\s*(?:#|no\.?|number)?[:\s]*)([A-Z0-9][A-Z0-9\-_/]{2,24})",
+    r"(?:(?:invoice|bill)\s*(?:#|no\.?|number)?[:\s;,.]*)([A-Z0-9][A-Z0-9\-_/]{2,24})",
     re.I,
 )
 _DATE = re.compile(
@@ -29,35 +29,35 @@ _CURRENCY_PREFIX = r"(?:Rs[.,]?|INR|USD|EUR|GBP|[\$€£₹])"
 
 # description ... amount  OR  amount description  OR  qty x unit = total
 _LINE_DESC_AMT = re.compile(
-    r"^(.{2,80}?)\s+([\d,]+\.\d{2})\s*$",
+    r"^(.{2,80}?)\s+([\d,]+[.,]\d{2})\s*$",
 )
 _LINE_AMT_DESC = re.compile(
-    r"^([\d,]+\.\d{2})\s+(.{2,80}?)\s*$",
+    r"^([\d,]+[.,]\d{2})\s+(.{2,80}?)\s*$",
 )
 _LINE_QTY = re.compile(
-    r"^(.{2,60}?)\s+(\d+(?:\.\d+)?)\s*x\s*([\d,]+\.\d{2})\s*=\s*([\d,]+\.\d{2})\s*$",
+    r"^(.{2,60}?)\s+(\d+(?:\.\d+)?)\s*x\s*([\d,]+[.,]\d{2})\s*=\s*([\d,]+[.,]\d{2})\s*$",
     re.I,
 )
 # description, optional qty, then one or more currency-prefixed amounts (e.g. unit price + line total).
 # Handles rows like: "Wireless Mouse 1 Rs. 799.00 Rs. 799.00"
 _LINE_GENERIC = re.compile(
     rf"^(.{{2,80}}?)\s+(?:(\d+(?:\.\d+)?)\s+)?"
-    rf"((?:{_CURRENCY_PREFIX}?\s*[\d,]+\.\d{{2}}\s*){{1,3}})$",
+    rf"((?:{_CURRENCY_PREFIX}?\s*[\d,]+[.,]\d{{2}}\s*){{1,3}})$",
     re.I,
 )
-_AMOUNT_TOKEN = re.compile(rf"{_CURRENCY_PREFIX}?\s*[\d,]+\.\d{{2}}", re.I)
+_AMOUNT_TOKEN = re.compile(rf"{_CURRENCY_PREFIX}?\s*[\d,]+[.,]\d{{2}}", re.I)
 
 _TOTAL = re.compile(
-    rf"(?:grand\s*)?total\s*(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+\.\d{{2}})",
+    rf"(?:grand\s*)?total\s*(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+[.,]\d{{2}})",
     re.I,
 )
 _SUBTOTAL = re.compile(
-    rf"sub\s*total\s*(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+\.\d{{2}})",
+    rf"sub\s*total\s*(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+[.,]\d{{2}})",
     re.I,
 )
 _TAX = re.compile(
     rf"(?:tax|vat|(?:c|s|i)?gst)\s*(?:\d+(?:\.\d+)?\s*%)?\s*"
-    rf"(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+\.\d{{2}})",
+    rf"(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+[.,]\d{{2}})",
     re.I,
 )
 
@@ -69,8 +69,8 @@ _SKIP_LINE = re.compile(
 # Receipt/OCR table rows with a quantity, unit price, and line amount.
 _RECEIPT_ITEM_ROW = re.compile(
     rf"^(?P<description>.+?)\s+(?P<quantity>\d+(?:\.\d+)?)\s+"
-    rf"(?P<unit_price>(?:{_CURRENCY_PREFIX}\s*)?[\d,]+\.\d{{2}})\s+"
-    rf"(?P<amount>(?:{_CURRENCY_PREFIX}\s*)?[\d,]+\.\d{{2}})\s*$",
+    rf"(?P<unit_price>(?:{_CURRENCY_PREFIX}\s*)?[\d,]+[.,]\d{{2}})\s+"
+    rf"(?P<amount>(?:{_CURRENCY_PREFIX}\s*)?[\d,]+[.,]\d{{2}})\s*$",
     re.I,
 )
 
@@ -102,7 +102,16 @@ def _to_decimal(raw: str) -> Decimal | None:
     Strips known currency words/symbols and thousands separators first, since a naive
     ``replace(",", "")`` leaves prefixes like "Rs." in place and breaks Decimal parsing.
     """
-    cleaned = re.sub(r"(?i)rs[.,]?|inr|usd|eur|gbp|chf|cad|aud|sgd|[\$€£₹¥,]", "", raw).strip()
+    cleaned = re.sub(r"(?i)rs[.,]?|inr|usd|eur|gbp|chf|cad|aud|sgd|[\$€£₹¥\s]", "", raw).strip()
+    # OCR often reads the decimal point as a comma ("190,00"). Distinguish
+    # that form from thousands separators ("1,900.00") before Decimal parsing.
+    if "." in cleaned:
+        cleaned = cleaned.replace(",", "")
+    elif re.search(r",\d{2}$", cleaned):
+        whole, fractional = cleaned.rsplit(",", 1)
+        cleaned = whole.replace(",", "") + "." + fractional
+    else:
+        cleaned = cleaned.replace(",", "")
     try:
         return Decimal(cleaned)
     except (InvalidOperation, ValueError):
@@ -259,32 +268,45 @@ def _prepare_receipt_table_lines(lines: list[str]) -> tuple[list[str], bool]:
     end_index = len(lines)
     for index in range(header_index + 1, len(lines)):
         line = lines[index]
+        boundary_line = line.strip(" ,:.;|")
         if (
-            re.match(r"^\s*(?:sub\s*$|subtotal\b|grand\s*total\b|total\b)", line, re.I)
-            or re.match(r"^\s*(?:c?gst|sgst|igst|tax|vat)\b", line, re.I)
+            re.match(r"^(?:sub\s*$|subtotal\b|grand\s*total\b|total\b)", boundary_line, re.I)
+            or re.match(r"^(?:c?gst|sgst|igst|tax|vat)\b", boundary_line, re.I)
         ):
             end_index = index
             break
 
     parsed_rows: list[dict[str, str]] = []
     pending_description: list[str] = []
+
+    def flush_pending() -> list[str]:
+        fragments = [
+            fragment.strip(" ,:.;|")
+            for fragment in pending_description
+            if fragment.strip(" ,:.;|")
+            and not re.fullmatch(r"(?:e{2,}|[-_=~.·•]+)", fragment.strip(), re.I)
+        ]
+        return fragments
+
     for line in lines[header_index + 1 : end_index]:
         match = _RECEIPT_ITEM_ROW.match(line)
         if not match:
             # Ignore a repeated table header, but retain otherwise unpriced text as
-            # a likely wrapped description line.
+            # a likely wrapped description line. OCR divider artifacts are handled
+            # separately so they do not contaminate the last real product name.
             if re.search(r"\bitem\b", line, re.I) and re.search(r"\b(?:qty|quantity|price|amount)\b", line, re.I):
                 continue
             pending_description.append(line.strip())
             continue
 
         description = match.group("description").strip(" |:-")
-        if parsed_rows and pending_description:
+        fragments = flush_pending()
+        if parsed_rows and fragments:
             parsed_rows[-1]["description"] = " ".join(
-                [parsed_rows[-1]["description"], *pending_description]
+                [parsed_rows[-1]["description"], *fragments]
             ).strip()
-        elif not parsed_rows and pending_description:
-            description = " ".join([*pending_description, description]).strip()
+        elif not parsed_rows and fragments:
+            description = " ".join([*fragments, description]).strip()
         pending_description.clear()
 
         parsed_rows.append(
@@ -296,9 +318,10 @@ def _prepare_receipt_table_lines(lines: list[str]) -> tuple[list[str], bool]:
             }
         )
 
-    if pending_description and parsed_rows:
+    trailing_fragments = flush_pending()
+    if trailing_fragments and parsed_rows:
         parsed_rows[-1]["description"] = " ".join(
-            [parsed_rows[-1]["description"], *pending_description]
+            [parsed_rows[-1]["description"], *trailing_fragments]
         ).strip()
 
     if not parsed_rows:
@@ -379,7 +402,7 @@ def parse_invoice_text(
     # amount (e.g. "Grand Total 7 1029.00"). Strip only that narrow, label-adjacent
     # artifact before extracting totals; keep the original preview for user review.
     total_text = re.sub(
-        r"(?im)^(\s*grand\s*total)\s+\d{1,3}\s+(?=(?:₹\s*)?[\d,]+\.\d{2}\s*$)",
+        r"(?im)^(\s*grand\s*total)\s+\d{1,3}\s+(?=(?:₹\s*)?[\d,]+[.,]\d{2}\s*$)",
         r"\1 ",
         normalized,
     )
@@ -428,22 +451,39 @@ def parse_invoice_text(
             "Review the invoice before exporting it."
         )
 
+    item_sum = sum((item.amount for item in line_items), start=Decimal("0"))
     if line_items and total is None:
-        total = sum((i.amount for i in line_items), start=Decimal("0"))
-    elif line_items and total is not None and subtotal is None:
-        computed = sum((i.amount for i in line_items), start=Decimal("0"))
-        if abs(computed - total) > Decimal("0.02") and tax is None:
-            subtotal = computed
+        total = item_sum
+    elif line_items and total is not None:
+        # When OCR mangles the subtotal label, item arithmetic can recover it
+        # safely if the independently read tax and grand total agree exactly.
+        arithmetic_subtotal_is_verified = (
+            tax is not None and abs((item_sum + tax) - total) <= Decimal("0.02")
+        )
+        if arithmetic_subtotal_is_verified and (
+            subtotal is None or abs(item_sum - subtotal) > Decimal("0.02")
+        ):
+            if subtotal is not None:
+                warnings.append(
+                    f"OCR subtotal {subtotal:.2f} did not match the line-item sum {item_sum:.2f}; "
+                    "the subtotal was reconstructed from the itemized rows and verified against tax and grand total."
+                )
+            else:
+                warnings.append(
+                    "The printed subtotal was not reliably read by OCR; it was reconstructed from itemized rows "
+                    "and verified against tax and grand total."
+                )
+            subtotal = item_sum
+        elif subtotal is None and tax is None and abs(item_sum - total) > Decimal("0.02"):
+            subtotal = item_sum
 
     if not line_items:
         warnings.append("No line items detected — edit fields manually or upload a clearer document.")
-    elif line_items:
-        item_sum = sum((item.amount for item in line_items), start=Decimal("0"))
-        if subtotal is not None and abs(item_sum - subtotal) > Decimal("0.02"):
-            warnings.append(
-                f"Line-item amounts sum to {item_sum:.2f}, which does not match the printed "
-                f"subtotal {subtotal:.2f}. Review OCR before exporting."
-            )
+    elif subtotal is not None and abs(item_sum - subtotal) > Decimal("0.02"):
+        warnings.append(
+            f"Line-item amounts sum to {item_sum:.2f}, which does not match the printed "
+            f"subtotal {subtotal:.2f}. Review OCR before exporting."
+        )
     if subtotal is not None and tax is not None and total is not None:
         if abs((subtotal + tax) - total) > Decimal("0.02"):
             warnings.append(
