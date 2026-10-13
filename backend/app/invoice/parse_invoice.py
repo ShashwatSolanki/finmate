@@ -305,8 +305,9 @@ def _prepare_receipt_table_lines(lines: list[str]) -> tuple[list[str], bool]:
             parsed_rows[-1]["description"] = " ".join(
                 [parsed_rows[-1]["description"], *fragments]
             ).strip()
-        elif not parsed_rows and fragments:
-            description = " ".join([*fragments, description]).strip()
+        # Text between the table header and first priced row is commonly OCR
+        # noise from the table's horizontal rule. Do not prepend it to the first
+        # product; that would turn a clean item name into a gibberish description.
         pending_description.clear()
 
         parsed_rows.append(
