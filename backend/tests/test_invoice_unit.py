@@ -131,6 +131,70 @@ Grand Total 7 1029.00
         self.assertEqual(result.confidence, "high")
         self.assertFalse(any("does not match" in warning.lower() for warning in result.warnings))
 
+    def test_actual_tesseract_receipt_output_recovers_all_items_and_subtotal(self):
+        # Captured from Tesseract 5.5.0 on the uploaded test_bill.jpg. It
+        # misreads decimal points as commas in two rows and scrambles the
+        # printed subtotal because the receipt uses tightly aligned columns.
+        text = """The Hole in wall Cafe
+3, 8th Mn Road Kmngla 4th blk, Bir
+-34GST:
+29AAHFH8813M17Swiww, theholeinthewallce
+FSSAI Lic No, 11221334000684
+Name
+Date: 28/11/25 Dine In: 10
+12:37
+Cashier: papa Bill No.; 73430
+Item Qty. Price Amount
+aes temepenrermeneneeencettnree ee
+Chicken Fajita 1 300.00 300.00
+Breakfast Tacas
+French Toast With 1 190.00 190,00
+Lemon Cream
+Cheese And
+Blueberry
+Compote
+The Breakfast 1 210,00 210,00
+Bake
+Tiramisu Those 1 280.00 280.00
+Pancakes
+ee
+, Sub
+Total Qty: 4 Total 280-00
+SGST 2.5% 24,50
+CGST 2.5% 24,50
+reece
+Grand Total 7 1029.00
+See
+—-------=--- Table No:
+Amount: - Cash/
+Zomato/ Dineout / Eazydiner
+"""
+        result = parse_invoice_text(text, source_type="image", filename="test_bill.jpg")
+        invoice = result.invoice
+
+        self.assertEqual(invoice.currency, "INR")
+        self.assertEqual(invoice.vendor_name, "The Hole in wall Cafe")
+        self.assertEqual(invoice.invoice_number, "73430")
+        self.assertEqual(invoice.invoice_date, "28/11/25")
+        self.assertEqual(
+            [(item.amount, item.quantity, item.unit_price) for item in invoice.line_items],
+            [
+                (Decimal("300.00"), 1.0, Decimal("300.00")),
+                (Decimal("190.00"), 1.0, Decimal("190.00")),
+                (Decimal("210.00"), 1.0, Decimal("210.00")),
+                (Decimal("280.00"), 1.0, Decimal("280.00")),
+            ],
+        )
+        self.assertIn("Breakfast Tacas", invoice.line_items[0].description)
+        self.assertIn("French Toast With Lemon Cream Cheese And Blueberry Compote", invoice.line_items[1].description)
+        self.assertIn("The Breakfast Bake", invoice.line_items[2].description)
+        self.assertIn("Tiramisu Those Pancakes", invoice.line_items[3].description)
+        self.assertEqual(invoice.subtotal, Decimal("980.00"))
+        self.assertEqual(invoice.tax, Decimal("49.00"))
+        self.assertEqual(invoice.total, Decimal("1029.00"))
+        self.assertEqual(result.confidence, "medium")
+        self.assertTrue(any("subtotal was not reliably read" in warning.lower() for warning in result.warnings))
+
     def test_inconsistent_line_items_lower_confidence_and_add_warning(self):
         text = (
             "Item Qty. Price Amount\n"
