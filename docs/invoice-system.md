@@ -91,7 +91,7 @@ The uploaded PDF/image binary itself is not stored in chat history; the durable 
 
 ### Receipt/table OCR and verification
 
-For receipts with an `Item / Qty / Price / Amount` table, the parser recognizes quantity, unit price, and line amount rows. Unpriced OCR lines between priced rows are joined to the adjacent item description, because long food names commonly wrap over multiple lines. A printed grand total is never treated as a product line item when a line-item table is present.
+For receipts with an `Item / Qty / Price / Amount` table, the parser recognizes quantity, unit price, and line amount rows. OCR decimal commas such as `190,00` are normalized as decimal separators when no decimal point is present; thousands separators in values such as `1,200.00` remain supported. Unpriced OCR lines between priced rows are joined to the adjacent item description, because long food names commonly wrap over multiple lines. Noise from table divider rules before the first priced row is discarded. A printed grand total is never treated as a product line item when a line-item table is present.
 
 Currency inference recognizes an explicit currency code/symbol, the `Rs.` prefix, and Indian receipt markers such as `CGST`, `SGST`, `IGST`, or `FSSAI`. CGST/SGST amounts are combined as tax amounts, not products. Extraction adds warnings and downgrades confidence when line-item sums disagree with the printed subtotal or when subtotal plus tax disagrees with the printed total. A plausible merchant/title line and bill number are extracted when present. Treat high OCR confidence as a signal, not a substitute for checking the extracted fields and reconciliation.
 
