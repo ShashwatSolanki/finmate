@@ -185,7 +185,8 @@ Zomato/ Dineout / Eazydiner
                 (Decimal("280.00"), 1.0, Decimal("280.00")),
             ],
         )
-        self.assertIn("Breakfast Tacas", invoice.line_items[0].description)
+        self.assertEqual(invoice.line_items[0].description, "Chicken Fajita Breakfast Tacas")
+        self.assertNotIn("aes temepenrermeneneeencettnree", invoice.line_items[0].description)
         self.assertIn("French Toast With Lemon Cream Cheese And Blueberry Compote", invoice.line_items[1].description)
         self.assertIn("The Breakfast Bake", invoice.line_items[2].description)
         self.assertIn("Tiramisu Those Pancakes", invoice.line_items[3].description)
