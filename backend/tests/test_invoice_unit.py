@@ -132,10 +132,11 @@ Grand Total 7 1029.00
         self.assertFalse(any("does not match" in warning.lower() for warning in result.warnings))
 
     def test_actual_tesseract_receipt_output_recovers_all_items_and_subtotal(self):
-        # Captured from Tesseract 5.5.0 on the uploaded test_bill.jpg. It
-        # misreads decimal points as commas in two rows and scrambles the
-        # printed subtotal because the receipt uses tightly aligned columns.
-        text = """The Hole in wall Cafe
+        # Captured from the exact grayscale/Tesseract 5.5.0 preprocessing used
+        # by the upload route. The OCR reads two decimal points as commas,
+        # garbles the subtotal, and mistakes the table divider for text.
+        text = """SSE ESS SR aR ER
+The Hole in wall Cafe
 3, 8th Mn Road Kmngla 4th blk, Bir
 -34GST:
 29AAHFH8813M17Swiww, theholeinthewallce
@@ -145,9 +146,9 @@ Date: 28/11/25 Dine In: 10
 12:37
 Cashier: papa Bill No.; 73430
 Item Qty. Price Amount
-aes temepenrermeneneeencettnree ee
+iasestemripenrieenenemeesettee ee oS
 Chicken Fajita 1 300.00 300.00
-Breakfast Tacas
+Breakfast Tacos
 French Toast With 1 190.00 190,00
 Lemon Cream
 Cheese And
@@ -158,14 +159,14 @@ Bake
 Tiramisu Those 1 280.00 280.00
 Pancakes
 ee
-, Sub
-Total Qty: 4 Total 280-00
+Sub
+Total Qty: 4 Totay 289-00
 SGST 2.5% 24,50
 CGST 2.5% 24,50
-reece
+rece AU
 Grand Total 7 1029.00
-See
-—-------=--- Table No:
+“ietntcenyas ee SR
+—------=--- Table No:
 Amount: - Cash/
 Zomato/ Dineout / Eazydiner
 """
@@ -185,8 +186,9 @@ Zomato/ Dineout / Eazydiner
                 (Decimal("280.00"), 1.0, Decimal("280.00")),
             ],
         )
-        self.assertEqual(invoice.line_items[0].description, "Chicken Fajita Breakfast Tacas")
-        self.assertNotIn("aes temepenrermeneneeencettnree", invoice.line_items[0].description)
+        self.assertEqual(invoice.line_items[0].description, "Chicken Fajita Breakfast Tacos")
+        self.assertNotIn("iasestemripenrieenenemeesettee", invoice.line_items[0].description)
+        self.assertNotIn("SSE ESS SR aR ER", invoice.vendor_name or "")
         self.assertIn("French Toast With Lemon Cream Cheese And Blueberry Compote", invoice.line_items[1].description)
         self.assertIn("The Breakfast Bake", invoice.line_items[2].description)
         self.assertIn("Tiramisu Those Pancakes", invoice.line_items[3].description)
