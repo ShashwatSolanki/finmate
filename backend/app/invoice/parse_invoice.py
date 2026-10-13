@@ -367,7 +367,10 @@ def _infer_receipt_vendor(lines: list[str]) -> str | None:
             re.I,
         ):
             continue
-        if re.search(r"\d{3,}", candidate):
+        # A plausible title/header fallback must not contain digit-heavy OCR
+        # fragments (for example "itera ok 5 6 aad 5"). Receipt identity fields
+        # are extracted by their dedicated patterns, so numbers here are noise.
+        if re.search(r"\d", candidate):
             continue
         tokens = re.findall(r"[A-Za-z]+", candidate)
         title_case_tokens = sum(
