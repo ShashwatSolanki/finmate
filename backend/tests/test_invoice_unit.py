@@ -136,6 +136,7 @@ Grand Total 7 1029.00
         # by the upload route. The OCR reads two decimal points as commas,
         # garbles the subtotal, and mistakes the table divider for text.
         text = """SSE ESS SR aR ER
+itera ok 5 6 aad 5
 The Hole in wall Cafe
 3, 8th Mn Road Kmngla 4th blk, Bir
 -34GST:
