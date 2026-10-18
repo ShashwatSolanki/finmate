@@ -206,3 +206,93 @@ def test_invoice_import_is_persisted_as_user_attachment_and_recent_context(datab
     assert "Coffee and sandwich: 450.00 INR" in recent_context
     assert "Extraction warnings:" in recent_context
     assert "review OCR" in recent_context
+
+
+def test_transaction_csv_import_is_persisted_as_user_attachment(database):
+    user = User(
+        id=uuid.uuid4(),
+        email="csv-attachment@example.test",
+        password_hash="test-hash",
+        is_verified=True,
+    )
+    session = ChatSession(user_id=user.id, title="New chat")
+
+    with database.begin() as db:
+        db.add(user)
+        db.add(session)
+        db.flush()
+        session_id = session.id
+
+    app = FastAPI()
+    app.include_router(conversations_router, prefix="/api/conversations")
+
+    def override_db():
+        with database() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: user
+    request_body = {
+        "filename": "finmate_test_transactions.csv",
+        "imported_count": 15,
+        "skipped_count": 1,
+        "preview": [
+            {
+                "amount": "-450.00",
+                "currency": "INR",
+                "category": "Food",
+                "description": "Cafe lunch",
+                "occurred_on": "2026-10-10",
+            },
+            {
+                "amount": "-1200.00",
+                "currency": "INR",
+                "category": "Rent",
+                "description": "October rent",
+                "occurred_on": "2026-10-01",
+            },
+        ],
+        "sample_errors": ["line 17: unsupported date 'not-a-date'"],
+    }
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/conversations/{session_id}/csv-imports",
+            json=request_body,
+        )
+        history_response = client.get(f"/api/conversations/{session_id}/messages")
+        conversations_response = client.get("/api/conversations")
+
+    assert response.status_code == 201
+    saved = response.json()
+    assert saved["role"] == "user"
+    assert saved["content"] == (
+        "Imported 15 transaction(s) from finmate_test_transactions.csv. Skipped 1 row(s)."
+    )
+    assert saved["metadata"]["source"] == "transaction_csv_import"
+    assert saved["metadata"]["filename"] == "finmate_test_transactions.csv"
+    assert saved["metadata"]["imported_count"] == "15"
+    assert saved["metadata"]["skipped_count"] == "1"
+    assert json.loads(saved["metadata"]["preview"])[0]["description"] == "Cafe lunch"
+    assert json.loads(saved["metadata"]["sample_errors"]) == [
+        "line 17: unsupported date 'not-a-date'"
+    ]
+
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert len(history) == 1
+    assert history[0]["id"] == saved["id"]
+    assert history[0]["metadata"]["source"] == "transaction_csv_import"
+
+    assert conversations_response.status_code == 200
+    listed = conversations_response.json()
+    assert listed[0]["id"] == str(session_id)
+    assert listed[0]["title"] == "CSV import: finmate_test_transactions.csv"
+    assert listed[0]["message_count"] == 1
+
+    with database() as db:
+        recent_context = _build_recent_context(db, user.id, turns=1)
+    assert recent_context is not None
+    assert "Imported transactions CSV file: finmate_test_transactions.csv" in recent_context
+    assert "Cafe lunch -450.00 INR" in recent_context
+    assert "line 17: unsupported date" in recent_context
