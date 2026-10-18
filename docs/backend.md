@@ -197,6 +197,7 @@ PATCH  /api/conversations/{session_id}
 DELETE /api/conversations/{session_id}
 GET    /api/conversations/{session_id}/messages
 POST   /api/conversations/{session_id}/invoice-imports
+POST   /api/conversations/{session_id}/csv-imports
 ```
 
 ## 6. Important backend responsibilities
