@@ -66,6 +66,10 @@ Authenticated API requests send it as a bearer token.
 
 The frontend communicates with the FastAPI backend through REST APIs.
 
+Transaction CSV imports are represented by a persisted user-side chat attachment. The transaction import endpoint commits the transaction rows first; the chat then records the filename, imported/skipped counts, a bounded preview of the imported rows, and any sample errors through `POST /api/conversations/{session_id}/csv-imports`. The attachment is loaded again through the normal conversation history API after refresh.
+
+The chat composer occupies its own flex-layout row at the bottom of the chat panel. The message thread scrolls independently in the remaining space, so the composer and transient feedback do not overlay the final message.
+
 During local development, Vite proxies `/api` requests to the backend.
 
 This keeps frontend and backend independently replaceable as long as the API contract is preserved.
