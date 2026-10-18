@@ -34,6 +34,64 @@ function readImportedInvoice(metadata?: Record<string, string> | null): Structur
   }
 }
 
+type ImportedTransactionPreview = {
+  amount: string;
+  currency: string;
+  category: string | null;
+  description: string | null;
+  occurred_on: string;
+};
+
+type TransactionCsvAttachment = {
+  filename: string;
+  importedCount: number;
+  skippedCount: number;
+  preview: ImportedTransactionPreview[];
+  sampleErrors: string[];
+};
+
+function readTransactionCsvAttachment(metadata?: Record<string, string> | null): TransactionCsvAttachment | null {
+  if (metadata?.source !== "transaction_csv_import") return null;
+
+  let preview: ImportedTransactionPreview[] = [];
+  let sampleErrors: string[] = [];
+  try {
+    const parsed: unknown = JSON.parse(metadata.preview || "[]");
+    if (Array.isArray(parsed)) {
+      preview = parsed
+        .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
+        .slice(0, 8)
+        .map((row) => ({
+          amount: String(row.amount ?? ""),
+          currency: String(row.currency ?? ""),
+          category: row.category == null ? null : String(row.category),
+          description: row.description == null ? null : String(row.description),
+          occurred_on: String(row.occurred_on ?? ""),
+        }));
+    }
+  } catch {
+    preview = [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(metadata.sample_errors || "[]");
+    if (Array.isArray(parsed)) {
+      sampleErrors = parsed.filter((value): value is string => typeof value === "string").slice(0, 10);
+    }
+  } catch {
+    sampleErrors = [];
+  }
+
+  const importedCount = Number(metadata.imported_count || 0);
+  const skippedCount = Number(metadata.skipped_count || 0);
+  return {
+    filename: metadata.filename || "transactions.csv",
+    importedCount: Number.isFinite(importedCount) ? importedCount : 0,
+    skippedCount: Number.isFinite(skippedCount) ? skippedCount : 0,
+    preview,
+    sampleErrors,
+  };
+}
+
 export default function ChatPage() {
   const { token } = useAuth();
   const threadRef = useRef<HTMLDivElement>(null);
@@ -257,22 +315,64 @@ export default function ChatPage() {
     void loadConversations().catch(() => undefined);
   }
 
-  function onTransactionsImported(
-    rows: Array<{ amount: string; currency: string; category: string | null; description: string | null; occurred_on: string }>,
+  async function onTransactionsImported(
+    rows: ImportedTransactionPreview[],
     source: string,
     importedCount: number,
+    skippedCount: number,
+    sampleErrors: string[],
   ) {
-    const preview = rows.map((row) => `• ${row.occurred_on} — ${row.description || row.category || "Transaction"}: ${row.amount} ${row.currency}`).join("\n");
-    const more = importedCount > rows.length ? `\n…plus ${importedCount - rows.length} more transaction${importedCount - rows.length === 1 ? "" : "s"}.` : "";
-    setMessages((previous) => [...previous, {
-      id: `transactions-${Date.now()}`,
-      role: "assistant",
-      content: `Imported ${importedCount} transaction${importedCount === 1 ? "" : "s"} from ${source}.\n\n${preview}${more}`,
-      agent: "budget_planner",
-      metadata: { source: "transaction_csv_import" },
-      created_at: new Date().toISOString(),
-    }]);
+    if (!token) throw new Error("Please sign in again before saving the CSV import.");
+    let sessionId = activeSessionId;
+    let createdSessionId: string | null = null;
+
+    if (!sessionId) {
+      const createRes = await apiFetch("/api/conversations", {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({ title: `CSV import: ${source}`.slice(0, 200) }),
+      });
+      if (!createRes.ok) throw new Error(await createRes.text());
+      const created = (await createRes.json()) as Conversation;
+      sessionId = created.id;
+      createdSessionId = created.id;
+    }
+
+    let savedMessage: ChatMessage;
+    try {
+      const res = await apiFetch(`/api/conversations/${sessionId}/csv-imports`, {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          filename: source,
+          imported_count: importedCount,
+          skipped_count: skippedCount,
+          preview: rows.slice(0, 8).map((row) => ({
+            amount: String(row.amount),
+            currency: row.currency,
+            category: row.category,
+            description: row.description,
+            occurred_on: row.occurred_on,
+          })),
+          sample_errors: sampleErrors.slice(0, 10),
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      savedMessage = (await res.json()) as ChatMessage;
+    } catch (err) {
+      if (createdSessionId) {
+        await apiFetch(`/api/conversations/${createdSessionId}`, {
+          method: "DELETE",
+          headers: authHeaders(token),
+        }).catch(() => undefined);
+      }
+      throw err;
+    }
+
+    setMessages((previous) => [...previous, savedMessage]);
+    if (sessionId !== activeSessionId) setActiveSessionId(sessionId);
     shouldAutoScrollRef.current = true;
+    void loadConversations().catch(() => undefined);
   }
 
   return (
@@ -340,6 +440,7 @@ export default function ChatPage() {
           {messages.map((m) => {
             const importedInvoice = m.role === "user" ? readImportedInvoice(m.metadata) : null;
             const invoiceWarnings = importedInvoice ? parseInvoiceWarnings(m.metadata?.warnings) : [];
+            const importedCsv = m.role === "user" ? readTransactionCsvAttachment(m.metadata) : null;
             return (
               <div key={m.id} className={`bubble-row ${m.role}`}>
                 <div className={`bubble ${m.role}`}>
@@ -406,7 +507,56 @@ export default function ChatPage() {
                       </details>
                     </div>
                   )}
-                  <p>{m.content}</p>
+                  {importedCsv && (
+                    <div className="csv-attachment-card">
+                      <div className="invoice-attachment-header">
+                        <span className="invoice-attachment-icon" aria-hidden="true">▤</span>
+                        <div className="invoice-attachment-file">
+                          <strong>{importedCsv.filename}</strong>
+                          <small>TRANSACTION CSV · saved to transaction history</small>
+                        </div>
+                      </div>
+                      <div className="csv-attachment-summary">
+                        <strong>{importedCsv.importedCount} imported</strong>
+                        {importedCsv.skippedCount > 0 && <span>{importedCsv.skippedCount} skipped</span>}
+                      </div>
+                      {importedCsv.preview.length > 0 && (
+                        <details className="invoice-attachment-details">
+                          <summary>Preview imported transactions ({importedCsv.preview.length})</summary>
+                          <ul>
+                            {importedCsv.preview.map((row, index) => (
+                              <li key={`${row.occurred_on}-${row.description || row.category || "transaction"}-${index}`}>
+                                <span className="csv-attachment-row-label">
+                                  <strong>{row.description || row.category || "Transaction"}</strong>
+                                  <small>
+                                    {row.occurred_on}{row.category && row.description ? ` · ${row.category}` : ""}
+                                  </small>
+                                </span>
+                                <strong>{row.amount} {row.currency}</strong>
+                              </li>
+                            ))}
+                            {importedCsv.importedCount > importedCsv.preview.length && (
+                              <li className="csv-attachment-more">
+                                <span>Showing the first {importedCsv.preview.length} of {importedCsv.importedCount} imported rows.</span>
+                              </li>
+                            )}
+                          </ul>
+                        </details>
+                      )}
+                      {importedCsv.sampleErrors.length > 0 && (
+                        <div className="csv-attachment-errors" role="note">
+                          <strong>Rows skipped</strong>
+                          <ul>
+                            {importedCsv.sampleErrors.slice(0, 3).map((item, index) => (
+                              <li key={`${item}-${index}`}>{item}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      <p className="csv-attachment-caption">{m.content}</p>
+                    </div>
+                  )}
+                  {!importedCsv && <p>{m.content}</p>}
                   {m.role === "assistant" && m.metadata && <InvoiceExportActions metadata={m.metadata} />}
                   {m.role === "assistant" && m.metadata && (
                     <MessageMetadata metadata={m.metadata} />
