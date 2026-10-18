@@ -77,6 +77,27 @@ class MessageOut(BaseModel):
         )
 
 
+class ImportedTransactionPreview(BaseModel):
+    amount: str = Field(..., min_length=1, max_length=48)
+    currency: str = Field(..., min_length=1, max_length=8)
+    category: str | None = Field(default=None, max_length=64)
+    description: str | None = Field(default=None, max_length=500)
+    occurred_on: str = Field(..., min_length=1, max_length=32)
+
+
+class TransactionCsvImportCreate(BaseModel):
+    filename: str = Field(..., min_length=1, max_length=255)
+    imported_count: int = Field(..., ge=0, le=20000)
+    skipped_count: int = Field(default=0, ge=0, le=20000)
+    preview: list[ImportedTransactionPreview] = Field(default_factory=list, max_length=8)
+    sample_errors: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("sample_errors")
+    @classmethod
+    def bound_csv_errors(cls, errors: list[str]) -> list[str]:
+        return [error.strip()[:300] for error in errors if error.strip()][:10]
+
+
 def _session_for_user(db: Session, user_id: uuid.UUID, session_id: uuid.UUID) -> ChatSession:
     row = db.scalar(
         select(ChatSession).where(ChatSession.id == session_id, ChatSession.user_id == user_id)
@@ -207,6 +228,80 @@ def delete_conversation(
     row = _session_for_user(db, current.id, session_id)
     db.delete(row)
     db.commit()
+
+
+def _transaction_csv_import_memory_text(body: TransactionCsvImportCreate) -> str:
+    lines = [
+        f"Imported transactions CSV file: {body.filename}",
+        f"Rows imported: {body.imported_count}; rows skipped: {body.skipped_count}.",
+    ]
+    if body.preview:
+        lines.append("Imported transaction preview:")
+        lines.extend(
+            f"- {row.occurred_on}: {row.description or row.category or 'Transaction'} "
+            f"{row.amount} {row.currency}"
+            for row in body.preview
+        )
+    if body.sample_errors:
+        lines.append("Sample import errors:")
+        lines.extend(f"- {error}" for error in body.sample_errors)
+    return "\\n".join(lines)[:3500]
+
+
+@router.post(
+    "/{session_id}/csv-imports",
+    response_model=MessageOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_transaction_csv_import(
+    session_id: uuid.UUID,
+    body: TransactionCsvImportCreate,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+) -> MessageOut:
+    """Persist a CSV import receipt in the selected conversation history.
+
+    The transaction rows themselves were already committed by the transaction
+    import endpoint. This records the import as a durable user-side chat event.
+    """
+    session = _session_for_user(db, current.id, session_id)
+    created_at = datetime.now(timezone.utc)
+    content = f"Imported {body.imported_count} transaction(s) from {body.filename}."
+    if body.skipped_count:
+        content += f" Skipped {body.skipped_count} row(s)."
+    message = ChatMessage(
+        session_id=session.id,
+        role="user",
+        content=content,
+        agent=None,
+        metadata_={
+            "source": "transaction_csv_import",
+            "filename": body.filename,
+            "imported_count": str(body.imported_count),
+            "skipped_count": str(body.skipped_count),
+            "preview": json.dumps(
+                [row.model_dump(mode="json") for row in body.preview],
+                ensure_ascii=False,
+            ),
+            "sample_errors": json.dumps(body.sample_errors, ensure_ascii=False),
+        },
+        created_at=created_at,
+    )
+    db.add(message)
+    db.add(
+        MemoryChunk(
+            user_id=current.id,
+            source="chat",
+            content=f"User: {_transaction_csv_import_memory_text(body)}",
+            created_at=created_at,
+        )
+    )
+    if session.title == "New chat" or not session.title.strip():
+        session.title = f"CSV import: {body.filename}"[:200]
+    session.updated_at = created_at
+    db.commit()
+    db.refresh(message)
+    return MessageOut.from_row(message)
 
 
 @router.post(
