@@ -198,6 +198,8 @@ DELETE /api/conversations/{session_id}
 GET    /api/conversations/{session_id}/messages
 POST   /api/conversations/{session_id}/invoice-imports
 POST   /api/conversations/{session_id}/csv-imports
+
+CSV import history records an event only; it does not import the transactions a second time. The actual transaction rows remain in the existing transactions table, and the chat event stores the filename, counts, bounded preview, and row-level error examples.
 ```
 
 ## 6. Important backend responsibilities
