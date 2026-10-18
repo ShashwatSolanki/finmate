@@ -245,7 +245,7 @@ def _transaction_csv_import_memory_text(body: TransactionCsvImportCreate) -> str
     if body.sample_errors:
         lines.append("Sample import errors:")
         lines.extend(f"- {error}" for error in body.sample_errors)
-    return "\\n".join(lines)[:3500]
+    return "\n".join(lines)[:3500]
 
 
 @router.post(
