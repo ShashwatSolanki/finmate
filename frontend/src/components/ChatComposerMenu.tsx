@@ -24,7 +24,13 @@ type Props = {
     confidence: string,
     warnings: string[],
   ) => Promise<void>;
-  onTransactionsImported: (rows: ImportedTransactionPreview[], source: string, importedCount: number) => void;
+  onTransactionsImported: (
+    rows: ImportedTransactionPreview[],
+    source: string,
+    importedCount: number,
+    skippedCount: number,
+    sampleErrors: string[],
+  ) => Promise<void>;
 };
 
 type ImportedTransactionPreview = {
@@ -109,6 +115,7 @@ export default function ChatComposerMenu({
     onBusyChange(true);
     onImportError(null);
     onImportStatus(null);
+    let transactionsWereImported = false;
     try {
       const csvText = await file.text();
       const header = csvText.split(/\r?\n/, 1)[0].toLowerCase();
@@ -145,15 +152,28 @@ export default function ChatComposerMenu({
         sample_errors?: string[];
         imported_preview?: ImportedTransactionPreview[];
       };
-      if (data.imported_count) {
-        onTransactionsImported(data.imported_preview ?? [], file.name, data.imported_count);
+      transactionsWereImported = data.imported_count > 0;
+      if (data.imported_count > 0 || data.skipped_count > 0) {
+        await onTransactionsImported(
+          data.imported_preview ?? [],
+          file.name,
+          data.imported_count,
+          data.skipped_count,
+          data.sample_errors ?? [],
+        );
+        // A saved CSV attachment now records the import, so no floating success
+        // status is needed above the composer.
+        onImportStatus(null);
+      } else {
+        onImportStatus(`No transaction rows were imported from ${file.name}.`);
       }
-      onImportStatus(
-        `Imported ${data.imported_count} transactions from ${file.name}, skipped ${data.skipped_count}.` +
-          (data.sample_errors?.length ? ` ${data.sample_errors.slice(0, 2).join("; ")}` : ""),
-      );
     } catch (err) {
-      onImportError(err instanceof Error ? err.message : "CSV import failed");
+      const detail = err instanceof Error ? err.message : "CSV import failed";
+      onImportError(
+        transactionsWereImported
+          ? `The transactions were imported, but FinMate couldn't save the CSV entry in chat history. ${detail}`
+          : detail,
+      );
     } finally {
       setBusy(false);
       onBusyChange(false);
