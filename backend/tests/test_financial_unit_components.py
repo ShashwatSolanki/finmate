@@ -9,13 +9,14 @@ from app.agents.budget_planner import _potential_duplicate_rows
 from app.agents.finance_context import extract_monthly_income
 from app.agents.investment_analyser import _extract_lump_sum
 from app.agents.intent import classify_agent
+from app.agents.orchestrator import run_turn
 from app.agents.ticker_utils import (
     extract_ticker_candidates,
     has_investment_signal,
     pick_validated_tickers,
 )
 from app.agents import ticker_utils
-from app.agents.types import AgentName
+from app.agents.types import AgentName, AgentResult
 from app.db.models import Transaction
 from app.api.routes.transactions import _parse_csv_amount, _parse_csv_date
 from app.security.jwt_tokens import (
@@ -122,6 +123,34 @@ def test_csv_file_acronym_does_not_route_transaction_audit_to_investments() -> N
     )
     assert extract_ticker_candidates(message) == []
     assert classify_agent(message) == AgentName.BUDGET_PLANNER
+
+
+def test_orchestrator_routes_csv_transaction_audit_to_budget_not_investment(monkeypatch) -> None:
+    prompt = (
+        "Audit my recorded transactions for the last 30 days. Report the date range, transaction count, "
+        "total expenses, and totals by category in INR. Show how many transactions were imported from "
+        "the most recent CSV and identify duplicate-looking rows, but do not delete or modify any transactions. "
+        "Treat expense debits as positive spending in the report."
+    )
+    sentinel = AgentResult(
+        AgentName.BUDGET_PLANNER,
+        "[AGENT: BUDGET] Recorded expense audit.",
+        metadata={"source": "deterministic_spending_report"},
+    )
+    monkeypatch.setattr("app.agents.orchestrator.settings.finmate_agentic_mode", False)
+    monkeypatch.setattr("app.agents.orchestrator.settings.finmate_use_llm", False)
+    monkeypatch.setattr("app.agents.orchestrator.answer_saved_profile_fact", lambda *_args: None)
+    monkeypatch.setattr("app.agents.orchestrator.budget_planner.run", lambda *_args, **_kwargs: sentinel)
+
+    def fail_if_investment_runs(*_args, **_kwargs):
+        raise AssertionError("A CSV transaction audit must not be routed to Investment Analyser.")
+
+    monkeypatch.setattr("app.agents.orchestrator.investment_analyser.run", fail_if_investment_runs)
+    result = run_turn(uuid4(), prompt, SimpleNamespace(), rag_context=None)
+
+    assert result.agent == AgentName.BUDGET_PLANNER
+    assert result.metadata["source"] == "deterministic_spending_report"
+    assert "Recorded expense audit" in result.reply
 
 
 def test_validated_ticker_extraction_filters_unavailable_symbols(monkeypatch) -> None:
