@@ -296,3 +296,41 @@ def test_transaction_csv_import_is_persisted_as_user_attachment(database):
     assert "Imported transactions CSV file: finmate_test_transactions.csv" in recent_context
     assert "Cafe lunch -450.00 INR" in recent_context
     assert "line 17: unsupported date" in recent_context
+
+
+def test_conversation_title_can_be_customized_and_survives_reload(database):
+    user = User(
+        id=uuid.uuid4(),
+        email="rename-chat@example.test",
+        password_hash="test-hash",
+        is_verified=True,
+    )
+    session = ChatSession(user_id=user.id, title="CSV import: transactions.csv")
+
+    with database.begin() as db:
+        db.add(user)
+        db.add(session)
+        db.flush()
+        session_id = session.id
+
+    app = FastAPI()
+    app.include_router(conversations_router, prefix="/api/conversations")
+
+    def override_db():
+        with database() as db:
+            yield db
+
+    app.dependency_overrides[get_db] = override_db
+    app.dependency_overrides[get_current_user] = lambda: user
+
+    with TestClient(app) as client:
+        response = client.patch(
+            f"/api/conversations/{session_id}",
+            json={"title": "October spending review"},
+        )
+        list_response = client.get("/api/conversations")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "October spending review"
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["title"] == "October spending review"
