@@ -488,6 +488,32 @@ Total: 1029.00 INR
         self.assertEqual(result.metadata["invoice_actions"], "pdf,csv")
 
 
+
+    def test_spending_report_flags_exact_duplicate_looking_rows_without_removing_them(self):
+        prompt = (
+            "Audit my recorded transactions for the last 30 days and identify duplicate-looking rows. "
+            "Do not delete or modify transactions."
+        )
+        with (
+            patch(
+                "app.agents.budget_planner._aggregate_expenses",
+                return_value={"INR": {"Food": Decimal("2250")}},
+            ),
+            patch(
+                "app.agents.budget_planner._potential_duplicate_rows",
+                return_value=[
+                    "- 2026-10-10 | food | cafe lunch | 450.00 INR (expense debit) appears 5 times."
+                ],
+            ),
+            patch("app.agents.budget_planner.extract_monthly_income", return_value=(None, None)),
+        ):
+            result = run_budget(self.user_id, prompt, self.db)
+
+        self.assertIn("Potential exact-match duplicate-looking records", result.reply)
+        self.assertIn("appears 5 times", result.reply)
+        self.assertIn("not removed or excluded from totals", result.reply)
+        self.assertIn("Food: 2,250.00 INR", result.reply)
+
     def test_spending_report_sums_expense_debits_as_positive_and_includes_requested_count(self):
         prompt = (
             "Using only my recorded transactions for the last 30 days, show total spending by category in INR. "
