@@ -486,17 +486,16 @@ def _deterministic_spending_report(
     wants_budget_comparison = _explicitly_requests_budget_plan(message) or wants_surplus
     if wants_budget_comparison:
         if income is None:
-            lines.append("\nMonthly income was not found in the request or saved context, so I cannot calculate a remainder.")
-        if not totals and wants_surplus:
-            if income is not None:
-                lines.append(f"\nSaved/stated monthly income: {_format_amount(income)} {income_currency or 'INR'}.")
+            lines.append("\\nMonthly income was not found in the request or saved context, so I cannot calculate a remainder.")
+        elif not totals and wants_surplus:
+            lines.append(f"\\nSaved/stated monthly income: {_format_amount(income)} {income_currency or 'INR'}.")
             lines.append(
-                "\nI cannot estimate investable surplus because no recorded expense debits were found for this period. "
+                "\\nI cannot estimate investable surplus because no recorded expense debits were found for this period. "
                 "The missing expenses cannot safely be treated as zero; import or add them first."
             )
-        elif not totals and _explicitly_requests_budget_plan(message) and income is not None:
+        elif not totals and _explicitly_requests_budget_plan(message):
             lines.append(
-                "\nThere is no recorded expense data for this period, so the proposed budget is an income-based "
+                "\\nThere is no recorded expense data for this period, so the proposed budget is an income-based "
                 "starting point rather than a comparison with actual spending."
             )
             lines.append(
@@ -506,16 +505,16 @@ def _deterministic_spending_report(
             )
         elif len(totals) == 1 and income_currency and next(iter(totals)) != income_currency:
             lines.append(
-                f"\nMonthly income is recorded as {income_currency}, but expenses are recorded as "
+                f"\\nMonthly income is recorded as {income_currency}, but expenses are recorded as "
                 f"{next(iter(totals))}; I cannot subtract amounts in different currencies without an exchange rate."
             )
         elif len(totals) > 1:
-            lines.append("\nExpenses are recorded in multiple currencies; no combined income remainder is calculated.")
+            lines.append("\\nExpenses are recorded in multiple currencies; no combined income remainder is calculated.")
         elif totals:
             currency_code, total = next(iter(totals.items()))
             remainder = income - total
             lines.append(
-                f"\nStated monthly income: {_format_amount(income)} {income_currency or currency_code}."
+                f"\\nStated monthly income: {_format_amount(income)} {income_currency or currency_code}."
             )
             lines.append(
                 f"Simple remainder after recorded expenses for {period_label}: {_format_amount(remainder)} "
