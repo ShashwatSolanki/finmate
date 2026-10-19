@@ -330,10 +330,18 @@ def _potential_duplicate_rows(
     end: date,
     *,
     limit: int = 8,
+    category: str | None = None,
 ) -> list[str]:
     """Report exact-match transaction groups without changing or excluding records."""
     normalized_category = func.lower(func.trim(func.coalesce(Transaction.category, "")))
     normalized_description = func.lower(func.trim(func.coalesce(Transaction.description, "")))
+    filters = [
+        Transaction.user_id == user_id,
+        Transaction.occurred_on >= start,
+        Transaction.occurred_on <= end,
+    ]
+    if category:
+        filters.append(normalized_category == category.casefold())
     rows = db.execute(
         select(
             Transaction.occurred_on,
@@ -343,11 +351,7 @@ def _potential_duplicate_rows(
             Transaction.currency,
             func.count(Transaction.id),
         )
-        .where(
-            Transaction.user_id == user_id,
-            Transaction.occurred_on >= start,
-            Transaction.occurred_on <= end,
-        )
+        .where(*filters)
         .group_by(
             Transaction.occurred_on,
             normalized_category,
@@ -378,8 +382,10 @@ def _duplicate_warning_lines(
     user_id: UUID,
     start: date,
     end: date,
+    *,
+    category: str | None = None,
 ) -> list[str]:
-    findings = _potential_duplicate_rows(db, user_id, start, end)
+    findings = _potential_duplicate_rows(db, user_id, start, end, category=category)
     if not findings:
         return []
     return [
@@ -733,6 +739,11 @@ def run(
                 + "; ".join(f"{cur} {_format_amount(total)}" for cur, total in totals)
                 + ". These currencies are not combined."
             )
+        duplicate_lines = _duplicate_warning_lines(
+            db, user_id, start, today, category=requested_category
+        )
+        if duplicate_lines:
+            prose += "\\n\\n" + "\\n".join(duplicate_lines)
         reply = (
             "[AGENT: BUDGET]\n\n"
             f"{prose}\n\n"
