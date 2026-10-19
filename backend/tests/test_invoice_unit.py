@@ -8,7 +8,7 @@ import pdfplumber
 
 from app.invoice.parse_invoice import parse_invoice_text
 from app.invoice.pdf_invoice import build_invoice_pdf, build_invoice_pdf_from_structured
-from app.invoice.schemas import ParsedLineItem, StructuredInvoice
+from app.invoice.schemas import ParsedLineItem, StructuredInvoice, TaxBreakdownItem
 
 
 class InvoiceParsingUnitTests(unittest.TestCase):
@@ -198,6 +198,10 @@ Zomato/ Dineout / Eazydiner
         self.assertIn("Tiramisu Those Pancakes", invoice.line_items[3].description)
         self.assertEqual(invoice.subtotal, Decimal("980.00"))
         self.assertEqual(invoice.tax, Decimal("49.00"))
+        self.assertEqual(
+            [(component.label, component.amount) for component in invoice.tax_breakdown],
+            [("SGST 2.5%", Decimal("24.50")), ("CGST 2.5%", Decimal("24.50"))],
+        )
         self.assertEqual(invoice.total, Decimal("1029.00"))
         self.assertEqual(result.confidence, "medium")
         self.assertTrue(any("subtotal was not reliably read" in warning.lower() for warning in result.warnings))
@@ -305,6 +309,10 @@ class InvoicePdfBuilderUnitTests(unittest.TestCase):
             ],
             subtotal=Decimal("26000.00"),
             tax=Decimal("4680.00"),
+            tax_breakdown=[
+                TaxBreakdownItem(label="CGST 9%", amount=Decimal("2340.00")),
+                TaxBreakdownItem(label="SGST 9%", amount=Decimal("2340.00")),
+            ],
             total=Decimal("30680.00"),
         )
         pdf_bytes = build_invoice_pdf_from_structured(
@@ -321,6 +329,10 @@ class InvoicePdfBuilderUnitTests(unittest.TestCase):
         self.assertIn("Website Development", text)
         self.assertIn("12000.00", text)
         self.assertIn("24000.00", text)
+        self.assertIn("CGST 9%", text)
+        self.assertIn("SGST 9%", text)
+        self.assertIn("Total Tax", text)
+        self.assertEqual(text.count("2340.00"), 2)
 
 
     def test_combined_three_item_invoice_pdf_keeps_every_item_and_amount(self):
