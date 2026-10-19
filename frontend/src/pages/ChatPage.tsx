@@ -562,8 +562,11 @@ export default function ChatPage() {
                               ? "Hide imported transactions"
                               : `Preview imported transactions (${importedCsv.preview.length})`}
                           </button>
-                          {expandedCsvImports[m.id] && (
-                            <ul id={`csv-preview-${m.id}`} className="csv-attachment-preview-list">
+                          <ul
+                            id={`csv-preview-${m.id}`}
+                            className="csv-attachment-preview-list"
+                            hidden={!expandedCsvImports[m.id]}
+                          >
                               {importedCsv.preview.map((row, index) => (
                                 <li key={`${row.occurred_on}-${row.description || row.category || "transaction"}-${index}`}>
                                   <span className="csv-attachment-row-label">
@@ -580,8 +583,7 @@ export default function ChatPage() {
                                   <span>Showing the first {importedCsv.preview.length} of {importedCsv.importedCount} imported rows.</span>
                                 </li>
                               )}
-                            </ul>
-                          )}
+                          </ul>
                         </div>
                       ) : (
                         <p className="csv-attachment-no-preview">The import was saved, but this record has no stored transaction preview.</p>
