@@ -15,6 +15,8 @@ from app.agents.budget_planner import (
 from app.agents.invoice_generator import (
     _expense_reporting_window,
     _invoice_from_memory_text,
+    _wants_expense_invoice,
+    _wants_invoice_output,
     _references_uploaded_invoice,
     _structured_from_message,
     run as run_invoice,
@@ -156,6 +158,50 @@ class DataBackedAgentTests(unittest.TestCase):
         )
         self.assertEqual(invoice.subtotal, Decimal("900.00"))
         self.assertEqual(invoice.total, Decimal("900.00"))
+
+
+    def test_combined_agent_invoice_clause_preserves_all_items_without_colons(self):
+        prompt = (
+            "Complete all three tasks. First, report my last-30-day recorded expenses by category and keep "
+            "uploaded receipts separate from transactions. Second, review my saved AAPL, MSFT, and NVDA portfolio. "
+            "Third, create an invoice from Shashwat Solanki to Acme Technologies: Website Development 2 units at "
+            "INR 12,000 each, Hosting 1 unit at INR 2,000, SEO Audit 1 unit at INR 3,000, with 18% tax. "
+            "Preserve the invoice fields for export."
+        )
+        invoice = _structured_from_message(prompt)
+
+        self.assertIsNotNone(invoice)
+        assert invoice is not None
+        self.assertEqual(invoice.vendor_name, "Shashwat Solanki")
+        self.assertEqual(invoice.bill_to, "Acme Technologies")
+        self.assertEqual(
+            [(item.description, item.quantity, item.unit_price, item.amount) for item in invoice.line_items],
+            [
+                ("Website Development", 2.0, Decimal("12000"), Decimal("24000.00")),
+                ("Hosting", 1.0, Decimal("2000"), Decimal("2000.00")),
+                ("SEO Audit", 1.0, Decimal("3000"), Decimal("3000.00")),
+            ],
+        )
+        self.assertEqual(invoice.subtotal, Decimal("29000.00"))
+        self.assertEqual(invoice.tax, Decimal("5220.00"))
+        self.assertEqual(invoice.total, Decimal("34220.00"))
+
+    def test_financial_data_audit_does_not_trigger_expense_invoice_generation(self):
+        prompt = (
+            "Audit my financial data before giving any recommendation. Identify which figures are directly "
+            "supported by recorded transactions, which are from my uploaded receipt, which are from market quotes, "
+            "and which are missing. Do not treat an uploaded receipt as a transaction, do not assume unrecorded "
+            "expenses are zero, and do not invent monthly totals or currency conversions."
+        )
+        self.assertFalse(_wants_expense_invoice(prompt))
+        self.assertFalse(_wants_invoice_output(prompt))
+
+        result = run_invoice(self.user_id, prompt, self.db)
+
+        self.assertEqual(result.metadata["source"], "prompt")
+        self.assertNotIn("invoice_actions", result.metadata)
+        self.assertNotIn("invoice_payload", result.metadata)
+        self.assertIn("I could not detect invoice line items", result.reply)
 
     def test_explicit_invoice_with_spending_context_keeps_text_source(self):
         result = run_invoice(
