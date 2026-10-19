@@ -183,9 +183,9 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
 def _count_explicit_item_clauses(message: str) -> int:
     """Count quantity/unit-price clauses so a partially parsed invoice is never exported."""
     pattern = re.compile(
-        r"\\b\\d+(?:\\.\\d+)?\\s*(?:units?|items?)?\\s*(?:at|@|x|×)\\s*"
-        r"(?:(?:INR|Rs\\.?|USD|EUR|GBP|₹|\\$|€|£)\\s*)?"
-        r"(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d{1,2})?",
+        r"\b\d+(?:\.\d+)?\s*(?:units?|items?)?\s*(?:at|@|x|×)\s*"
+        r"(?:(?:INR|Rs\.?|USD|EUR|GBP|₹|\$|€|£)\s*)?"
+        r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?",
         re.I,
     )
     return sum(1 for _ in pattern.finditer(message))
