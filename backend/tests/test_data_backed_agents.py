@@ -6,7 +6,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from app.agents.agentic_orchestrator import run_agentic_turn
+from app.agents.agentic_orchestrator import _synthesize, build_plan, run_agentic_turn
 from app.agents.budget_planner import (
     _asks_for_investable_surplus,
     _asks_for_transaction_total,
@@ -407,6 +407,46 @@ Total: 1029.00 INR
 
         self.assertEqual(result.metadata["invoice_actions"], "pdf,csv")
         self.assertEqual(result.metadata["source"], "transaction_summary")
+
+
+    def test_financial_data_audit_does_not_schedule_an_invoice_artifact(self):
+        prompt = (
+            "Audit my financial data before giving any recommendation. Identify which figures are directly "
+            "supported by recorded transactions, which are from my uploaded receipt, which are from market quotes, "
+            "and which are missing. Do not treat an uploaded receipt as a transaction, do not assume unrecorded "
+            "expenses are zero, and do not invent monthly totals or currency conversions."
+        )
+        plan = build_plan(prompt)
+
+        self.assertIsNotNone(plan)
+        assert plan is not None
+        agents = [step.agent for step in plan.steps]
+        self.assertIn(AgentName.BUDGET_PLANNER, agents)
+        self.assertIn(AgentName.INVESTMENT_ANALYSER, agents)
+        self.assertNotIn(AgentName.INVOICE_GENERATOR, agents)
+
+    def test_agentic_fallback_rejects_raw_tool_traces(self):
+        observations = [
+            AgentResult(
+                AgentName.BUDGET_PLANNER,
+                '[AGENT: BUDGET]\\n\\n["Agent says: risk assessment", "tools_needed=[date_set]"]',
+            ),
+            AgentResult(
+                AgentName.INVESTMENT_ANALYSER,
+                "[AGENT: INVESTMENT]\\n\\nMSFT last close is 529.05 USD.",
+            ),
+        ]
+        with patch("app.agents.agentic_orchestrator.settings.finmate_use_llm", False):
+            reply = _synthesize(
+                "Audit my budget and Microsoft exposure.",
+                observations,
+                AgentName.BUDGET_PLANNER,
+            )
+
+        self.assertNotIn("Agent says:", reply)
+        self.assertNotIn("tools_needed=[", reply)
+        self.assertIn("did not produce a readable, validated answer", reply)
+        self.assertIn("MSFT last close is 529.05 USD.", reply)
 
     def test_agentic_pipeline_preserves_invoice_export_payload(self):
         invoice = AgentResult(
