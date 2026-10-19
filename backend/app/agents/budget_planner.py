@@ -420,6 +420,8 @@ def _deterministic_spending_report(
         if income is None:
             lines.append("\nMonthly income was not found in the request or saved context, so I cannot calculate a remainder.")
         if not totals and wants_surplus:
+            if income is not None:
+                lines.append(f"\nSaved/stated monthly income: {_format_amount(income)} {income_currency or 'INR'}.")
             lines.append(
                 "\nI cannot estimate investable surplus because no recorded expense debits were found for this period. "
                 "The missing expenses cannot safely be treated as zero; import or add them first."
