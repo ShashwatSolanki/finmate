@@ -636,7 +636,7 @@ def _is_market_source_audit_request(message: str) -> bool:
             re.I,
         )
         and not re.search(
-            r"\b(?:should i invest|recommend(?:ation)?|buy|sell|allocate|investment amount|"
+            r"\b(?:should i invest|buy|sell|allocate|investment amount|"
             r"portfolio allocation|stock comparison)\b",
             text,
             re.I,
