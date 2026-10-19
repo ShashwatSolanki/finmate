@@ -25,6 +25,7 @@ def build_invoice_pdf(
     tax: Decimal | None = None,
     total: Decimal | None = None,
     item_details: list[tuple[float | None, Decimal | None]] | None = None,
+    tax_breakdown: list[tuple[str, Decimal]] | None = None,
 ) -> bytes:
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=letter)
@@ -102,7 +103,20 @@ def build_invoice_pdf(
         c.drawString(72, y, "Subtotal")
         c.drawRightString(540, y, f"{subtotal:.2f}")
         y -= 14
-    if tax is not None:
+    if tax_breakdown:
+        for label, amount in tax_breakdown:
+            c.drawString(72, y, label[:80])
+            c.drawRightString(540, y, f"{amount:.2f}")
+            y -= 14
+        aggregate_tax = tax if tax is not None else sum(
+            (amount for _label, amount in tax_breakdown), start=Decimal("0")
+        )
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(72, y, "Total Tax")
+        c.drawRightString(540, y, f"{aggregate_tax:.2f}")
+        c.setFont("Helvetica", 9)
+        y -= 14
+    elif tax is not None:
         c.drawString(72, y, "Tax")
         c.drawRightString(540, y, f"{tax:.2f}")
         y -= 14
@@ -145,9 +159,18 @@ def _validate_invoice_for_pdf(invoice: StructuredInvoice) -> None:
             f"({item_sum:.2f}). Correct the invoice before exporting."
         )
 
+    breakdown_tax = sum(
+        (component.amount for component in invoice.tax_breakdown), start=Decimal("0")
+    )
+    if invoice.tax_breakdown and invoice.tax is not None and abs(breakdown_tax - invoice.tax) > tolerance:
+        raise ValueError(
+            f"Tax breakdown ({breakdown_tax:.2f}) does not match aggregate tax ({invoice.tax:.2f})."
+        )
+
     if invoice.total is not None:
         base_amount = invoice.subtotal if invoice.subtotal is not None else item_sum
-        expected_total = base_amount + (invoice.tax or Decimal("0"))
+        effective_tax = invoice.tax if invoice.tax is not None else breakdown_tax
+        expected_total = base_amount + effective_tax
         if abs(expected_total - invoice.total) > tolerance:
             raise ValueError(
                 f"Invoice total ({invoice.total:.2f}) does not match subtotal/line items plus tax "
@@ -176,4 +199,5 @@ def build_invoice_pdf_from_structured(
         tax=invoice.tax,
         total=invoice.total,
         item_details=item_details,
+        tax_breakdown=[(component.label, component.amount) for component in invoice.tax_breakdown],
     )
