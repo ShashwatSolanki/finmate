@@ -247,6 +247,59 @@ def test_spending_insights_empty_data_returns_empty(database) -> None:
         assert category_delta_vs_prior_month(db, uuid4(), ref=date(2026, 3, 1)) == ""
 
 
+
+def test_spending_insights_uses_positive_debits_and_correct_direction(database) -> None:
+    user_id = uuid4()
+    with database.begin() as db:
+        db.add_all(
+            [
+                Transaction(
+                    user_id=user_id,
+                    amount=Decimal("-1000"),
+                    currency="INR",
+                    category="Food",
+                    occurred_on=date(2026, 8, 10),
+                ),
+                Transaction(
+                    user_id=user_id,
+                    amount=Decimal("-1100"),
+                    currency="INR",
+                    category="Food",
+                    occurred_on=date(2026, 9, 10),
+                ),
+                Transaction(
+                    user_id=user_id,
+                    amount=Decimal("500"),
+                    currency="INR",
+                    category="Food",
+                    occurred_on=date(2026, 9, 12),
+                ),
+                Transaction(
+                    user_id=user_id,
+                    amount=Decimal("-2000"),
+                    currency="INR",
+                    category="Transport",
+                    occurred_on=date(2026, 8, 11),
+                ),
+                Transaction(
+                    user_id=user_id,
+                    amount=Decimal("-1800"),
+                    currency="INR",
+                    category="Transport",
+                    occurred_on=date(2026, 9, 11),
+                ),
+            ]
+        )
+
+    with database() as db:
+        result = category_delta_vs_prior_month(db, user_id, ref=date(2026, 10, 15))
+
+    assert "Food: up about 10% vs prior month (1000 → 1100)." in result
+    assert "Transport: down about 10% vs prior month (2000 → 1800)." in result
+    assert "(1000 → 1100)" in result
+    assert "-1000" not in result
+
+
 def test_spending_insights_ignores_other_users_and_small_changes(database) -> None:
     user_id = uuid4()
     with database.begin() as db:
