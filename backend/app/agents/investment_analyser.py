@@ -644,6 +644,50 @@ def _is_market_source_audit_request(message: str) -> bool:
     )
 
 
+
+
+def _market_quote_evidence_lines(context: str | None) -> list[str]:
+    """Read a prior FinMate quote snapshot from recent context without inventing missing fields."""
+    if not context:
+        return []
+    snapshot = re.search(r"Latest available market snapshot\s*:", context, re.I)
+    if not snapshot:
+        return []
+    text = context[snapshot.end():]
+    stop = re.search(
+        r"(?im)^\s*(?:Existing ticker exposure:|Your saved risk tolerance\b|Market data describes\b|"
+        r"[A-Z]{1,6} is above\b)",
+        text,
+    )
+    if stop:
+        text = text[:stop.start()]
+    headers = list(re.finditer(r"(?m)^([^\n]*?)\s+\(([A-Z][A-Z0-9.-]{0,5})\)\s*$", text))
+    evidence: list[str] = []
+    for index, header in enumerate(headers):
+        block_end = headers[index + 1].start() if index + 1 < len(headers) else len(text)
+        block = text[header.end():block_end]
+        symbol = header.group(2).upper()
+        session = re.search(r"Latest available session\s*:\s*(\d{4}-\d{2}-\d{2})", block, re.I)
+        close = re.search(
+            r"Last close\s*:\s*([\d,]+(?:\.\d+)?)\s+([A-Z]{3})\s*(?:\(([^)]*)\))?",
+            block,
+            re.I,
+        )
+        sma = re.search(r"20-day SMA\s*:\s*([\d,]+(?:\.\d+)?)", block, re.I)
+        if not session or not close:
+            continue
+        detail = (
+            f"- {symbol}: session {session.group(1)}, last close "
+            f"{close.group(1)} {close.group(2).upper()}"
+        )
+        if close.group(3):
+            detail += f" ({close.group(3).strip()})"
+        if sma:
+            detail += f", 20-day SMA {sma.group(1)}"
+        detail += ". This is a prior FinMate market snapshot from recent conversation context."
+        evidence.append(detail)
+    return evidence
+
 def run(
     user_id: UUID,
     message: str,
@@ -698,18 +742,56 @@ def run(
 
     if not tickers:
         if _is_market_source_audit_request(request):
+            quote_evidence = _market_quote_evidence_lines(rag_context)
+            if quote_evidence:
+                reply = (
+                    "[AGENT: INVESTMENT]\n\n"
+                    "Market quote evidence found in recent conversation context:\n"
+                    + "\n".join(quote_evidence)
+                    + "\n\nProvenance limitation: the recent FinMate snapshot records the ticker, trading-session date, "
+                    "close, and (where present) 20-day SMA, but this audit context does not retain the raw provider "
+                    "response or request identifier. These are market-price figures, not recorded transactions, "
+                    "and no INR conversion has been assumed. No buy/sell recommendation was generated."
+                )
+                return AgentResult(
+                    agent=AgentName.INVESTMENT_ANALYSER,
+                    reply=reply,
+                    planned_steps=["inspect_recent_quote_context", "classify_quote_provenance"],
+                    metadata={
+                        "tickers": ",".join(re.findall(r"^- ([A-Z][A-Z0-9.-]{0,5}):", "\n".join(quote_evidence), re.M)),
+                        "market_data": "recent_context",
+                        "source": "market_source_audit_context",
+                    },
+                )
+
+            saved_symbols = db.scalars(
+                select(InvestmentHolding.symbol)
+                .where(InvestmentHolding.user_id == user_id)
+                .order_by(InvestmentHolding.symbol.asc())
+            ).all()
+            symbol_note = (
+                " Saved portfolio symbols found: " + ", ".join(str(symbol).upper() for symbol in saved_symbols) + "."
+                if saved_symbols else
+                " No saved portfolio symbols were found."
+            )
             reply = (
                 "[AGENT: INVESTMENT]\n\n"
-                "I can't verify which figures came from market quotes because this audit request does not identify "
-                "a ticker or provide a specific quote to validate. I have not generated a stock allocation, buy/sell "
-                "recommendation, or assumed that market data exists. Name the ticker(s) or provide the quote record "
-                "to check its source, trading-session date, and values."
+                "Market-quote provenance is UNVERIFIED: I did not find a dated quote snapshot in the retrieved "
+                "conversation context, and this request does not include a ticker or raw quote record."
+                + symbol_note
+                + " A saved holding identifies a ticker, not a historical price source. This is a missing-evidence "
+                "finding; it does not mean market data never existed. I have not substituted a fresh quote for a "
+                "historical quote or generated a buy/sell recommendation."
             )
             return AgentResult(
                 agent=AgentName.INVESTMENT_ANALYSER,
                 reply=reply,
-                planned_steps=["check_for_identifiable_market_quote", "request_ticker_or_quote_source"],
-                metadata={"tickers": "", "market_data": "none", "source": "market_source_audit_missing_ticker"},
+                planned_steps=["inspect_recent_quote_context", "report_missing_quote_provenance"],
+                metadata={
+                    "tickers": ",".join(str(symbol).upper() for symbol in saved_symbols),
+                    "market_data": "not_found_in_context",
+                    "source": "market_source_audit_unverified",
+                },
             )
         reply = _portfolio_plan_reply(request, rag_context)
         return AgentResult(
