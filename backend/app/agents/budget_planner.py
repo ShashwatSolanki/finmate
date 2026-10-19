@@ -741,9 +741,14 @@ def _deterministic_spending_report(
     )
     wants_surplus = _asks_for_investable_surplus(message)
     wants_budget_comparison = _explicitly_requests_budget_plan(message) or wants_surplus
+    has_potential_duplicate_expenses = (
+        _has_potential_duplicate_expenses(db, user_id, start, end)
+        if wants_surplus
+        else False
+    )
     if wants_surplus and (
         _asks_for_surplus_prerequisites(message)
-        or _has_potential_duplicate_expenses(db, user_id, start, end)
+        or has_potential_duplicate_expenses
     ):
         if income is not None:
             lines.append(
@@ -756,10 +761,15 @@ def _deterministic_spending_report(
         lines.append(
             "\nInvestable surplus estimate: NOT CALCULATED. The available record is not decision-ready."
         )
-        if _has_potential_duplicate_expenses(db, user_id, start, end):
+        if has_potential_duplicate_expenses:
             lines.append(
                 "Reason: exact-match duplicate-looking expense debits remain unresolved. They are included in "
                 "the recorded-spending totals and must be reviewed manually before using those totals in a surplus estimate."
+            )
+        elif not totals:
+            lines.append(
+                "Reason: no recorded expense debits were found for the period; missing expenses cannot safely "
+                "be treated as zero."
             )
         lines.append(
             "Required before estimating: (1) reconcile flagged repeated rows without silently deleting data; "
@@ -783,9 +793,7 @@ def _deterministic_spending_report(
                 "period_end": end.isoformat(),
                 "currency_groups": str(len(totals)),
                 "surplus_estimate": "withheld",
-                "unresolved_duplicate_expenses": str(
-                    _has_potential_duplicate_expenses(db, user_id, start, end)
-                ).lower(),
+                "unresolved_duplicate_expenses": str(has_potential_duplicate_expenses).lower(),
             },
         )
     if wants_budget_comparison:

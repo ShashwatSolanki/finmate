@@ -165,7 +165,7 @@ class DataBackedAgentTests(unittest.TestCase):
 
     def test_csv_transaction_audit_is_classified_as_deterministic_report(self):
         prompt = (
-            "Imported 15 transaction(s) from finmate_test_transactions.csv.\\n\\n"
+            "Imported 15 transaction(s) from finmate_test_transactions.csv.\n\n"
             "Audit my recorded transactions for the last 30 days. Report the date range, transaction count, "
             "total expenses, and totals by category in INR. Show how many transactions were imported from "
             "the most recent CSV and identify duplicate-looking rows, but do not delete or modify any transactions. "
@@ -181,7 +181,7 @@ class DataBackedAgentTests(unittest.TestCase):
         )
         augmented = (
             prompt
-            + "\\n\\n[Verified specialist observations]\\n"
+            + "\n\n[Verified specialist observations]\n"
             "Income 50000; prior result was a stock quote for CSV."
         )
         with patch(
@@ -219,7 +219,7 @@ class DataBackedAgentTests(unittest.TestCase):
             "Compare my previous complete calendar month with the complete calendar month before it. "
             "Show category totals and the percentage change."
         )
-        augmented = prompt + "\\n\\n[Verified specialist observations]\\nPrior month amount: INR 94000."
+        augmented = prompt + "\n\n[Verified specialist observations]\nPrior month amount: INR 94000."
         sentinel = AgentResult(
             AgentName.BUDGET_PLANNER,
             "deterministic month comparison",
@@ -346,8 +346,8 @@ class DataBackedAgentTests(unittest.TestCase):
             result = run_investment(self.user_id, prompt, self.db)
 
         generic_plan.assert_not_called()
-        self.assertEqual(result.metadata["source"], "market_source_audit_missing_ticker")
-        self.assertIn("does not identify a ticker", result.reply)
+        self.assertEqual(result.metadata["source"], "market_source_audit_unverified")
+        self.assertIn("does not include a ticker", result.reply)
         self.assertNotIn("60/30/10", result.reply)
         self.assertNotIn("buy/sell recommendation", result.reply.lower())
 
@@ -731,7 +731,7 @@ Total: 1029.00 INR
         self.assertEqual(result.metadata["source"], "transaction_summary")
 
 
-    def test_financial_data_audit_does_not_schedule_an_invoice_artifact(self):
+    def test_financial_data_audit_routes_uploaded_receipt_as_document_evidence(self):
         prompt = (
             "Audit my financial data before giving any recommendation. Identify which figures are directly "
             "supported by recorded transactions, which are from my uploaded receipt, which are from market quotes, "
@@ -745,7 +745,9 @@ Total: 1029.00 INR
         agents = [step.agent for step in plan.steps]
         self.assertIn(AgentName.BUDGET_PLANNER, agents)
         self.assertIn(AgentName.INVESTMENT_ANALYSER, agents)
-        self.assertNotIn(AgentName.INVOICE_GENERATOR, agents)
+        # The uploaded receipt is source evidence, so route it for inspection.
+        # This plan step does not itself request creation of a new invoice.
+        self.assertIn(AgentName.INVOICE_GENERATOR, agents)
 
     def test_agentic_fallback_rejects_raw_tool_traces(self):
         observations = [
@@ -1071,11 +1073,12 @@ Total: 1029.00 INR
                 "app.agents.budget_planner.extract_monthly_income",
                 return_value=(Decimal("50000"), "INR"),
             ),
+            patch("app.agents.budget_planner._has_potential_duplicate_expenses", return_value=False),
         ):
             result = run_budget(self.user_id, prompt, self.db)
 
         self.assertEqual(result.metadata["source"], "deterministic_budget_comparison")
-        self.assertIn("Stated monthly income: 50,000.00 INR", result.reply)
+        self.assertIn("Monthly income from the current request: 50,000.00 INR", result.reply)
         self.assertIn("Simple remainder after recorded expenses", result.reply)
         self.assertIn("-44,000.00 INR", result.reply)
         self.assertIn("not guaranteed investable surplus", result.reply.lower())

@@ -33,9 +33,9 @@ def test_monthly_category_aggregation_and_month_over_month_changes(database) -> 
     with database.begin() as db:
         db.add_all(
             [
-                Transaction(user_id=user_id, amount=Decimal("100"), category="Food", occurred_on=date(2026, 1, 10)),
-                Transaction(user_id=user_id, amount=Decimal("150"), category="Food", occurred_on=date(2026, 2, 10)),
-                Transaction(user_id=user_id, amount=Decimal("50"), category="Travel", occurred_on=date(2026, 2, 11)),
+                Transaction(user_id=user_id, amount=Decimal("-100"), category="Food", occurred_on=date(2026, 1, 10)),
+                Transaction(user_id=user_id, amount=Decimal("-150"), category="Food", occurred_on=date(2026, 2, 10)),
+                Transaction(user_id=user_id, amount=Decimal("-50"), category="Travel", occurred_on=date(2026, 2, 11)),
                 Transaction(user_id=uuid4(), amount=Decimal("999"), category="Food", occurred_on=date(2026, 2, 10)),
             ]
         )
@@ -43,8 +43,8 @@ def test_monthly_category_aggregation_and_month_over_month_changes(database) -> 
     with database() as db:
         message = category_delta_vs_prior_month(db, user_id, ref=date(2026, 3, 1))
 
-    assert "Food: up about 50%" in message
-    assert "Travel: up from 0 to 50" in message
+    assert "Food: up about 50% vs prior month (100.00 → 150.00)." in message
+    assert "Travel: up from 0 to 50.00 (new activity)." in message
     assert "999" not in message
 
 

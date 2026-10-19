@@ -101,7 +101,7 @@ def test_csv_import_persistence_to_aggregation_flow(integration_client) -> None:
 
     assert len(rows) == 2
     assert sum((row.amount for row in rows), Decimal("0")) == Decimal("-200.00")
-    assert "Transport: up from 0 to -200.00" in month_over_month
+    assert "Transport: up from 0 to 200.00 (new activity)." in month_over_month
 
 
 def test_investment_creation_to_mocked_valuation_flow(integration_client, monkeypatch) -> None:
