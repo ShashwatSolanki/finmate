@@ -28,6 +28,7 @@ from app.agents.investment_analyser import (
     run as run_investment,
 )
 from app.agents.types import AgentName, AgentResult
+from app.invoice.schemas import ParsedLineItem
 
 
 class DataBackedAgentTests(unittest.TestCase):
@@ -195,7 +196,7 @@ class DataBackedAgentTests(unittest.TestCase):
         )
         partial_items = [
             # Simulate a parser regression that missed two valid quantity/price clauses.
-            __import__("app.invoice.schemas", fromlist=["ParsedLineItem"]).ParsedLineItem(
+            ParsedLineItem(
                 description="Hosting",
                 quantity=1,
                 unit_price=Decimal("2000"),
