@@ -124,7 +124,10 @@ def build_invoice_pdf(
     y -= 6
     c.setFont("Helvetica-Bold", 11)
     c.drawString(72, y, "Total")
-    final_total = total if total is not None else line_total + (tax or Decimal("0"))
+    effective_tax = tax if tax is not None else sum(
+        (amount for _label, amount in (tax_breakdown or [])), start=Decimal("0")
+    )
+    final_total = total if total is not None else line_total + effective_tax
     c.drawRightString(540, y, f"{final_total:.2f}")
     c.save()
     return buf.getvalue()
