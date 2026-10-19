@@ -620,6 +620,30 @@ def _portfolio_exposure_notes(portfolio: AgentResult, symbols: list[str]) -> lis
     return notes
 
 
+def _is_market_source_audit_request(message: str) -> bool:
+    """Recognize data-provenance audits that mention market quotes but ask no investment question."""
+    text = _extract_original_request(message)
+    return bool(
+        re.search(r"\b(?:audit|identify|distinguish|trace|classify|verify)\b", text, re.I)
+        and re.search(
+            r"\b(?:which figures|which values|data source|source of|supported by|from my|from the)\b",
+            text,
+            re.I,
+        )
+        and re.search(
+            r"\b(?:market quotes?|market data|uploaded receipt|recorded transactions?)\b",
+            text,
+            re.I,
+        )
+        and not re.search(
+            r"\b(?:should i invest|recommend(?:ation)?|buy|sell|allocate|investment amount|"
+            r"portfolio allocation|stock comparison)\b",
+            text,
+            re.I,
+        )
+    )
+
+
 def run(
     user_id: UUID,
     message: str,
@@ -673,6 +697,20 @@ def run(
         )
 
     if not tickers:
+        if _is_market_source_audit_request(request):
+            reply = (
+                "[AGENT: INVESTMENT]\n\n"
+                "I can't verify which figures came from market quotes because this audit request does not identify "
+                "a ticker or provide a specific quote to validate. I have not generated a stock allocation, buy/sell "
+                "recommendation, or assumed that market data exists. Name the ticker(s) or provide the quote record "
+                "to check its source, trading-session date, and values."
+            )
+            return AgentResult(
+                agent=AgentName.INVESTMENT_ANALYSER,
+                reply=reply,
+                planned_steps=["check_for_identifiable_market_quote", "request_ticker_or_quote_source"],
+                metadata={"tickers": "", "market_data": "none", "source": "market_source_audit_missing_ticker"},
+            )
         reply = _portfolio_plan_reply(request, rag_context)
         return AgentResult(
             agent=AgentName.INVESTMENT_ANALYSER,
