@@ -594,7 +594,8 @@ def _format_reply(
     if invoice.subtotal is not None:
         lines.append(f"Subtotal: {invoice.subtotal:.2f} {invoice.currency}")
     if invoice.tax is not None:
-        lines.append(f"Tax: {invoice.tax:.2f} {invoice.currency}")
+        tax_label = "Total tax" if invoice.tax_breakdown else "Tax"
+        lines.append(f"{tax_label}: {invoice.tax:.2f} {invoice.currency}")
     if invoice.tax_breakdown:
         lines.extend(
             f"{component.label}: {component.amount:.2f} {invoice.currency}"
