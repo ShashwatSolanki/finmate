@@ -180,6 +180,17 @@ def _parse_simple_lines(message: str) -> list[dict[str, str]]:
     return items
 
 
+def _count_explicit_item_clauses(message: str) -> int:
+    """Count quantity/unit-price clauses so a partially parsed invoice is never exported."""
+    pattern = re.compile(
+        r"\\b\\d+(?:\\.\\d+)?\\s*(?:units?|items?)?\\s*(?:at|@|x|×)\\s*"
+        r"(?:(?:INR|Rs\\.?|USD|EUR|GBP|₹|\\$|€|£)\\s*)?"
+        r"(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d{1,2})?",
+        re.I,
+    )
+    return sum(1 for _ in pattern.finditer(message))
+
+
 def _explicit_items_from_request(message: str) -> list[ParsedLineItem]:
     """Parse explicit 'Item: 2 units at INR 1,200 each' clauses without an LLM."""
     items: list[ParsedLineItem] = []
@@ -408,6 +419,11 @@ def _invoice_from_recent_upload(db: Session, user_id: UUID) -> StructuredInvoice
 def _structured_from_message(message: str) -> StructuredInvoice | None:
     """Parse explicit item clauses first, then pasted OCR/PDF text and simple lines."""
     explicit_items = _explicit_items_from_request(message)
+    expected_item_clauses = _count_explicit_item_clauses(message)
+    if expected_item_clauses and len(explicit_items) != expected_item_clauses:
+        # Do not fall through to a looser parser that could export only a subset
+        # of a multi-item natural-language request.
+        return None
     if explicit_items:
         subtotal = sum((item.amount for item in explicit_items), start=Decimal("0"))
         tax = _tax_from_rate(message, subtotal)
@@ -627,6 +643,25 @@ def run(
     invoice_from_uploaded_context = invoice is not None
     if invoice is None:
         invoice = _structured_from_message(request_text)
+    if invoice is None and wants_invoice_output and _count_explicit_item_clauses(request_text) > 0:
+        reply = (
+            "[AGENT: INVOICE]\\n\\n"
+            "I couldn't safely parse every quantity/unit-price item in your request, so I have not created "
+            "or exported a partial invoice. Please clarify the missing item description, quantity, and unit price, "
+            "then try again.\\n\\n"
+            '{"intent":"invoice_parse_incomplete","steps":["Compare requested item clauses","Clarify missing item data","Rebuild invoice totals"],'
+            '"tools_needed":[],"notes":"partial invoice export blocked"}'
+        )
+        return AgentResult(
+            agent=AgentName.INVOICE_GENERATOR,
+            reply=reply,
+            planned_steps=["count_requested_items", "validate_parsed_item_count", "block_partial_export"],
+            metadata={
+                "source": "incomplete_invoice_request",
+                "parsed_items_count": "0",
+                "expected_item_clauses": str(_count_explicit_item_clauses(request_text)),
+            },
+        )
     wants_expense_invoice = _wants_expense_invoice(request)
     invoice_from_transactions = False
     if invoice is None and wants_expense_invoice:
