@@ -328,6 +328,7 @@ def _deterministic_spending_report(
     db: Session,
     user_id: UUID,
     message: str,
+    rag_context: str | None = None,
 ) -> AgentResult:
     today = date.today()
     if _is_month_comparison_request(message):
@@ -395,10 +396,27 @@ def _deterministic_spending_report(
     start, end, period_label = _expense_window(message, today)
     groups = _aggregate_expenses(db, user_id, start, end)
     lines, totals = _format_expense_groups(groups)
-    income, income_currency = extract_monthly_income(message)
-    if _explicitly_requests_budget_plan(message):
+    income, income_currency = extract_monthly_income(message, rag_context)
+    wants_surplus = _asks_for_investable_surplus(message)
+    wants_budget_comparison = _explicitly_requests_budget_plan(message) or wants_surplus
+    if wants_budget_comparison:
         if income is None:
             lines.append("\nMonthly income was not found in the request or saved context, so I cannot calculate a remainder.")
+        if not totals and wants_surplus:
+            lines.append(
+                "\nI cannot estimate investable surplus because no recorded expense debits were found for this period. "
+                "Unrecorded expenses are not assumed to be zero; import or add the missing expenses first."
+            )
+        elif not totals and _explicitly_requests_budget_plan(message) and income is not None:
+            lines.append(
+                "\nThere is no recorded expense data for this period, so the proposed budget is an income-based "
+                "starting point rather than a comparison with actual spending."
+            )
+            lines.append(
+                f"Illustrative 50/30/20 split: needs {_format_amount(income * Decimal('0.5'))} "
+                f"{income_currency or 'INR'}, wants {_format_amount(income * Decimal('0.3'))}, "
+                f"savings/debt payoff {_format_amount(income * Decimal('0.2'))}."
+            )
         elif len(totals) == 1 and income_currency and next(iter(totals)) != income_currency:
             lines.append(
                 f"\nMonthly income is recorded as {income_currency}, but expenses are recorded as "
@@ -488,16 +506,22 @@ def run(
 
     # Transaction summaries and month comparisons are deterministic SQL tasks.
     # Do not let LLM prose rewrite numeric results, signs, or calendar periods.
-    if _is_month_comparison_request(message) or (
-        _asks_for_spending_report(message) and not _explicitly_requests_budget_plan(message)
-    ):
-        return _deterministic_spending_report(db, user_id, message)
-    if _explicitly_requests_budget_plan(message) and re.search(
-        r"\b(?:recorded expenses|actual spending|transaction history|recorded transactions)\b",
-        message,
-        re.I,
-    ):
-        return _deterministic_spending_report(db, user_id, message)
+    if _is_month_comparison_request(message):
+        return _deterministic_spending_report(db, user_id, message, rag_context)
+    asks_for_data_report = _asks_for_spending_report(message) and not _explicitly_requests_budget_plan(message)
+    asks_for_budget_or_surplus = (
+        _explicitly_requests_budget_plan(message) or _asks_for_investable_surplus(message)
+    ) and bool(
+        re.search(
+            r"\b(?:recorded expenses|actual spending|transaction history|recorded transactions|expenses)\b",
+            message,
+            re.I,
+        )
+    )
+    if asks_for_data_report and not _asks_for_investable_surplus(message):
+        return _deterministic_spending_report(db, user_id, message, rag_context)
+    if asks_for_budget_or_surplus:
+        return _deterministic_spending_report(db, user_id, message, rag_context)
 
     currency = (
         db.scalar(
