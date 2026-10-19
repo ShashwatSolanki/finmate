@@ -8,7 +8,9 @@ from unittest.mock import MagicMock
 
 from app.agents.agentic_orchestrator import build_plan
 from app.agents.budget_planner import (
+    _asks_for_surplus_prerequisites,
     _duplicate_expense_summary_lines,
+    _has_potential_duplicate_expenses,
     _period_data_sufficiency_lines,
 )
 from app.agents.investment_analyser import _market_quote_evidence_lines
@@ -124,3 +126,34 @@ def test_invoice_reference_matches_serialized_payload_for_pdf_and_csv_export():
     assert payload["subtotal"] == "29000.00" or Decimal(str(payload["subtotal"])) == Decimal("29000.00")
     assert Decimal(str(payload["tax"])) == Decimal("5220.00")
     assert Decimal(str(payload["total"])) == Decimal("34220.00")
+
+
+
+def test_surplus_prerequisite_request_is_detected():
+    prompt = (
+        "Explain what additional data is required before estimating my investable surplus."
+    )
+    assert _asks_for_surplus_prerequisites(prompt)
+
+
+def test_unresolved_repeat_rows_block_surplus_estimate_inputs(database):
+    user_id = uuid4()
+    with database.begin() as db:
+        db.add_all(
+            [
+                Transaction(
+                    user_id=user_id,
+                    amount=Decimal("-350.00"),
+                    currency="INR",
+                    category="Healthcare",
+                    description="Pharmacy",
+                    occurred_on=date(2026, 10, 10),
+                )
+                for _ in range(5)
+            ]
+        )
+
+    with database() as db:
+        assert _has_potential_duplicate_expenses(
+            db, user_id, date(2026, 10, 1), date(2026, 10, 31)
+        )
