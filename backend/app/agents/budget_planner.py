@@ -594,19 +594,23 @@ def run(
     # Do not let LLM prose rewrite numeric results, signs, or calendar periods.
     if _is_month_comparison_request(message):
         return _deterministic_spending_report(db, user_id, message, rag_context)
-    asks_for_data_report = _asks_for_spending_report(message) and not _explicitly_requests_budget_plan(message)
+    asks_for_data_report = _asks_for_spending_report(message)
     asks_for_budget_or_surplus = (
-        _explicitly_requests_budget_plan(message) or _asks_for_investable_surplus(message)
-    ) and bool(
-        re.search(
-            r"\b(?:recorded expenses|actual spending|transaction history|recorded transactions|expenses)\b",
-            message,
-            re.I,
+        (_explicitly_requests_budget_plan(message) or _asks_for_investable_surplus(message))
+        and (
+            asks_for_data_report
+            or bool(
+                re.search(
+                    r"\b(?:recorded expenses|actual spending|transaction history|recorded transactions|expenses)\b",
+                    message,
+                    re.I,
+                )
+            )
         )
     )
-    if asks_for_data_report and not _asks_for_investable_surplus(message):
-        return _deterministic_spending_report(db, user_id, message, rag_context)
     if asks_for_budget_or_surplus:
+        return _deterministic_spending_report(db, user_id, message, rag_context)
+    if asks_for_data_report:
         return _deterministic_spending_report(db, user_id, message, rag_context)
 
     currency = (
