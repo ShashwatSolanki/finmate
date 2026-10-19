@@ -109,6 +109,17 @@ _CATEGORY_ALIASES: dict[str, tuple[str, ...]] = {
 }
 
 
+def _original_user_request(message: str) -> str:
+    """Remove Auto-mode observations before classifying intent or extracting amounts."""
+    for marker in (
+        "\n\n[Verified specialist observations]",
+        "\n\nPrior verified specialist observations.",
+    ):
+        if marker in message:
+            return message.split(marker, 1)[0].strip()
+    return message.strip()
+
+
 def _asks_for_transaction_total(message: str) -> bool:
     """Match a direct total-spending question, not any request that mentions expenses."""
     request = message.casefold()
@@ -129,13 +140,21 @@ def _asks_for_transaction_total(message: str) -> bool:
 
 
 def _asks_for_spending_report(message: str) -> bool:
+    """Detect financial report/audit intents and keep numeric work out of LLM fallback."""
     return bool(
         re.search(
-            r"\b(?:summari[sz]e|summary|compare|month[- ]over[- ]month|calendar month|"
-            r"previous month|month before|by category|category totals|recorded transactions|"
-            r"recorded expenses|transaction history|expense summary|spending picture)\b",
+            r"\b(?:audit|auditing|summari[sz]e|summary|compare|comparison|month[- ]over[- ]month|"
+            r"calendar month|previous month|month before|by category|category totals|recorded transactions|"
+            r"recorded expenses|transaction history|expense summary|spending picture|transaction count|"
+            r"count of transactions|number of transactions|date range|total expenses|expense totals|"
+            r"spending totals|identify duplicates|duplicate-looking|duplicates)\b",
             message,
             re.I,
+        )
+        or (
+            re.search(r"\b(?:transactions?|expenses?)\b", message, re.I)
+            and re.search(r"\b(?:report|show|calculate|list)\b", message, re.I)
+            and re.search(r"\b(?:total|totals|count|categories|date range)\b", message, re.I)
         )
     )
 
@@ -233,13 +252,19 @@ def _format_amount(value: Decimal) -> str:
     return f"{value:,.2f}"
 
 def _is_month_comparison_request(message: str) -> bool:
-    text = message.casefold()
+    text = _original_user_request(message).casefold()
     return bool(
         re.search(r"\bmonth[- ]over[- ]month\b", text)
         or (
             re.search(r"\bcompare\b", text)
-            and re.search(r"\b(?:previous|prior|last|most recent complete)\b.{0,40}\bmonth\b", text)
-            and re.search(r"\b(?:month before|before it|two months)\b", text)
+            and re.search(
+                r"\b(?:previous|prior|last|most recent complete|complete)\b.{0,60}\bmonth\b",
+                text,
+            )
+            and re.search(
+                r"\b(?:month before|before it|two months|preceding month|prior month)\b",
+                text,
+            )
         )
     )
 
@@ -567,11 +592,15 @@ def run(
     db: Session,
     rag_context: str | None = None,
 ) -> AgentResult:
+    # Auto mode appends specialist observations to the message. Never parse
+    # money, dates, or intent from observations as if they were user input.
+    request = _original_user_request(message)
+
     # Straight arithmetic supplied explicitly in the request is deterministic.
-    balance = _extract_balance_remainder(message)
+    balance = _extract_balance_remainder(request)
     if balance is not None:
         remaining, income, expenses = balance
-        currency_match = re.search(r"\b(INR|USD|EUR|GBP)\b|[₹$€£]", message, re.I)
+        currency_match = re.search(r"\b(INR|USD|EUR|GBP)\b|[₹$€£]", request, re.I)
         symbol = "INR" if currency_match and currency_match.group(0).upper() in {"INR", "₹"} else (
             currency_match.group(0).upper() if currency_match else "INR"
         )
@@ -598,26 +627,26 @@ def run(
 
     # Transaction summaries and month comparisons are deterministic SQL tasks.
     # Do not let LLM prose rewrite numeric results, signs, or calendar periods.
-    if _is_month_comparison_request(message):
-        return _deterministic_spending_report(db, user_id, message, rag_context)
-    asks_for_data_report = _asks_for_spending_report(message)
+    if _is_month_comparison_request(request):
+        return _deterministic_spending_report(db, user_id, request, rag_context)
+    asks_for_data_report = _asks_for_spending_report(request)
     asks_for_budget_or_surplus = (
-        (_explicitly_requests_budget_plan(message) or _asks_for_investable_surplus(message))
+        (_explicitly_requests_budget_plan(request) or _asks_for_investable_surplus(request))
         and (
             asks_for_data_report
             or bool(
                 re.search(
                     r"\b(?:recorded expenses|actual spending|transaction history|recorded transactions|expenses)\b",
-                    message,
+                    request,
                     re.I,
                 )
             )
         )
     )
     if asks_for_budget_or_surplus:
-        return _deterministic_spending_report(db, user_id, message, rag_context)
+        return _deterministic_spending_report(db, user_id, request, rag_context)
     if asks_for_data_report:
-        return _deterministic_spending_report(db, user_id, message, rag_context)
+        return _deterministic_spending_report(db, user_id, request, rag_context)
 
     currency = (
         db.scalar(
@@ -664,11 +693,11 @@ def run(
     category_catalog.update(by_cat)
 
     # Category-specific totals are calculated by SQL, never inferred by the model.
-    requested_category = _requested_transaction_category(message, category_catalog)
+    requested_category = _requested_transaction_category(request, category_catalog)
     if (
         requested_category is None
-        and _asks_for_transaction_total(message)
-        and re.search(r"\b(?:on|for)\s+[a-z]", message, re.I)
+        and _asks_for_transaction_total(request)
+        and re.search(r"\b(?:on|for)\s+[a-z]", request, re.I)
     ):
         reply = (
             "[AGENT: BUDGET]\n\n"
@@ -781,7 +810,7 @@ def run(
     if rag_context and rag_context.strip():
         rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
-    income, income_currency = extract_monthly_income(message, rag_context)
+    income, income_currency = extract_monthly_income(request, rag_context)
     budget_currency = income_currency or currency
 
     def _income_budget_reply() -> str:
