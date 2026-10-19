@@ -93,7 +93,7 @@ The agent supports:
 - validation that generated replies include the requested ticker and verified close/SMA figures
 - deterministic market-data fallback when generated prose omits the requested amount or quote facts
 
-Portfolio questions are grounded in stored `InvestmentHolding` records. Market replies label the latest available trading session. Model output is accepted only when its visible prose covers verified market figures for the requested tickers; a valid agent tag/JSON shape alone is not enough. Raw tool/debug traces are rejected even if they contain the exact numbers. When a ticker is named alongside portfolio intent, the response retains the saved portfolio and explicitly states whether that ticker is already held. If the model omits required facts, the specialist returns a deterministic explanation built from fetched market data.
+Portfolio questions are grounded in stored `InvestmentHolding` records. Market replies label the latest available trading session. Model output is accepted only when its visible prose covers verified market figures for the requested tickers; a valid agent tag/JSON shape alone is not enough. Raw tool/debug traces are rejected even if they contain the exact numbers, both in the orchestrator and at the chat API boundary. When a ticker is named alongside portfolio intent, the response retains the saved portfolio and explicitly states whether that ticker is already held. If the model omits required facts, the specialist returns a deterministic explanation built from fetched market data.
 
 ## 6. Invoice Agent
 
