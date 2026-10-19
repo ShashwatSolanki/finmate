@@ -23,6 +23,7 @@ def build_invoice_pdf(
     subtotal: Decimal | None = None,
     tax: Decimal | None = None,
     total: Decimal | None = None,
+    item_details: list[tuple[float | None, Decimal | None]] | None = None,
 ) -> bytes:
     buf = BytesIO()
     c = canvas.Canvas(buf, pagesize=letter)
@@ -48,23 +49,45 @@ def build_invoice_pdf(
         c.drawString(72, y, f"Due: {due_date[:40]}")
         y -= 14
 
+    has_item_details = item_details is not None and any(
+        quantity is not None or unit_price is not None
+        for quantity, unit_price in item_details
+    )
+
+    def draw_table_header() -> None:
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(72, y, "Description")
+        if has_item_details:
+            c.drawRightString(348, y, "Qty")
+            c.drawRightString(430, y, f"Unit Price ({currency})")
+            c.drawRightString(540, y, f"Amount ({currency})")
+        else:
+            c.drawRightString(540, y, f"Amount ({currency})")
+        c.setFont("Helvetica", 9)
+
     y -= 10
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(72, y, "Description")
-    c.drawString(420, y, f"Amount ({currency})")
+    draw_table_header()
     y -= 16
-    c.setFont("Helvetica", 10)
 
     line_total = Decimal("0")
-    for desc, amt in line_items:
+    for index, (desc, amt) in enumerate(line_items):
         line_total += amt
-        c.drawString(72, y, desc[:80])
+        c.drawString(72, y, desc[:42] if has_item_details else desc[:80])
+        if has_item_details:
+            quantity, unit_price = item_details[index] if index < len(item_details) else (None, None)
+            if quantity is not None:
+                quantity_text = f"{quantity:g}" if isinstance(quantity, (int, float)) else str(quantity)
+                c.drawRightString(348, y, quantity_text)
+            if unit_price is not None:
+                c.drawRightString(430, y, f"{unit_price:.2f}")
         c.drawRightString(540, y, f"{amt:.2f}")
         y -= 14
         if y < 120:
             c.showPage()
             y = height - 72
             c.setFont("Helvetica", 10)
+            draw_table_header()
+            y -= 16
 
     if subtotal is not None:
         y -= 6
@@ -94,6 +117,7 @@ def build_invoice_pdf_from_structured(
     items = [(li.description, li.amount) for li in invoice.line_items]
     if not items:
         raise ValueError("At least one line item is required to generate a PDF.")
+    item_details = [(li.quantity, li.unit_price) for li in invoice.line_items]
     return build_invoice_pdf(
         invoice_ref=invoice_ref,
         bill_to=invoice.bill_to or bill_to_fallback,
@@ -105,4 +129,5 @@ def build_invoice_pdf_from_structured(
         subtotal=invoice.subtotal,
         tax=invoice.tax,
         total=invoice.total,
+        item_details=item_details,
     )
