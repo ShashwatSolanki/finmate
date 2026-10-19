@@ -1647,3 +1647,26 @@ input:focus, textarea:focus, select:focus {
     opacity: 1;
   }
 }
+
+
+.invoice-tax-breakdown {
+  width: min(19rem, 52%);
+  margin: .15rem 0 .65rem auto !important;
+  padding-top: .35rem;
+  border-top: 1px dashed #ded9f7;
+  font-size: .82rem;
+}
+
+.invoice-tax-breakdown dt {
+  color: #7b749e;
+}
+
+.invoice-tax-breakdown dd {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .invoice-tax-breakdown {
+    width: 100%;
+  }
+}
