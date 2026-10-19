@@ -46,6 +46,8 @@ type TransactionCsvAttachment = {
   filename: string;
   importedCount: number;
   skippedCount: number;
+  duplicateRowsSkipped: number;
+  alreadyImported: boolean;
   preview: ImportedTransactionPreview[];
   sampleErrors: string[];
 };
@@ -83,10 +85,13 @@ function readTransactionCsvAttachment(metadata?: Record<string, string> | null):
 
   const importedCount = Number(metadata.imported_count || 0);
   const skippedCount = Number(metadata.skipped_count || 0);
+  const duplicateRowsSkipped = Number(metadata.duplicate_rows_skipped || 0);
   return {
     filename: metadata.filename || "transactions.csv",
     importedCount: Number.isFinite(importedCount) ? importedCount : 0,
     skippedCount: Number.isFinite(skippedCount) ? skippedCount : 0,
+    duplicateRowsSkipped: Number.isFinite(duplicateRowsSkipped) ? duplicateRowsSkipped : 0,
+    alreadyImported: metadata.already_imported === "true",
     preview,
     sampleErrors,
   };
@@ -342,6 +347,8 @@ export default function ChatPage() {
     source: string,
     importedCount: number,
     skippedCount: number,
+    duplicateRowsSkipped: number,
+    alreadyImported: boolean,
     sampleErrors: string[],
   ) {
     if (!token) throw new Error("Please sign in again before saving the CSV import.");
@@ -369,6 +376,8 @@ export default function ChatPage() {
           filename: source,
           imported_count: importedCount,
           skipped_count: skippedCount,
+          duplicate_rows_skipped: duplicateRowsSkipped,
+          already_imported: alreadyImported,
           preview: rows.slice(0, 8).map((row) => ({
             amount: String(row.amount),
             currency: row.currency,
@@ -540,8 +549,17 @@ export default function ChatPage() {
                         </div>
                       </div>
                       <div className="csv-attachment-summary">
-                        <strong>{importedCsv.importedCount} imported</strong>
-                        {importedCsv.skippedCount > 0 && <span>{importedCsv.skippedCount} skipped</span>}
+                        {importedCsv.alreadyImported ? (
+                          <strong>Already imported · no new rows added</strong>
+                        ) : (
+                          <>
+                            <strong>{importedCsv.importedCount} imported</strong>
+                            {importedCsv.skippedCount > 0 && <span>{importedCsv.skippedCount} skipped</span>}
+                            {importedCsv.duplicateRowsSkipped > 0 && (
+                              <span>{importedCsv.duplicateRowsSkipped} exact-match duplicates skipped</span>
+                            )}
+                          </>
+                        )}
                       </div>
                       {importedCsv.preview.length > 0 ? (
                         <div className="csv-attachment-details">
@@ -586,7 +604,13 @@ export default function ChatPage() {
                           </ul>
                         </div>
                       ) : (
-                        <p className="csv-attachment-no-preview">The import was saved, but this record has no stored transaction preview.</p>
+                        <p className="csv-attachment-no-preview">
+                          {importedCsv.alreadyImported
+                            ? "This exact CSV and column mapping was already processed. No transactions were added again."
+                            : importedCsv.duplicateRowsSkipped > 0
+                              ? "The matching transaction rows were already in your account, so no additional copies were added."
+                              : "The import was saved, but this record has no stored transaction preview."}
+                        </p>
                       )}
                       {importedCsv.sampleErrors.length > 0 && (
                         <div className="csv-attachment-errors" role="note">
