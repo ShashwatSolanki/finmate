@@ -94,3 +94,30 @@ def test_market_reply_grounding_rejects_raw_tool_trace_even_when_numbers_match()
         [analysis],
         "Review my portfolio and compare it with Microsoft (MSFT).",
     )
+
+
+def test_explicit_inr_investment_amount_is_preserved_against_usd_quote():
+    analysis = investment_analyser._SymbolAnalysis(
+        "MSFT",
+        True,
+        "Microsoft Corporation (MSFT)\\n"
+        "Latest available session: 2026-10-16\\n"
+        "Last close: 529.05 USD (-10.39, -1.93% vs previous session)\\n"
+        "20-day SMA: 520.22 — trading above the short-term average.",
+        Decimal("529.05"),
+        Decimal("520.22"),
+        Decimal("-1.93"),
+    )
+    request = "Should I consider investing INR 10,000 in Microsoft?"
+    assert investment_analyser._extract_lump_sum_currency(request) == "INR"
+
+    reply = investment_analyser._data_driven_market_reply(
+        [analysis],
+        "risk tolerance is moderate",
+        request,
+    )
+
+    assert "You specified INR 10,000.00" in reply
+    assert "market quote currency is USD" in reply
+    assert "no share count is estimated without a verified current exchange rate" in reply
+    assert "confirm the currency" not in reply.casefold()
