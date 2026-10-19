@@ -467,7 +467,7 @@ Total: 1029.00 INR
                     }
                 },
             ),
-            patch("app.agents.budget_planner._count_expenses", return_value=15),
+            patch("app.agents.budget_planner._count_transactions", return_value=15),
             patch("app.agents.budget_planner.extract_monthly_income", return_value=(None, None)),
         ):
             result = run_budget(self.user_id, prompt, self.db)
@@ -475,7 +475,7 @@ Total: 1029.00 INR
         self.assertEqual(result.metadata["source"], "deterministic_spending_report")
         self.assertIn("Food: 3,450.00 INR", result.reply)
         self.assertIn("Total recorded expenses in INR: 17,950.00", result.reply)
-        self.assertIn("Recorded expense transaction count: 15", result.reply)
+        self.assertIn("Recorded transaction count: 15", result.reply)
         self.assertIn((today - timedelta(days=29)).isoformat(), result.reply)
         self.assertIn(today.isoformat(), result.reply)
         self.assertNotIn("-3450.00", result.reply)
@@ -495,8 +495,12 @@ Total: 1029.00 INR
             result = run_budget(self.user_id, prompt, self.db)
 
         self.assertEqual(result.metadata["source"], "deterministic_month_comparison")
-        self.assertIn("Food: September 2026 2,200.00; August 2026 2,000.00; increased by 200.00 INR (+10.00%)", result.reply)
-        self.assertIn("Rent: September 2026 12,000.00; August 2026 11,500.00; increased by 500.00 INR (+4.35%)", result.reply)
+        newer_month_start = date.today().replace(day=1) - timedelta(days=1)
+        older_month_end = newer_month_start.replace(day=1) - timedelta(days=1)
+        newer_label = newer_month_start.strftime("%B %Y")
+        older_label = older_month_end.strftime("%B %Y")
+        self.assertIn(f"Food: {newer_label} 2,200.00; {older_label} 2,000.00; increased by 200.00 INR (+10.00%)", result.reply)
+        self.assertIn(f"Rent: {newer_label} 12,000.00; {older_label} 11,500.00; increased by 500.00 INR (+4.35%)", result.reply)
         self.assertIn("TOTAL: 14,200.00 vs 13,500.00 INR; increased by 700.00 INR (+5.19%)", result.reply)
 
     def test_budget_plan_computes_negative_remainder_and_warns_about_missing_costs(self):
@@ -552,7 +556,7 @@ Total: 1029.00 INR
             )
 
         self.assertEqual(result.metadata["source"], "deterministic_month_comparison")
-        self.assertIn("not mean your spending was zero", result.reply)
+        self.assertIn("does not mean spending was zero", result.reply)
         self.assertNotIn("50/30/20", result.reply)
 
     def test_investable_surplus_prompt_is_not_misclassified_as_category_total(self):
