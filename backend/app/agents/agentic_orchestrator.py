@@ -8,6 +8,7 @@ second agent framework.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import re
 from uuid import UUID
 
@@ -92,16 +93,20 @@ def build_plan(message: str) -> AgentPlan | None:
             re.I,
         )
     )
-    invoice = _contains(
-        text,
-        (
-            "invoice",
-            "invoices",
-            "bill client",
-            "receipt",
-            "line item",
-            "billing",
-        ),
+    invoice = bool(
+        re.search(
+            r"\b(?:create|generate|make|draft|prepare|produce|build)\b.{0,60}"
+            r"\b(?:an?\s+)?(?:client\s+)?invoice\b",
+            text,
+            re.I,
+        )
+        or re.search(
+            r"\b(?:review|inspect|extract|read|check|reconcile|summari[sz]e|audit)\b.{0,45}"
+            r"\b(?:uploaded\s+|attached\s+|imported\s+)?(?:invoice|receipt|bill|document)\b",
+            text,
+            re.I,
+        )
+        or re.search(r"\b(?:invoice|billing)\s+export\b|\bexport\s+(?:the\s+)?invoice\b", text, re.I)
     )
 
     domains = [budget, investment, invoice]
@@ -134,16 +139,60 @@ def build_plan(message: str) -> AgentPlan | None:
     return AgentPlan(goal=text, steps=tuple(steps[: settings.agentic_max_steps]))
 
 
+def _looks_like_tool_or_debug_output(text: str) -> bool:
+    return bool(
+        re.search(
+            r"\[\s*tokenized_tools\s*\]|\btools_needed\s*=|\btool_name\s*=|"
+            r"\bAgent says:|\bRAG chunks used\b|\bconfidence factors\b|"
+            r"\bexecution path\s*(?:rules|specialist|agentic)\b",
+            text,
+            re.I,
+        )
+    )
+
+
+def _visible_specialist_observation(reply: str) -> str | None:
+    """Remove protocol JSON and reject raw traces before synthesis or display."""
+    lines = [line.rstrip() for line in (reply or "").replace("\r", "").split("\n")]
+    lines = [
+        line for line in lines
+        if not (line.strip().startswith("[AGENT:") and line.strip().endswith("]"))
+    ]
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines:
+        try:
+            tail = json.loads(lines[-1].strip())
+        except (json.JSONDecodeError, TypeError):
+            tail = None
+        if isinstance(tail, dict) and any(key in tail for key in ("intent", "tools_needed", "structured")):
+            lines.pop()
+    visible = "\n".join(lines).strip()
+    if not visible or _looks_like_tool_or_debug_output(visible):
+        return None
+    if visible.startswith(("[", "{")):
+        try:
+            parsed = json.loads(visible)
+        except json.JSONDecodeError:
+            pass
+        else:
+            if isinstance(parsed, (dict, list)):
+                return None
+    return visible
+
+
 def _observation_context(observations: list[AgentResult]) -> str:
     if not observations:
         return ""
 
     blocks: list[str] = []
     for result in observations:
-        text = result.reply.strip()
-        blocks.append(
-            f"[{result.agent.value} observation]\n{text[:2500]}"
+        visible = _visible_specialist_observation(result.reply)
+        text = visible or (
+            "The specialist output was rejected because it contained raw tool/debug data. "
+            "Do not infer a financial conclusion from it."
         )
+        blocks.append(f"[{result.agent.value} observation]\n{text[:2500]}")
     return "\n\n".join(blocks)[-7000:]
 
 
@@ -157,7 +206,22 @@ def _synthesize(
     if not observation_text:
         return observations[-1].reply if observations else ""
 
-    if settings.finmate_use_llm and settings.finmate_agentic_synthesis:
+    must_preserve_deterministic_results = any(
+        result.metadata.get("invoice_actions")
+        or result.metadata.get("source") in {
+            "deterministic_spending_report",
+            "deterministic_month_comparison",
+            "deterministic_budget_comparison",
+            "transaction_aggregate",
+            "transaction_aggregate_no_match",
+        }
+        for result in observations
+    )
+    if (
+        settings.finmate_use_llm
+        and settings.finmate_agentic_synthesis
+        and not must_preserve_deterministic_results
+    ):
         try:
             from app.ml import finmate
 
@@ -183,17 +247,16 @@ def _synthesize(
                 # every specialist observation instead.
                 expected_agents = {result.agent.value for result in observations}
                 normalized = synthesized.upper()
-                if all(
-                    f"[AGENT: {agent_name.split('_')[0].upper()}" in normalized
-                    or (
-                        agent_name == "investment_analyser"
-                        and "[AGENT: INVESTMENT]" in normalized
-                    )
-                    or (
-                        agent_name == "invoice_generator"
-                        and "[AGENT: INVOICE]" in normalized
-                    )
-                    for agent_name in expected_agents
+                expected_tags = {
+                    "[AGENT: BUDGET]" if name == "budget_planner"
+                    else "[AGENT: INVESTMENT]" if name == "investment_analyser"
+                    else "[AGENT: INVOICE]"
+                    for name in expected_agents
+                }
+                if (
+                    all(tag in normalized for tag in expected_tags)
+                    and not _looks_like_tool_or_debug_output(synthesized)
+                    and _visible_specialist_observation(synthesized) is not None
                 ):
                     return synthesized
         except Exception:
@@ -208,10 +271,16 @@ def _synthesize(
         if primary == AgentName.INVOICE_GENERATOR
         else "[AGENT: BUDGET]"
     )
-    prose = "\n\n".join(
-        f"{result.agent.value.replace('_', ' ').title()}:\n{result.reply}"
-        for result in observations
-    )
+    prose_blocks: list[str] = []
+    for result in observations:
+        visible = _visible_specialist_observation(result.reply)
+        if visible is None:
+            visible = (
+                "This specialist did not produce a readable, validated answer. "
+                "Please retry this part; no conclusion has been inferred from raw tool/debug output."
+            )
+        prose_blocks.append(f"{result.agent.value.replace('_', ' ').title()}:\n{visible}")
+    prose = "\n\n".join(prose_blocks)
     return (
         f"{tag}\n\n{prose}\n\n"
         '{"intent":"multi_agent_finance_task","steps":["Execute specialist plan","Synthesize verified observations"],'
