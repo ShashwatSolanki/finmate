@@ -116,15 +116,53 @@ def build_invoice_pdf(
     return buf.getvalue()
 
 
+def _validate_invoice_for_pdf(invoice: StructuredInvoice) -> None:
+    """Reject inconsistent structured amounts before rendering a customer-facing artifact."""
+    if not invoice.line_items:
+        raise ValueError("At least one line item is required to generate a PDF.")
+
+    item_sum = sum((item.amount for item in invoice.line_items), start=Decimal("0"))
+    tolerance = Decimal("0.02")
+
+    for index, item in enumerate(invoice.line_items, start=1):
+        if item.quantity is not None and item.quantity <= 0:
+            raise ValueError(f"Line item {index} quantity must be greater than zero.")
+        if item.unit_price is not None and item.unit_price < 0:
+            raise ValueError(f"Line item {index} unit price cannot be negative.")
+        if item.quantity is not None and item.unit_price is not None:
+            expected_amount = (
+                Decimal(str(item.quantity)) * item.unit_price
+            ).quantize(Decimal("0.01"))
+            if abs(expected_amount - item.amount) > tolerance:
+                raise ValueError(
+                    f"Line item {index} amount ({item.amount:.2f}) does not match "
+                    f"quantity × unit price ({expected_amount:.2f}). Correct the item before exporting."
+                )
+
+    if invoice.subtotal is not None and abs(item_sum - invoice.subtotal) > tolerance:
+        raise ValueError(
+            f"Invoice subtotal ({invoice.subtotal:.2f}) does not match the sum of line items "
+            f"({item_sum:.2f}). Correct the invoice before exporting."
+        )
+
+    if invoice.total is not None:
+        base_amount = invoice.subtotal if invoice.subtotal is not None else item_sum
+        expected_total = base_amount + (invoice.tax or Decimal("0"))
+        if abs(expected_total - invoice.total) > tolerance:
+            raise ValueError(
+                f"Invoice total ({invoice.total:.2f}) does not match subtotal/line items plus tax "
+                f"({expected_total:.2f}). Correct the invoice before exporting."
+            )
+
+
 def build_invoice_pdf_from_structured(
     invoice: StructuredInvoice,
     *,
     invoice_ref: str,
     bill_to_fallback: str,
 ) -> bytes:
+    _validate_invoice_for_pdf(invoice)
     items = [(li.description, li.amount) for li in invoice.line_items]
-    if not items:
-        raise ValueError("At least one line item is required to generate a PDF.")
     item_details = [(li.quantity, li.unit_price) for li in invoice.line_items]
     return build_invoice_pdf(
         invoice_ref=invoice_ref,
