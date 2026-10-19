@@ -19,6 +19,7 @@ from app.agents.budget_planner import (
     _asks_for_transaction_total,
     _deterministic_spending_report,
     _is_month_comparison_request,
+    _latest_csv_import_summary,
     _original_user_request,
     run as run_budget,
 )
@@ -787,6 +788,59 @@ Total: 1029.00 INR
         self.assertIn("appears 5 times", result.reply)
         self.assertIn("not removed or excluded from totals", result.reply)
         self.assertIn("Food: 2,250.00 INR", result.reply)
+
+    def test_latest_csv_import_summary_comes_from_persisted_import_event(self):
+        import_event = MagicMock()
+        import_event.content = (
+            "User: Imported transactions CSV file: finmate_test_transactions.csv\\n"
+            "Rows imported: 15; rows skipped: 1.\\n"
+            "Imported transaction preview:\\n"
+            "- 2026-10-10: Cafe lunch -450.00 INR"
+        )
+        self.db.scalars.return_value.first.return_value = import_event
+
+        result = _latest_csv_import_summary(self.db, self.user_id)
+
+        self.assertEqual(
+            result,
+            ("finmate_test_transactions.csv", 15, 1),
+        )
+
+    def test_spending_report_includes_csv_import_count_separately_from_window_count(self):
+        prompt = (
+            "Audit my recorded transactions for the last 30 days. Report the date range, transaction count, "
+            "total expenses, and totals by category in INR. Show how many transactions were imported from "
+            "the most recent CSV and identify duplicate-looking rows, but do not delete or modify any transactions. "
+            "Treat expense debits as positive spending in the report."
+        )
+        today = date.today()
+        with (
+            patch(
+                "app.agents.budget_planner._aggregate_expenses",
+                return_value={"INR": {"Food": Decimal("3450"), "Rent": Decimal("12000")}},
+            ),
+            patch("app.agents.budget_planner._count_transactions", return_value=22),
+            patch("app.agents.budget_planner._duplicate_warning_lines", return_value=[
+                "Potential exact-match duplicate-looking records (not removed or excluded from totals):",
+                "- 2026-10-10 | food | cafe lunch | 450.00 INR (expense debit) appears 5 times.",
+            ]),
+            patch(
+                "app.agents.budget_planner._latest_csv_import_summary",
+                return_value=("finmate_test_transactions.csv", 15, 0),
+            ),
+            patch("app.agents.budget_planner.extract_monthly_income", return_value=(None, None)),
+        ):
+            result = run_budget(self.user_id, prompt, self.db)
+
+        self.assertEqual(result.metadata["source"], "deterministic_spending_report")
+        self.assertIn("Latest saved CSV import: finmate_test_transactions.csv — 15 row(s) imported, 0 row(s) skipped.", result.reply)
+        self.assertIn("Recorded transaction count: 22", result.reply)
+        self.assertIn("Food: 3,450.00 INR", result.reply)
+        self.assertIn("Total recorded expenses in INR: 15,450.00", result.reply)
+        self.assertIn("appears 5 times", result.reply)
+        self.assertNotIn("net -", result.reply.casefold())
+        self.assertIn((today - timedelta(days=29)).isoformat(), result.reply)
+        self.assertIn(today.isoformat(), result.reply)
 
     def test_spending_report_sums_expense_debits_as_positive_and_includes_requested_count(self):
         prompt = (
