@@ -199,7 +199,7 @@ GET    /api/conversations/{session_id}/messages
 POST   /api/conversations/{session_id}/invoice-imports
 POST   /api/conversations/{session_id}/csv-imports
 
-CSV import history records an event only; it does not import the transactions a second time. The actual transaction rows remain in the existing transactions table, and the chat event stores the filename, counts, bounded preview, and row-level error examples.
+CSV import history records an event only; it does not import the transactions a second time. The actual transaction rows remain in the existing transactions table, and the chat event stores the filename, counts, bounded preview, duplicate-row count, whether the exact file/mapping had already been imported, and row-level error examples. The transaction import endpoint fingerprints CSV contents plus column-mapping options and records that fingerprint in the same database transaction as added rows. Repeating the exact import is a no-op. For older imports without a fingerprint, exact-match transaction signatures (date, category, amount, currency, description) are compared with existing rows; matching occurrences are skipped and reported. Existing records are never removed or rewritten.
 ```
 
 ## 6. Important backend responsibilities
