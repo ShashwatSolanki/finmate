@@ -59,6 +59,7 @@ def _wants_invoice_output(request: str) -> bool:
             re.I,
         )
         or re.search(r"\b(?:export|download|render)\b.{0,35}\b(?:invoice|pdf|csv)\b", request, re.I)
+        or re.search(r"\b(?:create|generate|make|prepare|produce|render)\b.{0,40}\b(?:pdf|csv)\b", request, re.I)
         or re.search(r"\bpdf\s+and\s+csv\s+export\b", request, re.I)
     )
 
