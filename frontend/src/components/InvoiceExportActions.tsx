@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useAuth } from "../lib/auth";
 import { apiFetch, authHeaders, downloadBlob, type StructuredInvoice } from "../lib/api";
+import { sanitizeDownloadBaseName } from "../lib/filename";
 
 type Props = { metadata: Record<string, string> };
 
 export default function InvoiceExportActions({ metadata }: Props) {
   const { token } = useAuth();
   const [busy, setBusy] = useState(false);
+  const [customFilename, setCustomFilename] = useState("");
   let invoice: StructuredInvoice | null = null;
   try {
     invoice = metadata.invoice_payload ? (JSON.parse(metadata.invoice_payload) as StructuredInvoice) : null;
@@ -15,6 +17,8 @@ export default function InvoiceExportActions({ metadata }: Props) {
   }
   if (!invoice?.line_items?.length || !token) return null;
   const structured = invoice;
+  const defaultBaseName = `invoice-${structured.invoice_number || "draft"}`;
+  const downloadBaseName = () => sanitizeDownloadBaseName(customFilename, defaultBaseName);
 
   async function downloadPdf() {
     setBusy(true);
@@ -25,7 +29,7 @@ export default function InvoiceExportActions({ metadata }: Props) {
         body: JSON.stringify(structured),
       });
       if (!response.ok) throw new Error(await response.text());
-      downloadBlob(await response.blob(), `invoice-${structured.invoice_number || "draft"}.pdf`);
+      downloadBlob(await response.blob(), `${downloadBaseName()}.pdf`);
     } finally {
       setBusy(false);
     }
@@ -37,12 +41,24 @@ export default function InvoiceExportActions({ metadata }: Props) {
       ["invoice_number", "invoice_date", "vendor", "bill_to", "currency", "description", "quantity", "unit_price", "amount"],
       ...structured.line_items.map((item) => [structured.invoice_number, structured.invoice_date, structured.vendor_name, structured.bill_to, structured.currency, item.description, item.quantity, item.unit_price, item.amount]),
     ];
-    downloadBlob(new Blob([rows.map((row) => row.map(quote).join(",")).join("\n")], { type: "text/csv;charset=utf-8" }), `invoice-${structured.invoice_number || "draft"}.csv`);
+    downloadBlob(new Blob([rows.map((row) => row.map(quote).join(",")).join("\n")], { type: "text/csv;charset=utf-8" }), `${downloadBaseName()}.csv`);
   }
 
   return (
     <div className="invoice-export-actions">
       <span>Export this invoice</span>
+      <label className="invoice-export-filename">
+        Download filename
+        <input
+          type="text"
+          value={customFilename}
+          onChange={(event) => setCustomFilename(event.target.value)}
+          placeholder={defaultBaseName}
+          maxLength={120}
+          aria-label="Custom invoice download filename"
+        />
+        <small>Optional; leave blank to use {defaultBaseName}.</small>
+      </label>
       <button type="button" className="btn-primary sm" disabled={busy} onClick={() => void downloadPdf()}>{busy ? "Preparing…" : "Download PDF"}</button>
       <button type="button" className="btn-secondary sm" disabled={busy} onClick={downloadCsv}>Download CSV</button>
     </div>
