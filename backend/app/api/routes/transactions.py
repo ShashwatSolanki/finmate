@@ -205,7 +205,7 @@ def _parse_csv_amount(raw: str) -> Decimal:
 def _csv_import_fingerprint(body: CsvImportBody) -> str:
     """Fingerprint the file and column-mapping settings to make repeated imports idempotent."""
     parts = (
-        body.csv_text.lstrip("\\ufeff"),
+        body.csv_text.lstrip("\ufeff"),
         body.amount_column,
         body.date_column,
         body.category_column,
@@ -214,7 +214,7 @@ def _csv_import_fingerprint(body: CsvImportBody) -> str:
         body.default_currency.upper(),
         str(body.max_rows),
     )
-    return hashlib.sha256("\\0".join(parts).encode("utf-8")).hexdigest()
+    return hashlib.sha256("\0".join(parts).encode("utf-8")).hexdigest()
 
 
 def _transaction_import_signature(
@@ -261,11 +261,11 @@ def import_transactions_csv(
             imported_preview=[],
         )
 
-    csv_text = body.csv_text.lstrip("\\ufeff")
+    csv_text = body.csv_text.lstrip("\ufeff")
     stream = io.StringIO(csv_text)
     sample = csv_text[:4096]
     try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\\t|")
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
     except csv.Error:
         dialect = csv.excel
     reader = csv.DictReader(stream, dialect=dialect)
