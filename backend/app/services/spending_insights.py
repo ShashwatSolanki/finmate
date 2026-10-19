@@ -25,10 +25,14 @@ def category_delta_vs_prior_month(db: Session, user_id: UUID, ref: date | None =
 
     def month_totals(year: int, month: int) -> dict[str, Decimal]:
         rows = db.execute(
-            select(Transaction.category, func.coalesce(func.sum(Transaction.amount), 0)).where(
+            select(
+                Transaction.category,
+                func.coalesce(func.sum(-Transaction.amount), 0),
+            ).where(
                 Transaction.user_id == user_id,
                 func.extract("year", Transaction.occurred_on) == year,
                 func.extract("month", Transaction.occurred_on) == month,
+                Transaction.amount < 0,
             ).group_by(Transaction.category)
         ).all()
         out: dict[str, Decimal] = {}
