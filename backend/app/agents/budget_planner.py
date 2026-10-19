@@ -464,6 +464,107 @@ def _duplicate_warning_lines(
     ]
 
 
+def _duplicate_expense_summary_lines(
+    db: Session,
+    user_id: UUID,
+    start: date,
+    end: date,
+    *,
+    label: str,
+) -> list[str]:
+    """Quantify repeat-looking expense rows without deduplicating or excluding them."""
+    normalized_category = func.lower(func.trim(func.coalesce(Transaction.category, "")))
+    normalized_description = func.lower(func.trim(func.coalesce(Transaction.description, "")))
+    rows = db.execute(
+        select(
+            Transaction.currency,
+            Transaction.amount,
+            func.count(Transaction.id),
+        )
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.occurred_on >= start,
+            Transaction.occurred_on <= end,
+            Transaction.amount < 0,
+        )
+        .group_by(
+            Transaction.occurred_on,
+            normalized_category,
+            normalized_description,
+            Transaction.amount,
+            Transaction.currency,
+        )
+        .having(func.count(Transaction.id) > 1)
+    ).all()
+
+    # [pattern count, affected rows, extra rows, one-copy value, repeated-copy value]
+    by_currency: dict[str, list[Decimal | int]] = {}
+    for currency_code, amount, count in rows:
+        code = str(currency_code or "INR").upper()
+        bucket = by_currency.setdefault(code, [0, 0, 0, Decimal("0"), Decimal("0")])
+        value = abs(Decimal(str(amount)))
+        copies = int(count)
+        bucket[0] = int(bucket[0]) + 1
+        bucket[1] = int(bucket[1]) + copies
+        bucket[2] = int(bucket[2]) + copies - 1
+        bucket[3] = Decimal(bucket[3]) + value
+        bucket[4] = Decimal(bucket[4]) + value * (copies - 1)
+
+    if not by_currency:
+        return [f"\nDuplicate-risk summary for {label}: no exact-match repeated expense-debit groups were found."]
+
+    lines = [
+        f"\nDuplicate-risk summary for {label} (review flags, not confirmed duplicates):"
+    ]
+    for code in sorted(by_currency):
+        patterns, affected, extras, single_copy_value, repeated_value = by_currency[code]
+        lines.append(
+            f"- {code}: {patterns} repeated pattern(s) affect {affected} recorded row(s); "
+            f"{extras} additional matching row(s) beyond one per pattern represent "
+            f"{_format_amount(Decimal(repeated_value))} {code} in repeated-copy value. "
+            f"One copy per flagged pattern represents {_format_amount(Decimal(single_copy_value))} {code}. "
+            "All rows remain included in totals; nothing was deleted or excluded."
+        )
+    return lines
+
+
+def _period_data_sufficiency_lines(
+    db: Session,
+    user_id: UUID,
+    start: date,
+    end: date,
+    *,
+    label: str,
+) -> list[str]:
+    """Describe observed records without treating missing rows as zero spending."""
+    transaction_count = _count_transactions(db, user_id, start, end)
+    expense_count = db.scalar(
+        select(func.count(Transaction.id)).where(
+            Transaction.user_id == user_id,
+            Transaction.occurred_on >= start,
+            Transaction.occurred_on <= end,
+            Transaction.amount < 0,
+        )
+    )
+    expense_count = int(expense_count or 0)
+    if transaction_count == 0:
+        return [
+            f"\nData sufficiency for {label}: INSUFFICIENT — no recorded transactions were found "
+            "for this period. Actual spending is unknown, not zero."
+        ]
+    if expense_count == 0:
+        return [
+            f"\nData sufficiency for {label}: INSUFFICIENT to establish spending — "
+            f"{transaction_count} transaction(s) were found but no expense debits were recorded. "
+            "Do not interpret this as zero actual spending."
+        ]
+    return [
+        f"\nData completeness for {label}: UNVERIFIED — {transaction_count} transaction(s), "
+        f"including {expense_count} expense debit(s), were found. These rows alone cannot establish "
+        "that all activity for the period was recorded; unrecorded expenses are not assumed to be zero."
+    ]
+
+
 def _format_expense_groups(groups: dict[str, dict[str, Decimal]]) -> tuple[list[str], dict[str, Decimal]]:
     lines: list[str] = []
     totals: dict[str, Decimal] = {}
@@ -497,8 +598,12 @@ def _deterministic_spending_report(
         ]
         if not newer_data and not older_data:
             lines.append("There are no recorded expense debits for either month. This does not mean spending was zero.")
+        lines.extend(_period_data_sufficiency_lines(db, user_id, newer[0], newer[1], label=newer[2]))
+        lines.extend(_period_data_sufficiency_lines(db, user_id, older[0], older[1], label=older[2]))
         lines.extend(_duplicate_warning_lines(db, user_id, newer[0], newer[1]))
+        lines.extend(_duplicate_expense_summary_lines(db, user_id, newer[0], newer[1], label=newer[2]))
         lines.extend(_duplicate_warning_lines(db, user_id, older[0], older[1]))
+        lines.extend(_duplicate_expense_summary_lines(db, user_id, older[0], older[1], label=older[2]))
         for currency_code in sorted(set(newer_data) | set(older_data)):
             current = newer_data.get(currency_code, {})
             previous = older_data.get(currency_code, {})
@@ -553,7 +658,9 @@ def _deterministic_spending_report(
     start, end, period_label = _expense_window(message, today)
     groups = _aggregate_expenses(db, user_id, start, end)
     lines, totals = _format_expense_groups(groups)
+    lines.extend(_period_data_sufficiency_lines(db, user_id, start, end, label=period_label))
     lines.extend(_duplicate_warning_lines(db, user_id, start, end))
+    lines.extend(_duplicate_expense_summary_lines(db, user_id, start, end, label=period_label))
     if _asks_about_latest_csv_import(message):
         latest_import = _latest_csv_import_summary(db, user_id)
         if latest_import is None:
@@ -574,13 +681,19 @@ def _deterministic_spending_report(
     if re.search(r"\b(?:transaction count|count of transactions|number of transactions|how many transactions)\b", message, re.I):
         lines.append(f"\nRecorded transaction count: {_count_transactions(db, user_id, start, end)}")
     income, income_currency = extract_monthly_income(message, rag_context)
+    income_from_request, _income_request_currency = extract_monthly_income(message, None)
+    income_source = (
+        "the current request"
+        if income_from_request is not None
+        else "saved/retrieved context (not independently verified against a pay record)"
+    )
     wants_surplus = _asks_for_investable_surplus(message)
     wants_budget_comparison = _explicitly_requests_budget_plan(message) or wants_surplus
     if wants_budget_comparison:
         if income is None:
             lines.append("\nMonthly income was not found in the request or saved context, so I cannot calculate a remainder.")
         elif not totals and wants_surplus:
-            lines.append(f"\nSaved/stated monthly income: {_format_amount(income)} {income_currency or 'INR'}.")
+            lines.append(f"\nMonthly income from {income_source}: {_format_amount(income)} {income_currency or 'INR'}.")
             lines.append(
                 "\nI cannot estimate investable surplus because no recorded expense debits were found for this period. "
                 "The missing expenses cannot safely be treated as zero; import or add them first."
@@ -606,7 +719,7 @@ def _deterministic_spending_report(
             currency_code, total = next(iter(totals.items()))
             remainder = income - total
             lines.append(
-                f"\nStated monthly income: {_format_amount(income)} {income_currency or currency_code}."
+                f"\nMonthly income from {income_source}: {_format_amount(income)} {income_currency or currency_code}."
             )
             lines.append(
                 f"Simple remainder after recorded expenses for {period_label}: {_format_amount(remainder)} "
