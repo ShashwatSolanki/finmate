@@ -9,7 +9,11 @@ from uuid import uuid4
 from app.agents.agentic_orchestrator import _synthesize, build_plan, run_agentic_turn
 from app.agents.budget_planner import (
     _asks_for_investable_surplus,
+    _asks_for_spending_report,
     _asks_for_transaction_total,
+    _deterministic_spending_report,
+    _is_month_comparison_request,
+    _original_user_request,
     run as run_budget,
 )
 from app.agents.invoice_generator import (
@@ -88,6 +92,77 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(result.metadata["source"], "portfolio_holdings")
         self.assertEqual(result.metadata["holdings_count"], "1")
         self.assertIn("Unrealized P/L: +250.00 USD (+25.00%)", result.reply)
+
+    def test_csv_transaction_audit_is_classified_as_deterministic_report(self):
+        prompt = (
+            "Imported 15 transaction(s) from finmate_test_transactions.csv.\\n\\n"
+            "Audit my recorded transactions for the last 30 days. Report the date range, transaction count, "
+            "total expenses, and totals by category in INR. Show how many transactions were imported from "
+            "the most recent CSV and identify duplicate-looking rows, but do not delete or modify any transactions. "
+            "Treat expense debits as positive spending in the report."
+        )
+        self.assertTrue(_asks_for_spending_report(prompt))
+        self.assertFalse(_is_month_comparison_request(prompt))
+
+        sentinel = AgentResult(
+            AgentName.BUDGET_PLANNER,
+            "deterministic audit",
+            metadata={"source": "deterministic_spending_report"},
+        )
+        augmented = (
+            prompt
+            + "\\n\\n[Verified specialist observations]\\n"
+            "Income 50000; prior result was a stock quote for CSV."
+        )
+        with patch(
+            "app.agents.budget_planner._deterministic_spending_report",
+            return_value=sentinel,
+        ) as report:
+            result = run_budget(self.user_id, augmented, self.db)
+
+        self.assertIs(result, sentinel)
+        report.assert_called_once_with(self.db, self.user_id, prompt, None)
+
+    def test_complete_calendar_month_comparison_uses_positive_spending_and_correct_direction(self):
+        prompt = (
+            "Compare my previous complete calendar month with the complete calendar month before it. "
+            "Show actual spending totals by category for both months, the absolute change, and percentage changes."
+        )
+        self.assertTrue(_is_month_comparison_request(prompt))
+
+        newer = {"INR": {"Food": Decimal("11000"), "Transport": Decimal("4250")}}
+        older = {"INR": {"Food": Decimal("10000"), "Transport": Decimal("4000")}}
+        with (
+            patch("app.agents.budget_planner._aggregate_expenses", side_effect=[newer, older]),
+            patch("app.agents.budget_planner._duplicate_warning_lines", return_value=[]),
+        ):
+            result = _deterministic_spending_report(self.db, self.user_id, prompt)
+
+        self.assertEqual(result.metadata["source"], "deterministic_month_comparison")
+        self.assertIn("Food: September 2026 11,000.00; August 2026 10,000.00; increased by 1,000.00 INR (+10.00%).", result.reply)
+        self.assertIn("Transport: September 2026 4,250.00; August 2026 4,000.00; increased by 250.00 INR (+6.25%).", result.reply)
+        self.assertNotIn("-10,000.00", result.reply)
+        self.assertNotIn("-11,000.00", result.reply)
+
+    def test_month_comparison_ignores_appended_specialist_observations(self):
+        prompt = (
+            "Compare my previous complete calendar month with the complete calendar month before it. "
+            "Show category totals and the percentage change."
+        )
+        augmented = prompt + "\\n\\n[Verified specialist observations]\\nPrior month amount: INR 94000."
+        sentinel = AgentResult(
+            AgentName.BUDGET_PLANNER,
+            "deterministic month comparison",
+            metadata={"source": "deterministic_month_comparison"},
+        )
+        with patch(
+            "app.agents.budget_planner._deterministic_spending_report",
+            return_value=sentinel,
+        ) as report:
+            result = run_budget(self.user_id, augmented, self.db)
+
+        self.assertIs(result, sentinel)
+        report.assert_called_once_with(self.db, self.user_id, prompt, None)
 
     def test_lump_sum_parser_recognizes_allocating_an_amount(self):
         prompt = "Assess whether allocating INR 10,000 to Microsoft fits my monthly budget."
