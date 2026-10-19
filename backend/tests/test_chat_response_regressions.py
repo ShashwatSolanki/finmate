@@ -371,3 +371,26 @@ def test_conversation_title_can_be_customized_and_survives_reload(database):
     assert response.json()["title"] == "October spending review"
     assert list_response.status_code == 200
     assert list_response.json()[0]["title"] == "October spending review"
+
+
+def test_reply_contract_rejects_raw_agent_responds_with_array_without_tool_labels():
+    raw = (
+        "[AGENT: BUDGET]\\n\\n"
+        "Budget Planner:\\n"
+        "[\\n"
+        '"Agent responds with [AGENT: BUDGET]",\\n'
+        '"Review budget based on net expenditure of -94000.00 INR",\\n'
+        '"Set new spend limits for variables identified",\\n'
+        '"Recommend saving a portion to emergency fund"\\n'
+        "]\\n\\n"
+        "Clarify time horizon and risk tolerance."
+    )
+
+    visible = _clean_assistant_display(
+        _enforce_reply_contract(raw, AgentName.BUDGET_PLANNER)
+    )
+
+    assert "couldn't produce a readable, verified answer" in visible.lower()
+    assert "Agent responds with" not in visible
+    assert "net expenditure of -94000.00" not in visible
+    assert "Clarify time horizon and risk tolerance" not in visible
