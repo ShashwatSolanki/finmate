@@ -323,5 +323,118 @@ class InvoicePdfBuilderUnitTests(unittest.TestCase):
         self.assertIn("24000.00", text)
 
 
+    def test_combined_three_item_invoice_pdf_keeps_every_item_and_amount(self):
+        invoice = StructuredInvoice(
+            invoice_number="INV-ALL",
+            vendor_name="Shashwat Solanki",
+            bill_to="Acme Technologies",
+            currency="INR",
+            line_items=[
+                ParsedLineItem(
+                    description="Website Development",
+                    quantity=2,
+                    unit_price=Decimal("12000.00"),
+                    amount=Decimal("24000.00"),
+                ),
+                ParsedLineItem(
+                    description="Hosting",
+                    quantity=1,
+                    unit_price=Decimal("2000.00"),
+                    amount=Decimal("2000.00"),
+                ),
+                ParsedLineItem(
+                    description="SEO Audit",
+                    quantity=1,
+                    unit_price=Decimal("3000.00"),
+                    amount=Decimal("3000.00"),
+                ),
+            ],
+            subtotal=Decimal("29000.00"),
+            tax=Decimal("5220.00"),
+            total=Decimal("34220.00"),
+        )
+        pdf_bytes = build_invoice_pdf_from_structured(
+            invoice,
+            invoice_ref="INV-ALL",
+            bill_to_fallback="fallback@example.test",
+        )
+
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            content = "\\n".join(page.extract_text() or "" for page in pdf.pages)
+
+        for expected in (
+            "Website Development",
+            "Hosting",
+            "SEO Audit",
+            "Qty",
+            "Unit Price (INR)",
+            "24000.00",
+            "12000.00",
+            "29000.00",
+            "5220.00",
+            "34220.00",
+        ):
+            self.assertIn(expected, content)
+
+    def test_structured_pdf_rejects_subtotal_that_does_not_match_line_items(self):
+        invoice = StructuredInvoice(
+            bill_to="Acme Technologies",
+            currency="INR",
+            line_items=[
+                ParsedLineItem(description="Website Development", amount=Decimal("24000.00")),
+                ParsedLineItem(description="Hosting", amount=Decimal("2000.00")),
+            ],
+            subtotal=Decimal("5000.00"),
+            total=Decimal("5000.00"),
+        )
+
+        with self.assertRaisesRegex(ValueError, "subtotal.*sum of line items"):
+            build_invoice_pdf_from_structured(
+                invoice,
+                invoice_ref="INV-BAD-SUBTOTAL",
+                bill_to_fallback="fallback@example.test",
+            )
+
+    def test_structured_pdf_rejects_total_that_does_not_match_subtotal_and_tax(self):
+        invoice = StructuredInvoice(
+            bill_to="Acme Technologies",
+            currency="INR",
+            line_items=[ParsedLineItem(description="Hosting", amount=Decimal("2000.00"))],
+            subtotal=Decimal("2000.00"),
+            tax=Decimal("360.00"),
+            total=Decimal("2000.00"),
+        )
+
+        with self.assertRaisesRegex(ValueError, "Invoice total.*subtotal/line items plus tax"):
+            build_invoice_pdf_from_structured(
+                invoice,
+                invoice_ref="INV-BAD-TOTAL",
+                bill_to_fallback="fallback@example.test",
+            )
+
+    def test_structured_pdf_rejects_line_amount_inconsistent_with_quantity_price(self):
+        invoice = StructuredInvoice(
+            bill_to="Acme Technologies",
+            currency="INR",
+            line_items=[
+                ParsedLineItem(
+                    description="Hosting",
+                    quantity=2,
+                    unit_price=Decimal("300.00"),
+                    amount=Decimal("500.00"),
+                )
+            ],
+            subtotal=Decimal("500.00"),
+            total=Decimal("500.00"),
+        )
+
+        with self.assertRaisesRegex(ValueError, "quantity × unit price"):
+            build_invoice_pdf_from_structured(
+                invoice,
+                invoice_ref="INV-BAD-LINE",
+                bill_to_fallback="fallback@example.test",
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
