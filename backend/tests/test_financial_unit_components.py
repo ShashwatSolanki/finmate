@@ -93,6 +93,16 @@ def test_ticker_extraction_handles_dollar_symbols_company_names_and_caps() -> No
     assert has_investment_signal("Should I invest in an index fund?") is True
     assert has_investment_signal("How much did I spend on rent?") is False
 
+def test_csv_file_acronym_does_not_route_transaction_audit_to_investments() -> None:
+    message = (
+        "Audit my recorded transactions for the last 30 days. Report the date range, transaction count, "
+        "total expenses, and totals by category in INR. Show how many transactions were imported from "
+        "the most recent CSV and identify duplicate-looking rows, but do not delete or modify any transactions. "
+        "Treat expense debits as positive spending."
+    )
+    assert extract_ticker_candidates(message) == []
+    assert classify_agent(message) == AgentName.BUDGET_PLANNER
+
 
 def test_validated_ticker_extraction_filters_unavailable_symbols(monkeypatch) -> None:
     monkeypatch.setattr("app.services.market_data.has_price_series", lambda symbol: symbol == "AAPL")
