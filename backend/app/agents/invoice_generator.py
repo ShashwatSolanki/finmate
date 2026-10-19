@@ -220,14 +220,9 @@ def _explicit_items_from_request(message: str) -> list[ParsedLineItem]:
                 amount=amount,
             )
         )
-    unique: list[ParsedLineItem] = []
-    seen: set[tuple[str, float | None, Decimal | None, Decimal]] = set()
-    for item in items:
-        key = (item.description.casefold(), item.quantity, item.unit_price, item.amount)
-        if key not in seen:
-            seen.add(key)
-            unique.append(item)
-    return unique
+    # Each regex match corresponds to one requested line item. Preserve repeated
+    # clauses: two identical products can legitimately appear as separate invoice rows.
+    return items
 
 
 def _tax_from_rate(message: str, subtotal: Decimal) -> Decimal | None:
