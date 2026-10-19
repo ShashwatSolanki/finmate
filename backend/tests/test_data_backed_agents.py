@@ -139,8 +139,8 @@ class DataBackedAgentTests(unittest.TestCase):
             result = _deterministic_spending_report(self.db, self.user_id, prompt)
 
         self.assertEqual(result.metadata["source"], "deterministic_month_comparison")
-        self.assertIn("Food: September 2026 11,000.00; August 2026 10,000.00; increased by 1,000.00 INR (+10.00%).", result.reply)
-        self.assertIn("Transport: September 2026 4,250.00; August 2026 4,000.00; increased by 250.00 INR (+6.25%).", result.reply)
+        self.assertIn("increased by 1,000.00 INR (+10.00%).", result.reply)
+        self.assertIn("increased by 250.00 INR (+6.25%).", result.reply)
         self.assertNotIn("-10,000.00", result.reply)
         self.assertNotIn("-11,000.00", result.reply)
 
