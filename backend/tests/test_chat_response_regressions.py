@@ -191,8 +191,12 @@ def test_invoice_import_is_persisted_as_user_attachment_and_recent_context(datab
                 }
             ],
             "subtotal": "450.00",
-            "tax": "0.00",
-            "total": "450.00",
+            "tax": "45.00",
+            "tax_breakdown": [
+                {"label": "CGST 2.5%", "amount": "22.50"},
+                {"label": "SGST 2.5%", "amount": "22.50"},
+            ],
+            "total": "495.00",
         },
     }
 
@@ -214,7 +218,11 @@ def test_invoice_import_is_persisted_as_user_attachment_and_recent_context(datab
     ]
     parsed_invoice = json.loads(saved["metadata"]["invoice_payload"])
     assert parsed_invoice["vendor_name"] == "Cafe Aurora"
-    assert parsed_invoice["total"] == "450.00"
+    assert parsed_invoice["total"] == "495.00"
+    assert parsed_invoice["tax_breakdown"] == [
+        {"label": "CGST 2.5%", "amount": "22.50"},
+        {"label": "SGST 2.5%", "amount": "22.50"},
+    ]
 
     assert history_response.status_code == 200
     history = history_response.json()
@@ -226,6 +234,8 @@ def test_invoice_import_is_persisted_as_user_attachment_and_recent_context(datab
     assert recent_context is not None
     assert "Cafe Aurora" in recent_context
     assert "Coffee and sandwich: 450.00 INR" in recent_context
+    assert "CGST 2.5%: 22.50 INR" in recent_context
+    assert "SGST 2.5%: 22.50 INR" in recent_context
     assert "Extraction warnings:" in recent_context
     assert "review OCR" in recent_context
 
