@@ -598,6 +598,27 @@ Total: 1029.00 INR
         self.assertIn(f"Rent: {newer_label} 12,000.00; {older_label} 11,500.00; increased by 500.00 INR (+4.35%)", result.reply)
         self.assertIn("TOTAL: 14,200.00 vs 13,500.00 INR; increased by 700.00 INR (+5.19%)", result.reply)
 
+
+    def test_budget_with_expenses_but_missing_income_does_not_crash_or_invent_remainder(self):
+        prompt = (
+            "Create a needs, wants, and savings budget and compare it with my actual recorded expenses."
+        )
+        with (
+            patch(
+                "app.agents.budget_planner._aggregate_expenses",
+                return_value={"INR": {"Food": Decimal("3450")}},
+            ),
+            patch(
+                "app.agents.budget_planner.extract_monthly_income",
+                return_value=(None, None),
+            ),
+        ):
+            result = run_budget(self.user_id, prompt, self.db)
+
+        self.assertEqual(result.metadata["source"], "deterministic_budget_comparison")
+        self.assertIn("Monthly income was not found", result.reply)
+        self.assertNotIn("Simple remainder after recorded expenses", result.reply)
+
     def test_budget_plan_computes_negative_remainder_and_warns_about_missing_costs(self):
         prompt = (
             "My saved monthly income is INR 50,000. Create a needs, wants, and savings budget, "
