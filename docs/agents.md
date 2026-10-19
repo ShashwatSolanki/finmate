@@ -116,7 +116,7 @@ It can preserve:
 
 Expense-grounded invoice requests can use recent available transactions as line items. If the requested expense report has no matching recorded transaction data, the agent says so rather than returning a generic invoice-upload hint.
 
-Natural-language invoice clauses that explicitly state a description, quantity, unit price, currency, and tax rate are parsed deterministically so every listed item is retained. When the user refers to a receipt or invoice already uploaded in the conversation, the agent retrieves the saved extracted invoice from recent conversation memory. Uploaded receipts and recorded transactions remain separate sources unless the user explicitly imports the receipt as a transaction.
+Natural-language invoice clauses that explicitly state a description, quantity, unit price, currency, and tax rate are parsed deterministically so every listed item is retained. When the user refers to a receipt or invoice already uploaded in the conversation—including a financial-source audit that asks which figures came from an uploaded receipt—the agent retrieves the saved extracted invoice from recent conversation memory. This evidence-retrieval path does not create a new PDF unless the user explicitly requests invoice creation/export. Uploaded receipts and recorded transactions remain separate sources unless the user explicitly imports the receipt as a transaction.
 
 ## 7. Bounded agentic workflow
 
