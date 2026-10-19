@@ -735,8 +735,9 @@ Total: 1029.00 INR
                 self.db,
             )
 
-        self.assertEqual(result.metadata["source"], "db_aggregates")
-        self.assertIn("don't see any transactions", result.reply)
+        self.assertEqual(result.metadata["source"], "deterministic_budget_comparison")
+        self.assertIn("No recorded expense debits were found", result.reply)
+        self.assertIn("Monthly income was not found", result.reply)
         model_generate.assert_not_called()
 
 
