@@ -532,6 +532,31 @@ Total: 1029.00 INR
 
 
 
+
+    def test_category_total_surfaces_duplicate_warning_and_uses_positive_spend(self):
+        prompt = "How much did I spend on food in the last 30 days?"
+        category_rows = MagicMock()
+        category_rows.all.return_value = [("Food", Decimal("17250"))]
+        total_rows = MagicMock()
+        total_rows.all.return_value = [("INR", Decimal("17250"))]
+        self.db.scalar.return_value = "INR"
+        self.db.execute.side_effect = [category_rows, total_rows]
+        self.db.scalars.return_value.all.return_value = ["Food"]
+
+        with patch(
+            "app.agents.budget_planner._duplicate_warning_lines",
+            return_value=[
+                "Potential exact-match duplicate-looking records (not removed or excluded from totals):",
+                "- 2026-10-10 | food | cafe lunch | 450.00 INR (expense debit) appears 5 times.",
+            ],
+        ):
+            result = run_budget(self.user_id, prompt, self.db)
+
+        self.assertEqual(result.metadata["source"], "transaction_aggregate")
+        self.assertIn("You spent INR 17,250.00 on Food", result.reply)
+        self.assertIn("appears 5 times", result.reply)
+        self.assertIn("not removed or excluded from totals", result.reply)
+
     def test_spending_report_flags_exact_duplicate_looking_rows_without_removing_them(self):
         prompt = (
             "Audit my recorded transactions for the last 30 days and identify duplicate-looking rows. "
