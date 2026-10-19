@@ -612,9 +612,9 @@ export default function ChatPage() {
                               : "The import was saved, but this record has no stored transaction preview."}
                         </p>
                       )}
-                      {importedCsv.sampleErrors.length > 0 && (
+                      {importedCsv.sampleErrors.length > 0 && !importedCsv.alreadyImported && (
                         <div className="csv-attachment-errors" role="note">
-                          <strong>Rows skipped</strong>
+                          <strong>{importedCsv.duplicateRowsSkipped > 0 ? "Duplicate rows skipped" : "Rows skipped / import notes"}</strong>
                           <ul>
                             {importedCsv.sampleErrors.slice(0, 3).map((item, index) => (
                               <li key={`${item}-${index}`}>{item}</li>
