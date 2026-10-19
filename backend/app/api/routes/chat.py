@@ -48,7 +48,7 @@ def _contains_raw_agent_trace(text: str) -> bool:
     return bool(
         re.search(
             r"\[\s*tokenized_tools\s*\]|\btools_needed\s*=|\btool_name\s*=|"
-            r"\bAgent says:|\bAdditional tools:|\bRisk discussion:|"
+            r"\bAgent\s+(?:says|responds with)\b|\bAdditional tools:|\bRisk discussion:|"
             r"\bRAG chunks used\b|\bconfidence factors\b|"
             r"\bexecution path\s*(?:rules|specialist|agentic)\b",
             text or "",
