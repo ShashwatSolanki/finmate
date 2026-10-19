@@ -89,6 +89,8 @@ class TransactionCsvImportCreate(BaseModel):
     filename: str = Field(..., min_length=1, max_length=255)
     imported_count: int = Field(..., ge=0, le=20000)
     skipped_count: int = Field(default=0, ge=0, le=20000)
+    duplicate_rows_skipped: int = Field(default=0, ge=0, le=20000)
+    already_imported: bool = False
     preview: list[ImportedTransactionPreview] = Field(default_factory=list, max_length=8)
     sample_errors: list[str] = Field(default_factory=list, max_length=10)
 
@@ -233,8 +235,11 @@ def delete_conversation(
 def _transaction_csv_import_memory_text(body: TransactionCsvImportCreate) -> str:
     lines = [
         f"Imported transactions CSV file: {body.filename}",
-        f"Rows imported: {body.imported_count}; rows skipped: {body.skipped_count}.",
+        f"Rows imported: {body.imported_count}; rows skipped: {body.skipped_count}; "
+        f"exact-match duplicate rows skipped: {body.duplicate_rows_skipped}.",
     ]
+    if body.already_imported:
+        lines.append("This exact CSV content and mapping had already been imported; no rows were added again.")
     if body.preview:
         lines.append("Imported transaction preview:")
         lines.extend(
@@ -266,9 +271,20 @@ def create_transaction_csv_import(
     """
     session = _session_for_user(db, current.id, session_id)
     created_at = datetime.now(timezone.utc)
-    content = f"Imported {body.imported_count} transaction(s) from {body.filename}."
-    if body.skipped_count:
-        content += f" Skipped {body.skipped_count} row(s)."
+    if body.already_imported:
+        content = (
+            f"{body.filename} was already imported with the same column mapping. "
+            "No duplicate transactions were added."
+        )
+    elif body.imported_count == 0 and body.duplicate_rows_skipped:
+        content = (
+            f"No new transactions were added from {body.filename}; "
+            f"{body.duplicate_rows_skipped} exact-match duplicate row(s) were skipped."
+        )
+    else:
+        content = f"Imported {body.imported_count} transaction(s) from {body.filename}."
+        if body.skipped_count:
+            content += f" Skipped {body.skipped_count} row(s)."
     message = ChatMessage(
         session_id=session.id,
         role="user",
@@ -279,6 +295,8 @@ def create_transaction_csv_import(
             "filename": body.filename,
             "imported_count": str(body.imported_count),
             "skipped_count": str(body.skipped_count),
+            "duplicate_rows_skipped": str(body.duplicate_rows_skipped),
+            "already_imported": str(body.already_imported).lower(),
             "preview": json.dumps(
                 [row.model_dump(mode="json") for row in body.preview],
                 ensure_ascii=False,
