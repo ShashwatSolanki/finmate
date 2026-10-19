@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.agents.finance_context import extract_monthly_income
 from app.agents.types import AgentName, AgentResult
 from app.config import settings
-from app.db.models import Transaction
+from app.db.models import MemoryChunk, Transaction
 from app.ml.finmate import finalize_llm_reply, generate, llm_available
 from app.services.spending_insights import category_delta_vs_prior_month
 
@@ -334,6 +334,50 @@ def _currency_total(categories: dict[str, Decimal]) -> Decimal:
     return sum(categories.values(), start=Decimal("0"))
 
 
+def _latest_csv_import_summary(db: Session, user_id: UUID) -> tuple[str, int, int] | None:
+    """Read the latest persisted CSV import receipt without inferring from transaction rows."""
+    row = db.scalars(
+        select(MemoryChunk)
+        .where(
+            MemoryChunk.user_id == user_id,
+            MemoryChunk.source == "chat",
+            MemoryChunk.content.ilike("%Imported transactions CSV file:%"),
+        )
+        .order_by(MemoryChunk.created_at.desc(), MemoryChunk.id.desc())
+        .limit(1)
+    ).first()
+    content = getattr(row, "content", "") if row is not None else ""
+    if not isinstance(content, str) or not content:
+        return None
+
+    filename_match = re.search(
+        r"(?im)^\s*Imported transactions CSV file:\s*(.+?)\s*$",
+        content,
+    )
+    counts_match = re.search(
+        r"(?im)^\s*Rows imported:\s*(\d+)\s*;\s*rows skipped:\s*(\d+)\s*\.?\s*$",
+        content,
+    )
+    if not filename_match or not counts_match:
+        return None
+    return (
+        filename_match.group(1).strip(),
+        int(counts_match.group(1)),
+        int(counts_match.group(2)),
+    )
+
+
+def _asks_about_latest_csv_import(message: str) -> bool:
+    return bool(
+        re.search(
+            r"\b(?:latest|most recent|last)\s+csv\b|\btransactions?\s+imported\s+from\s+(?:the\s+)?(?:latest|most recent|last)\s+csv\b",
+            message,
+            re.I,
+        )
+        or re.search(r"\bhow many\s+transactions?\s+(?:were\s+)?imported\b", message, re.I)
+    )
+
+
 def _count_transactions(db: Session, user_id: UUID, start: date, end: date) -> int:
     count = db.scalar(
         select(func.count(Transaction.id)).where(
@@ -510,6 +554,23 @@ def _deterministic_spending_report(
     groups = _aggregate_expenses(db, user_id, start, end)
     lines, totals = _format_expense_groups(groups)
     lines.extend(_duplicate_warning_lines(db, user_id, start, end))
+    if _asks_about_latest_csv_import(message):
+        latest_import = _latest_csv_import_summary(db, user_id)
+        if latest_import is None:
+            lines.append(
+                "\\nNo saved CSV import receipt was found, so I cannot verify the most recent file's import count. "
+                "The transaction count and category totals above are based on the transaction database."
+            )
+        else:
+            filename, imported_count, skipped_count = latest_import
+            lines.append(
+                f"\\nLatest saved CSV import: {filename} — {imported_count} row(s) imported, "
+                f"{skipped_count} row(s) skipped."
+            )
+            lines.append(
+                "The CSV import count is a file-import receipt, not the number of transactions in the reporting window. "
+                "Exact-match duplicate-looking rows remain included in transaction totals until you review them."
+            )
     if re.search(r"\b(?:transaction count|count of transactions|number of transactions|how many transactions)\b", message, re.I):
         lines.append(f"\nRecorded transaction count: {_count_transactions(db, user_id, start, end)}")
     income, income_currency = extract_monthly_income(message, rag_context)
