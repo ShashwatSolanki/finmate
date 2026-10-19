@@ -107,6 +107,13 @@ def build_plan(message: str) -> AgentPlan | None:
             re.I,
         )
         or re.search(r"\b(?:invoice|billing)\s+export\b|\bexport\s+(?:the\s+)?invoice\b", text, re.I)
+        # A provenance audit explicitly asks us to inspect the uploaded document as
+        # evidence, even when it does not use a verb such as "review" immediately
+        # before the words "uploaded receipt".
+        or (
+            re.search(r"\b(?:audit|identify|distinguish|classify|trace|verify)\b", text, re.I)
+            and re.search(r"\b(?:from|in|on)\s+(?:my|the|this|that)\s+(?:previously\s+)?(?:uploaded|attached|imported)\s+(?:invoice|receipt|bill|document)\b", text, re.I)
+        )
     )
 
     domains = [budget, investment, invoice]
