@@ -68,7 +68,7 @@ The frontend communicates with the FastAPI backend through REST APIs.
 
 Transaction CSV imports are represented by a persisted user-side chat attachment. The transaction import endpoint commits the transaction rows first; the chat then records the filename, imported/skipped counts, a bounded preview of the imported rows, and any sample errors through `POST /api/conversations/{session_id}/csv-imports`. The attachment is loaded again through the normal conversation history API after refresh.
 
-The CSV attachment exposes an explicit Preview/Hide button for the first eight imported rows. Older CSV import events that were saved without preview metadata show a message explaining that the preview was not retained; the system does not try to fabricate rows from the current transaction table.
+The CSV attachment exposes an explicit Preview/Hide button for the first eight newly imported rows. The card reports exact-match duplicate rows skipped and explains when an identical CSV/mapping was already imported. Older CSV import events that were saved without preview metadata show a message explaining that the preview was not retained; the system does not try to fabricate rows from the current transaction table.
 
 Conversation titles can be customized from the pencil icon on a chat in the sidebar. The title is persisted through `PATCH /api/conversations/{session_id}`.
 
