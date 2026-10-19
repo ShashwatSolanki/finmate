@@ -100,9 +100,9 @@ def test_explicit_inr_investment_amount_is_preserved_against_usd_quote():
     analysis = investment_analyser._SymbolAnalysis(
         "MSFT",
         True,
-        "Microsoft Corporation (MSFT)\\n"
-        "Latest available session: 2026-10-16\\n"
-        "Last close: 529.05 USD (-10.39, -1.93% vs previous session)\\n"
+        "Microsoft Corporation (MSFT)\n"
+        "Latest available session: 2026-10-16\n"
+        "Last close: 529.05 USD (-10.39, -1.93% vs previous session)\n"
         "20-day SMA: 520.22 — trading above the short-term average.",
         Decimal("529.05"),
         Decimal("520.22"),
