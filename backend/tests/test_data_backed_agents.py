@@ -426,12 +426,20 @@ Line items:
 - Tiramisu Those Pancakes: 280.00 INR
 Subtotal: 980.00 INR
 Tax: 49.00 INR
+Tax breakdown:
+- SGST 2.5%: 24.50 INR
+- CGST 2.5%: 24.50 INR
 Total: 1029.00 INR
 Extraction warnings:
 - The printed subtotal was not reliably read by OCR.
 """
         )
         self.assertIsNotNone(saved_receipt)
+        assert saved_receipt is not None
+        self.assertEqual(
+            [(item.label, item.amount) for item in saved_receipt.tax_breakdown],
+            [("SGST 2.5%", Decimal("24.50")), ("CGST 2.5%", Decimal("24.50"))],
+        )
         with patch("app.agents.invoice_generator._invoice_from_recent_upload", return_value=saved_receipt):
             result = run_invoice(self.user_id, prompt, self.db)
 
@@ -440,6 +448,8 @@ Extraction warnings:
         self.assertNotIn("invoice_payload", result.metadata)
         self.assertIn("The Hole in wall Cafe", result.reply)
         self.assertIn("1029.00 INR", result.reply)
+        self.assertIn("SGST 2.5%: 24.50 INR", result.reply)
+        self.assertIn("CGST 2.5%: 24.50 INR", result.reply)
         self.assertIn("no new PDF was requested", result.reply)
 
     def test_explicit_invoice_with_spending_context_keeps_text_source(self):
