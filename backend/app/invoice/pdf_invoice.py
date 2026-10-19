@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from decimal import Decimal
+import textwrap
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -72,22 +73,29 @@ def build_invoice_pdf(
     line_total = Decimal("0")
     for index, (desc, amt) in enumerate(line_items):
         line_total += amt
-        c.drawString(72, y, desc[:42] if has_item_details else desc[:80])
-        if has_item_details:
-            quantity, unit_price = item_details[index] if index < len(item_details) else (None, None)
-            if quantity is not None:
-                quantity_text = f"{quantity:g}" if isinstance(quantity, (int, float)) else str(quantity)
-                c.drawRightString(348, y, quantity_text)
-            if unit_price is not None:
-                c.drawRightString(430, y, f"{unit_price:.2f}")
-        c.drawRightString(540, y, f"{amt:.2f}")
-        y -= 14
-        if y < 120:
-            c.showPage()
-            y = height - 72
-            c.setFont("Helvetica", 10)
-            draw_table_header()
-            y -= 16
+        desc_lines = textwrap.wrap(desc, width=42 if has_item_details else 80) or [desc]
+        quantity, unit_price = item_details[index] if (
+            has_item_details and item_details is not None and index < len(item_details)
+        ) else (None, None)
+
+        for line_index, desc_line in enumerate(desc_lines):
+            c.drawString(72, y, desc_line)
+            if line_index == 0 and has_item_details:
+                if quantity is not None:
+                    quantity_text = f"{quantity:g}" if isinstance(quantity, (int, float)) else str(quantity)
+                    c.drawRightString(348, y, quantity_text)
+                if unit_price is not None:
+                    c.drawRightString(430, y, f"{unit_price:.2f}")
+                c.drawRightString(540, y, f"{amt:.2f}")
+            elif line_index == 0:
+                c.drawRightString(540, y, f"{amt:.2f}")
+            y -= 14
+            if y < 120:
+                c.showPage()
+                y = height - 72
+                c.setFont("Helvetica", 10)
+                draw_table_header()
+                y -= 16
 
     if subtotal is not None:
         y -= 6
