@@ -67,6 +67,8 @@ For a category-total question with no matching expenses in the last 30 days, the
 
 For category and month-over-month spending reports, an empty transaction set is reported as insufficient recorded data; it is not converted into a 50/30/20 budget recommendation. The 50/30/20 split is reserved for explicit budget-planning requests.
 
+Budget category summaries and calendar-month comparisons are calculated deterministically from recorded debit transactions. Debit magnitudes are displayed as positive expenses, and report requests specify inclusive date ranges. Month-over-month changes use the previous two complete calendar months, with direction and percentage computed from positive expense totals. Budget-plan comparisons calculate income minus recorded expenses arithmetically, including a negative remainder when spending exceeds income; the result is labeled a simple remainder, not guaranteed investable surplus. Reports keep currencies separate and do not infer unrecorded transactions.
+
 ## 5. Investment Agent
 
 File:
