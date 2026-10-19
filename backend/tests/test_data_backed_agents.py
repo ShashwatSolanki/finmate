@@ -215,6 +215,20 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertIn("not created or exported a partial invoice", result.reply)
         self.assertEqual(result.metadata["expected_item_clauses"], "3")
 
+
+    def test_invoice_parser_preserves_intentionally_repeated_line_items(self):
+        invoice = _structured_from_message(
+            "Create an invoice: Consulting 1 unit at INR 500, Consulting 1 unit at INR 500, with 18% tax."
+        )
+
+        self.assertIsNotNone(invoice)
+        assert invoice is not None
+        self.assertEqual(len(invoice.line_items), 2)
+        self.assertEqual([item.description for item in invoice.line_items], ["Consulting", "Consulting"])
+        self.assertEqual(invoice.subtotal, Decimal("1000.00"))
+        self.assertEqual(invoice.tax, Decimal("180.00"))
+        self.assertEqual(invoice.total, Decimal("1180.00"))
+
     def test_financial_data_audit_does_not_trigger_expense_invoice_generation(self):
         prompt = (
             "Audit my financial data before giving any recommendation. Identify which figures are directly "
