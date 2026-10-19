@@ -642,7 +642,18 @@ def _format_reply(
         steps = ["Review parsed fields", "Edit in Settings if needed", "Download PDF"]
         tools_needed = ["parse_invoice_upload", "render_invoice_pdf"]
     else:
-        prose = "Extracted invoice/receipt details (no new PDF was requested).\n\n" + "\n".join(lines)
+        document_note = (
+            "\n\nThe uploaded invoice/receipt is document evidence only: it is separate from recorded transactions "
+            "and does not establish that payment was made. It has not been added to transaction totals."
+            if "previously uploaded invoice" in source_note
+            else ""
+        )
+        prose = (
+            "Extracted invoice/receipt details (no new PDF was requested)."
+            + document_note
+            + "\n\n"
+            + "\n".join(lines)
+        )
         intent = "review_invoice"
         steps = ["Review extracted fields", "Correct any OCR errors"]
         tools_needed = ["parse_invoice_upload"]
@@ -716,6 +727,14 @@ def run(
         rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
     if invoice and invoice.line_items:
+        # The invoice reference shown in chat must be the same identifier serialized
+        # into the structured payload and consumed by both PDF and CSV export.
+        # Preserve a source invoice number when reviewing an uploaded invoice.
+        if invoice.invoice_number and invoice.invoice_number.strip():
+            inv_id = invoice.invoice_number.strip().lstrip("#").upper()[:24]
+        else:
+            invoice.invoice_number = inv_id
+
         # Invoice generation is intentionally deterministic here. The structured
         # invoice object is the source of truth for PDF/CSV export artifacts; using
         # the general LLM response path can discard those machine-readable fields.
