@@ -642,7 +642,18 @@ def _format_reply(
         steps = ["Review parsed fields", "Edit in Settings if needed", "Download PDF"]
         tools_needed = ["parse_invoice_upload", "render_invoice_pdf"]
     else:
-        prose = "Extracted invoice/receipt details (no new PDF was requested).\n\n" + "\n".join(lines)
+        document_note = (
+            "\n\nThe uploaded invoice/receipt is document evidence only: it is separate from recorded transactions "
+            "and does not establish that payment was made. It has not been added to transaction totals."
+            if "previously uploaded invoice" in source_note
+            else ""
+        )
+        prose = (
+            "Extracted invoice/receipt details (no new PDF was requested)."
+            + document_note
+            + "\n\n"
+            + "\n".join(lines)
+        )
         intent = "review_invoice"
         steps = ["Review extracted fields", "Correct any OCR errors"]
         tools_needed = ["parse_invoice_upload"]
@@ -720,7 +731,7 @@ def run(
         # into the structured payload and consumed by both PDF and CSV export.
         # Preserve a source invoice number when reviewing an uploaded invoice.
         if invoice.invoice_number and invoice.invoice_number.strip():
-            inv_id = invoice.invoice_number.strip().upper()[:24]
+            inv_id = invoice.invoice_number.strip().lstrip("#").upper()[:24]
         else:
             invoice.invoice_number = inv_id
 
