@@ -375,14 +375,14 @@ def test_conversation_title_can_be_customized_and_survives_reload(database):
 
 def test_reply_contract_rejects_raw_agent_responds_with_array_without_tool_labels():
     raw = (
-        "[AGENT: BUDGET]\\n\\n"
-        "Budget Planner:\\n"
-        "[\\n"
-        '"Agent responds with [AGENT: BUDGET]",\\n'
-        '"Review budget based on net expenditure of -94000.00 INR",\\n'
-        '"Set new spend limits for variables identified",\\n'
-        '"Recommend saving a portion to emergency fund"\\n'
-        "]\\n\\n"
+        "[AGENT: BUDGET]\n\n"
+        "Budget Planner:\n"
+        "[\n"
+        '"Agent responds with [AGENT: BUDGET]",\n'
+        '"Review budget based on net expenditure of -94000.00 INR",\n'
+        '"Set new spend limits for variables identified",\n'
+        '"Recommend saving a portion to emergency fund"\n'
+        "]\n\n"
         "Clarify time horizon and risk tolerance."
     )
 
