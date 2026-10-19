@@ -349,7 +349,8 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(result.metadata["source"], "market_source_audit_unverified")
         self.assertIn("does not include a ticker", result.reply)
         self.assertNotIn("60/30/10", result.reply)
-        self.assertNotIn("buy/sell recommendation", result.reply.lower())
+        self.assertIn("not substituted a fresh quote", result.reply.lower())
+        self.assertIn("not generated a buy/sell recommendation", result.reply.lower())
 
     def test_combined_three_agent_invoice_request_exports_all_items_and_tax(self):
         prompt = (
