@@ -164,3 +164,8 @@ This separation makes invoice artifacts deterministic and exportable.
 ### PDF export validation
 
 Before a structured invoice PDF is rendered, the server verifies that each line amount matches quantity × unit price when both are supplied, that line-item amounts sum to the stated subtotal, and that subtotal/line items plus tax reconcile with the stated total. Inconsistent payloads return HTTP 422 instead of producing a misleading PDF. Separate `tax_breakdown` components such as `CGST 2.5%` and `SGST 2.5%` are printed as distinct rows with a `Total Tax` summary; the aggregate tax must equal the component sum. Quantity and unit-price columns are rendered whenever those details are present. Combined requests with multiple explicit quantity/unit-price clauses are exported only when every detected item clause was parsed; otherwise the specialist returns an incomplete-invoice response with no export payload. When a prompt both references an older uploaded receipt and explicitly requests a new multi-item invoice, the new item clauses take priority so the previously uploaded receipt is not accidentally exported in its place.
+
+
+### Canonical invoice reference across exports
+
+The invoice reference shown in chat is the canonical `invoice_number` in the structured invoice payload. For a newly parsed invoice, the generated reference is written into that payload before export actions are returned. When reviewing an uploaded invoice that already contains an invoice number, the existing number is preserved. PDF and CSV exports must use the same structured payload and must not generate a second independent invoice reference.
