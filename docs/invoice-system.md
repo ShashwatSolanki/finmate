@@ -159,3 +159,8 @@ The invoice agent prepares structured invoice information and user-facing guidan
 The PDF endpoint is responsible for actually rendering the PDF.
 
 This separation makes invoice artifacts deterministic and exportable.
+
+
+### PDF export validation
+
+Before a structured invoice PDF is rendered, the server verifies that each line amount matches quantity × unit price when both are supplied, that line-item amounts sum to the stated subtotal, and that subtotal/line items plus tax reconcile with the stated total. Inconsistent payloads return HTTP 422 instead of producing a misleading PDF. Quantity and unit-price columns are rendered whenever those details are present. Combined requests with multiple explicit quantity/unit-price clauses are exported only when every detected item clause was parsed; otherwise the specialist returns an incomplete-invoice response with no export payload.
