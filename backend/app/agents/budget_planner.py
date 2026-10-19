@@ -209,7 +209,7 @@ def _has_potential_duplicate_expenses(
     normalized_category = func.lower(func.trim(func.coalesce(Transaction.category, "")))
     normalized_description = func.lower(func.trim(func.coalesce(Transaction.description, "")))
     match = db.execute(
-        select(Transaction.id)
+        select(func.count(Transaction.id))
         .where(
             Transaction.user_id == user_id,
             Transaction.occurred_on >= start,
