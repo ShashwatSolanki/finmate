@@ -743,7 +743,7 @@ def run(
             db, user_id, start, today, category=requested_category
         )
         if duplicate_lines:
-            prose += "\\n\\n" + "\\n".join(duplicate_lines)
+            prose += "\n\n" + "\n".join(duplicate_lines)
         reply = (
             "[AGENT: BUDGET]\n\n"
             f"{prose}\n\n"
