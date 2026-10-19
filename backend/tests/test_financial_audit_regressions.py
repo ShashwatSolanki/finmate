@@ -15,7 +15,7 @@ from app.agents.budget_planner import (
 )
 from app.agents.investment_analyser import _market_quote_evidence_lines
 from app.agents.invoice_generator import run as run_invoice
-from app.db.models import Transaction
+from app.db.models import MemoryChunk, Transaction
 
 
 def test_duplicate_summary_quantifies_repeated_expense_rows_without_mutating(database):
@@ -157,3 +157,49 @@ def test_unresolved_repeat_rows_block_surplus_estimate_inputs(database):
         assert _has_potential_duplicate_expenses(
             db, user_id, date(2026, 10, 1), date(2026, 10, 31)
         )
+
+
+
+def test_latest_csv_import_receipt_parses_duplicate_rows_suffix(database):
+    user_id = uuid4()
+    with database.begin() as db:
+        db.add(
+            MemoryChunk(
+                user_id=user_id,
+                source="chat",
+                content=(
+                    "User: Imported transactions CSV file: financial_audit_sample.csv\n"
+                    "Rows imported: 0; rows skipped: 75; exact-match duplicate rows skipped: 75.\n"
+                    "No new transactions were added."
+                ),
+            )
+        )
+
+    with database() as db:
+        summary = _latest_csv_import_summary(db, user_id)
+
+    assert summary == ("financial_audit_sample.csv", 0, 75)
+
+
+def test_surplus_only_prompt_does_not_plan_investment_recommendation():
+    prompt = (
+        "Using only verified saved income and recorded transactions, estimate my investable surplus. "
+        "Show the source of income, expenses in the same currency and date range, and every missing input. "
+        "Do not assume missing expenses are zero and do not convert currencies without a dated exchange rate."
+    )
+    plan = build_plan(prompt)
+
+    assert plan is None or "investment_analyser" not in {step.agent.value for step in plan.steps}
+
+
+def test_market_quote_provenance_audit_still_includes_investment_agent():
+    prompt = (
+        "Audit my financial data before giving any recommendation. Identify which figures are directly "
+        "supported by recorded transactions, which are from my uploaded receipt, which are from market quotes, "
+        "and which are missing. Explain what additional data is required before estimating my investable surplus."
+    )
+    plan = build_plan(prompt)
+
+    assert plan is not None
+    agents = {step.agent.value for step in plan.steps}
+    assert {"budget_planner", "investment_analyser", "invoice_generator"} <= agents

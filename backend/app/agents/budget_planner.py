@@ -398,7 +398,8 @@ def _latest_csv_import_summary(db: Session, user_id: UUID) -> tuple[str, int, in
         content,
     )
     counts_match = re.search(
-        r"(?im)^\s*Rows imported:\s*(\d+)\s*;\s*rows skipped:\s*(\d+)\s*\.?\s*$",
+        r"(?im)^\s*Rows imported:\s*(\d+)\s*;\s*rows skipped:\s*(\d+)"
+        r"(?:\s*;\s*[^.\n]+)?\s*\.?\s*$",
         content,
     )
     if not filename_match or not counts_match:

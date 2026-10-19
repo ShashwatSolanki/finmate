@@ -93,6 +93,40 @@ def build_plan(message: str) -> AgentPlan | None:
             re.I,
         )
     )
+    # A request to estimate investable surplus is a cash-flow/data-quality task,
+    # not permission to generate a generic portfolio allocation. Keep the
+    # Investment Analyser in the plan only if the user separately asks for
+    # investment action/advice or the prompt explicitly audits market quotes.
+    surplus_assessment_only = bool(
+        re.search(
+            r"\b(?:investable surplus|amount available to invest|money available for investing|"
+            r"available for monthly investing|how much can i invest|how much money can i invest|"
+            r"what can i afford to invest)\b",
+            text,
+            re.I,
+        )
+    )
+    explicit_investment_decision = bool(
+        re.search(
+            r"\b(?:recommend|suggest|advise)\b.{0,60}\b(?:investment|investing|invest|stock|stocks|"
+            r"fund|funds|portfolio|allocation|allocate)\b",
+            text,
+            re.I,
+        )
+        or re.search(r"\b(?:should i|how should i)\b.{0,40}\b(?:invest|buy|sell|allocate)\b", text, re.I)
+        or re.search(
+            r"\b(?:buy|sell|investment options?|portfolio allocation|allocate|allocation)\b",
+            text,
+            re.I,
+        )
+    )
+    quote_provenance_audit = bool(
+        re.search(r"\b(?:audit|identify|distinguish|classify|trace|verify)\b", text, re.I)
+        and re.search(r"\b(?:market quotes?|market data|stock quotes?|ticker prices?)\b", text, re.I)
+    )
+    if surplus_assessment_only and not explicit_investment_decision and not quote_provenance_audit:
+        investment = False
+
     invoice = bool(
         re.search(
             r"\b(?:create|generate|make|draft|prepare|produce|build)\b.{0,60}"
