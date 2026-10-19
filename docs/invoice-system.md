@@ -169,3 +169,8 @@ Before a structured invoice PDF is rendered, the server verifies that each line 
 ### Canonical invoice reference across exports
 
 The invoice reference shown in chat is the canonical `invoice_number` in the structured invoice payload. For a newly parsed invoice, the generated reference is written into that payload before export actions are returned. When reviewing an uploaded invoice that already contains an invoice number, the existing number is preserved. PDF and CSV exports must use the same structured payload and must not generate a second independent invoice reference.
+
+
+### CSV export schema
+
+Invoice Studio's CSV uses `record_type=line_item` rows for line items and one `record_type=summary` row for invoice-level fields. The summary row carries subtotal, aggregate tax, tax-breakdown JSON, total, and notes exactly once, avoiding repeated totals on every line item. Both the PDF request and CSV use `invoice_number` from the same structured payload.
