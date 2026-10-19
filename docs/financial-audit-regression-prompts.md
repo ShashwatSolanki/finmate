@@ -88,3 +88,17 @@ Use these prompts in a test FinMate account after loading controlled fixtures. D
 ## Test-run notes
 
 The repository regression tests for these issues live in `backend/tests/test_financial_audit_regressions.py`. Run them from the backend's configured test environment with the project test command (typically `pytest tests/test_financial_audit_regressions.py`). Also run the existing backend test suite before merging. These prompts test behavior; they do not replace automated assertions.
+
+
+## Controlled transaction fixture
+
+Use [`research/evaluation/fixtures/financial_audit_sample.csv`](../research/evaluation/fixtures/financial_audit_sample.csv) in a **fresh test account only**. It has 75 deliberately repeated rows covering August, September, and October 2026. The repetition is intentional so exact-match risk can be tested; do not import this into a production account.
+
+After importing the fixture once, expected results are:
+
+- Last 30 days (2026-09-20 through 2026-10-19): 35 transactions, total INR 94,000; Rent INR 62,500, Food INR 17,250, Utilities INR 8,000, Transport INR 4,500, Healthcare INR 1,750.
+- Duplicate-risk summary for that 30-day period: 7 repeated patterns, 35 affected rows, 28 extra matching rows, repeated-copy value INR 75,200, one-copy-per-pattern value INR 18,800. The full total must still include every row.
+- September 2026: 25 transactions, INR 82,750. August 2026: 20 transactions, INR 78,500.
+- The fixture is synthetic and intentionally incomplete as real-life finances; reports should say coverage is unverified, not claim that these are complete actual spending records.
+
+If import deduplication skips any records because the test account is not fresh, use a clean disposable account or reset only that disposable test database, then import once. Never remove transactions from a real account to create this test.
