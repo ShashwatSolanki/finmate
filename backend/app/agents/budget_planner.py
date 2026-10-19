@@ -232,6 +232,224 @@ def _requested_transaction_category(message: str, category_totals: dict[str, Dec
 def _format_amount(value: Decimal) -> str:
     return f"{value:,.2f}"
 
+def _is_month_comparison_request(message: str) -> bool:
+    text = message.casefold()
+    return bool(
+        re.search(r"\bmonth[- ]over[- ]month\b", text)
+        or (
+            re.search(r"\bcompare\b", text)
+            and re.search(r"\b(?:previous|prior|last|most recent complete)\b.{0,40}\bmonth\b", text)
+            and re.search(r"\b(?:month before|before it|two months)\b", text)
+        )
+    )
+
+
+def _expense_window(message: str, today: date) -> tuple[date, date, str]:
+    """Resolve an explicit calendar-month request or default to exactly 30 dates."""
+    text = message.casefold()
+    if re.search(
+        r"\b(?:previous|prior|last|most recent complete)\s+(?:full\s+)?calendar\s+month\b"
+        r"|\bmonth before (?:it|this)\b",
+        text,
+    ):
+        current_start = date(today.year, today.month, 1)
+        end = current_start - timedelta(days=1)
+        start = date(end.year, end.month, 1)
+        return start, end, f"previous calendar month ({start.isoformat()} to {end.isoformat()})"
+    if re.search(r"\b(?:this|current)\s+calendar\s+month\b", text):
+        start = date(today.year, today.month, 1)
+        return start, today, f"current calendar month ({start.isoformat()} to {today.isoformat()})"
+    start = today - timedelta(days=29)
+    return start, today, f"last 30 days ({start.isoformat()} to {today.isoformat()})"
+
+
+def _previous_calendar_months(today: date) -> tuple[tuple[date, date, str], tuple[date, date, str]]:
+    """Return (most recent complete month, month before that), both inclusive."""
+    this_month_start = date(today.year, today.month, 1)
+    newer_end = this_month_start - timedelta(days=1)
+    newer_start = date(newer_end.year, newer_end.month, 1)
+    older_end = newer_start - timedelta(days=1)
+    older_start = date(older_end.year, older_end.month, 1)
+    newer = (newer_start, newer_end, newer_start.strftime("%B %Y"))
+    older = (older_start, older_end, older_start.strftime("%B %Y"))
+    return newer, older
+
+
+def _aggregate_expenses(
+    db: Session,
+    user_id: UUID,
+    start: date,
+    end: date,
+) -> dict[str, dict[str, Decimal]]:
+    """Return positive expense magnitudes grouped by currency and category."""
+    rows = db.execute(
+        select(
+            Transaction.currency,
+            Transaction.category,
+            func.coalesce(func.sum(-Transaction.amount), 0),
+        )
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.occurred_on >= start,
+            Transaction.occurred_on <= end,
+            Transaction.amount < 0,
+        )
+        .group_by(Transaction.currency, Transaction.category)
+    ).all()
+    result: dict[str, dict[str, Decimal]] = {}
+    for cur, category, total in rows:
+        currency_code = str(cur or "INR").upper()
+        display = (str(category).strip() if category else "Uncategorized")
+        bucket = result.setdefault(currency_code, {})
+        bucket[display] = bucket.get(display, Decimal("0")) + Decimal(str(total or 0))
+    return result
+
+
+def _currency_total(categories: dict[str, Decimal]) -> Decimal:
+    return sum(categories.values(), start=Decimal("0"))
+
+
+def _format_expense_groups(groups: dict[str, dict[str, Decimal]]) -> tuple[list[str], dict[str, Decimal]]:
+    lines: list[str] = []
+    totals: dict[str, Decimal] = {}
+    if not groups:
+        return ["No recorded expense debits were found for this period. This does not mean your spending was zero."], totals
+    for currency_code in sorted(groups):
+        categories = groups[currency_code]
+        total = _currency_total(categories)
+        totals[currency_code] = total
+        lines.append(f"Total recorded expenses in {currency_code}: {_format_amount(total)}")
+        for category, amount in sorted(categories.items(), key=lambda pair: pair[1], reverse=True):
+            lines.append(f"- {category}: {_format_amount(amount)} {currency_code}")
+    return lines, totals
+
+
+def _deterministic_spending_report(
+    db: Session,
+    user_id: UUID,
+    message: str,
+) -> AgentResult:
+    today = date.today()
+    if _is_month_comparison_request(message):
+        newer, older = _previous_calendar_months(today)
+        newer_data = _aggregate_expenses(db, user_id, newer[0], newer[1])
+        older_data = _aggregate_expenses(db, user_id, older[0], older[1])
+        lines = [
+            f"Comparison: {newer[2]} vs {older[2]}",
+            f"Reporting dates: {newer[0].isoformat()}–{newer[1].isoformat()} vs "
+            f"{older[0].isoformat()}–{older[1].isoformat()}",
+        ]
+        if not newer_data and not older_data:
+            lines.append("There are no recorded expense debits for either month. This does not mean spending was zero.")
+        for currency_code in sorted(set(newer_data) | set(older_data)):
+            current = newer_data.get(currency_code, {})
+            previous = older_data.get(currency_code, {})
+            lines.append(f"\n{currency_code} spending:")
+            for category in sorted(set(current) | set(previous)):
+                now_amount = current.get(category, Decimal("0"))
+                before_amount = previous.get(category, Decimal("0"))
+                change = now_amount - before_amount
+                if before_amount > 0:
+                    pct = change / before_amount * Decimal("100")
+                    pct_text = f"{pct:+.2f}%"
+                elif now_amount > 0:
+                    pct_text = "new spending (no percentage available because the prior month was zero)"
+                else:
+                    pct_text = "0.00%"
+                direction = "increased" if change > 0 else "decreased" if change < 0 else "unchanged"
+                lines.append(
+                    f"- {category}: {newer[2]} {_format_amount(now_amount)}; "
+                    f"{older[2]} {_format_amount(before_amount)}; "
+                    f"{direction} by {_format_amount(abs(change))} {currency_code} ({pct_text})."
+                )
+            current_total = _currency_total(current)
+            previous_total = _currency_total(previous)
+            change = current_total - previous_total
+            pct_text = f"{change / previous_total * Decimal('100'):+.2f}%" if previous_total else (
+                "new spending" if current_total else "0.00%"
+            )
+            lines.append(
+                f"- TOTAL: {_format_amount(current_total)} vs {_format_amount(previous_total)} {currency_code}; "
+                f"{'increased' if change > 0 else 'decreased' if change < 0 else 'unchanged'} "
+                f"by {_format_amount(abs(change))} {currency_code} ({pct_text})."
+            )
+        reply = (
+            "[AGENT: BUDGET]\n\n"
+            + "\n".join(lines)
+            + "\n\nThese are recorded expense debits only. Missing transactions are not inferred."
+        )
+        return AgentResult(
+            agent=AgentName.BUDGET_PLANNER,
+            reply=reply,
+            planned_steps=["resolve_two_complete_calendar_months", "aggregate_expense_debits", "calculate_changes"],
+            metadata={
+                "source": "deterministic_month_comparison",
+                "newer_period_start": newer[0].isoformat(),
+                "newer_period_end": newer[1].isoformat(),
+                "older_period_start": older[0].isoformat(),
+                "older_period_end": older[1].isoformat(),
+                "currency_groups": str(len(set(newer_data) | set(older_data))),
+            },
+        )
+
+    start, end, period_label = _expense_window(message, today)
+    groups = _aggregate_expenses(db, user_id, start, end)
+    lines, totals = _format_expense_groups(groups)
+    income, income_currency = extract_monthly_income(message)
+    if _explicitly_requests_budget_plan(message):
+        if income is None:
+            lines.append("\nMonthly income was not found in the request or saved context, so I cannot calculate a remainder.")
+        elif len(totals) == 1 and income_currency and next(iter(totals)) != income_currency:
+            lines.append(
+                f"\nMonthly income is recorded as {income_currency}, but expenses are recorded as "
+                f"{next(iter(totals))}; I cannot subtract amounts in different currencies without an exchange rate."
+            )
+        elif len(totals) > 1:
+            lines.append("\nExpenses are recorded in multiple currencies; no combined income remainder is calculated.")
+        elif totals:
+            currency_code, total = next(iter(totals.items()))
+            remainder = income - total
+            lines.append(
+                f"\nStated monthly income: {_format_amount(income)} {income_currency or currency_code}."
+            )
+            lines.append(
+                f"Simple remainder after recorded expenses for {period_label}: {_format_amount(remainder)} "
+                f"{currency_code}."
+            )
+            lines.append(
+                "This is not guaranteed investable surplus: transaction history may be incomplete and "
+                "unrecorded expenses are not assumed to be zero."
+            )
+        return AgentResult(
+            agent=AgentName.BUDGET_PLANNER,
+            reply="[AGENT: BUDGET]\n\n" + "\n".join(lines),
+            planned_steps=["aggregate_recorded_expense_debits", "compare_with_stated_income"],
+            metadata={
+                "source": "deterministic_budget_comparison",
+                "period_start": start.isoformat(),
+                "period_end": end.isoformat(),
+                "currency_groups": str(len(totals)),
+            },
+        )
+
+    reply = (
+        "[AGENT: BUDGET]\n\n"
+        f"Recorded spending report for {period_label}:\n"
+        + "\n".join(lines)
+        + "\n\nUploaded receipts are separate from recorded transactions unless explicitly imported as transactions."
+    )
+    return AgentResult(
+        agent=AgentName.BUDGET_PLANNER,
+        reply=reply,
+        planned_steps=["resolve_reporting_window", "aggregate_expense_debits", "report_by_category"],
+        metadata={
+            "source": "deterministic_spending_report",
+            "period_start": start.isoformat(),
+            "period_end": end.isoformat(),
+            "currency_groups": str(len(totals)),
+        },
+    )
+
 
 def run(
     user_id: UUID,
@@ -266,7 +484,20 @@ def run(
         )
 
     today = date.today()
-    start = today - timedelta(days=30)
+    start = today - timedelta(days=29)
+
+    # Transaction summaries and month comparisons are deterministic SQL tasks.
+    # Do not let LLM prose rewrite numeric results, signs, or calendar periods.
+    if _is_month_comparison_request(message) or (
+        _asks_for_spending_report(message) and not _explicitly_requests_budget_plan(message)
+    ):
+        return _deterministic_spending_report(db, user_id, message)
+    if _explicitly_requests_budget_plan(message) and re.search(
+        r"\b(?:recorded expenses|actual spending|transaction history|recorded transactions)\b",
+        message,
+        re.I,
+    ):
+        return _deterministic_spending_report(db, user_id, message)
 
     currency = (
         db.scalar(
@@ -276,8 +507,17 @@ def run(
     )
 
     rows = db.execute(
-        select(Transaction.category, func.coalesce(func.sum(Transaction.amount), 0))
-        .where(Transaction.user_id == user_id, Transaction.occurred_on >= start)
+        select(
+            Transaction.category,
+            func.coalesce(func.sum(-Transaction.amount), 0),
+        )
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.occurred_on >= start,
+            Transaction.occurred_on <= today,
+            Transaction.amount < 0,
+            Transaction.currency == currency,
+        )
         .group_by(Transaction.category)
     ).all()
 
