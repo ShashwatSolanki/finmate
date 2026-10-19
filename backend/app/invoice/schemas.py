@@ -14,6 +14,11 @@ class ParsedLineItem(BaseModel):
     amount: Decimal = Field(..., description="Line total")
 
 
+class TaxBreakdownItem(BaseModel):
+    label: str = Field(..., min_length=1, max_length=80)
+    amount: Decimal = Field(..., ge=0, description="Tax component amount")
+
+
 class StructuredInvoice(BaseModel):
     invoice_number: str | None = None
     invoice_date: str | None = None
@@ -24,6 +29,7 @@ class StructuredInvoice(BaseModel):
     line_items: list[ParsedLineItem] = Field(default_factory=list)
     subtotal: Decimal | None = None
     tax: Decimal | None = None
+    tax_breakdown: list[TaxBreakdownItem] = Field(default_factory=list)
     total: Decimal | None = None
     notes: str | None = None
 
