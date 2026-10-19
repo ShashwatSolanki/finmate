@@ -401,6 +401,90 @@ Total: 1029.00 INR
         self.assertIn("invoice_payload", result.metadata)
         self.assertEqual(result.metadata["invoice_actions"], "pdf,csv")
 
+
+    def test_spending_report_sums_expense_debits_as_positive_and_includes_requested_count(self):
+        prompt = (
+            "Using only my recorded transactions for the last 30 days, show total spending by category in INR. "
+            "Include Food, Rent, Utilities, Transport, and an overall total. "
+            "Report the transaction count and exact date range."
+        )
+        today = date.today()
+        with (
+            patch(
+                "app.agents.budget_planner._aggregate_expenses",
+                return_value={
+                    "INR": {
+                        "Food": Decimal("3450"),
+                        "Rent": Decimal("12000"),
+                        "Utilities": Decimal("1600"),
+                        "Transport": Decimal("900"),
+                    }
+                },
+            ),
+            patch("app.agents.budget_planner._count_expenses", return_value=15),
+            patch("app.agents.budget_planner.extract_monthly_income", return_value=(None, None)),
+        ):
+            result = run_budget(self.user_id, prompt, self.db)
+
+        self.assertEqual(result.metadata["source"], "deterministic_spending_report")
+        self.assertIn("Food: 3,450.00 INR", result.reply)
+        self.assertIn("Total recorded expenses in INR: 17,950.00", result.reply)
+        self.assertIn("Recorded expense transaction count: 15", result.reply)
+        self.assertIn((today - timedelta(days=29)).isoformat(), result.reply)
+        self.assertIn(today.isoformat(), result.reply)
+        self.assertNotIn("-3450.00", result.reply)
+        self.assertNotIn("net -", result.reply.casefold())
+
+    def test_month_comparison_uses_calendar_months_and_correct_change_direction(self):
+        prompt = (
+            "Compare my previous complete calendar month with the complete calendar month before it. "
+            "Show category totals, absolute changes, and percentage changes."
+        )
+        newer = {"INR": {"Food": Decimal("2200"), "Rent": Decimal("12000")}}
+        older = {"INR": {"Food": Decimal("2000"), "Rent": Decimal("11500")}}
+        with patch(
+            "app.agents.budget_planner._aggregate_expenses",
+            side_effect=[newer, older],
+        ):
+            result = run_budget(self.user_id, prompt, self.db)
+
+        self.assertEqual(result.metadata["source"], "deterministic_month_comparison")
+        self.assertIn("Food: September 2026 2,200.00; August 2026 2,000.00; increased by 200.00 INR (+10.00%)", result.reply)
+        self.assertIn("Rent: September 2026 12,000.00; August 2026 11,500.00; increased by 500.00 INR (+4.35%)", result.reply)
+        self.assertIn("TOTAL: 14,200.00 vs 13,500.00 INR; increased by 700.00 INR (+5.19%)", result.reply)
+
+    def test_budget_plan_computes_negative_remainder_and_warns_about_missing_costs(self):
+        prompt = (
+            "My saved monthly income is INR 50,000. Create a needs, wants, and savings budget, "
+            "and compare it with my actual recorded monthly expenses. Distinguish the simple remainder "
+            "from genuinely investable surplus."
+        )
+        with (
+            patch(
+                "app.agents.budget_planner._aggregate_expenses",
+                return_value={
+                    "INR": {
+                        "Rent": Decimal("62500"),
+                        "Food": Decimal("17250"),
+                        "Utilities": Decimal("8000"),
+                        "Transport": Decimal("4500"),
+                        "Healthcare": Decimal("1750"),
+                    }
+                },
+            ),
+            patch(
+                "app.agents.budget_planner.extract_monthly_income",
+                return_value=(Decimal("50000"), "INR"),
+            ),
+        ):
+            result = run_budget(self.user_id, prompt, self.db)
+
+        self.assertEqual(result.metadata["source"], "deterministic_budget_comparison")
+        self.assertIn("Stated monthly income: 50,000.00 INR", result.reply)
+        self.assertIn("Simple remainder after recorded expenses", result.reply)
+        self.assertIn("-44,000.00 INR", result.reply)
+        self.assertIn("not guaranteed investable surplus", result.reply.lower())
+
     def test_no_transaction_history_does_not_turn_spending_report_into_budget_split(self):
         self.db.scalar.return_value = None
         self.db.execute.return_value.all.return_value = []
@@ -421,7 +505,7 @@ Total: 1029.00 INR
                 self.db,
             )
 
-        self.assertEqual(result.metadata["source"], "db_aggregates")
+        self.assertEqual(result.metadata["source"], "deterministic_month_comparison")
         self.assertIn("not mean your spending was zero", result.reply)
         self.assertNotIn("50/30/20", result.reply)
 
@@ -455,7 +539,7 @@ Total: 1029.00 INR
         ):
             result = run_budget(self.user_id, prompt, self.db)
 
-        self.assertEqual(result.metadata["source"], "db_aggregates")
+        self.assertEqual(result.metadata["source"], "deterministic_budget_comparison")
         self.assertIn("investable surplus", result.reply.lower())
         self.assertIn("50,000.00 INR", result.reply)
         self.assertIn("cannot safely be treated as zero", result.reply)
