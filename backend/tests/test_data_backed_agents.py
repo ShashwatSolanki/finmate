@@ -1,5 +1,6 @@
 """Regression tests for data-backed investment and invoice behavior."""
 
+import json
 import unittest
 from datetime import date, timedelta
 from decimal import Decimal
@@ -300,6 +301,36 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(invoice.tax, Decimal("5220.00"))
         self.assertEqual(invoice.total, Decimal("34220.00"))
 
+
+    def test_combined_three_agent_invoice_request_exports_all_items_and_tax(self):
+        prompt = (
+            "Complete all three tasks. First, report my last-30-day recorded expenses by category and keep "
+            "uploaded receipts separate from transactions. Second, review my saved AAPL, MSFT, and NVDA portfolio. "
+            "Third, create an invoice from Shashwat Solanki to Acme Technologies: Website Development 2 units at "
+            "INR 12,000 each, Hosting 1 unit at INR 2,000, SEO Audit 1 unit at INR 3,000, with 18% tax. "
+            "Preserve the invoice fields for export. Clearly label transaction data, receipt data, market data, "
+            "and newly generated invoice data."
+        )
+
+        result = run_invoice(self.user_id, prompt, self.db)
+        payload = json.loads(result.metadata["invoice_payload"])
+
+        self.assertEqual(result.metadata["source"], "structured_parse")
+        self.assertEqual(result.metadata["parsed_items_count"], "3")
+        self.assertEqual(result.metadata["parsed_total"], "34220.00")
+        self.assertEqual(result.metadata["invoice_actions"], "pdf,csv")
+        self.assertEqual(
+            [(item["description"], item.get("quantity"), item.get("unit_price"), item["amount"])
+             for item in payload["line_items"]],
+            [
+                ("Website Development", 2.0, "12000", "24000.00"),
+                ("Hosting", 1.0, "2000", "2000.00"),
+                ("SEO Audit", 1.0, "3000", "3000.00"),
+            ],
+        )
+        self.assertEqual(payload["subtotal"], "29000.00")
+        self.assertEqual(payload["tax"], "5220.00")
+        self.assertEqual(payload["total"], "34220.00")
 
     def test_invoice_export_is_blocked_if_explicit_item_count_is_incomplete(self):
         prompt = (
