@@ -7,6 +7,7 @@ import {
   type ParseInvoiceResult,
   type StructuredInvoice,
 } from "../lib/api";
+import { sanitizeDownloadBaseName } from "../lib/filename";
 
 type Props = {
   onStatus: (msg: string | null) => void;
@@ -33,6 +34,7 @@ export default function InvoiceImportPanel({ onStatus, onError }: Props) {
   const [parseResult, setParseResult] = useState<ParseInvoiceResult | null>(null);
   const [invoice, setInvoice] = useState<StructuredInvoice>(EMPTY);
   const [loading, setLoading] = useState(false);
+  const [customPdfFilename, setCustomPdfFilename] = useState("");
 
   useEffect(() => {
     const saved = sessionStorage.getItem("finmate_pending_invoice");
@@ -90,7 +92,8 @@ export default function InvoiceImportPanel({ onStatus, onError }: Props) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `invoice-${invoice.invoice_number || "export"}.pdf`;
+      const defaultBaseName = `invoice-${invoice.invoice_number || "export"}`;
+      a.download = `${sanitizeDownloadBaseName(customPdfFilename, defaultBaseName)}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
       onStatus("PDF downloaded.");
@@ -162,6 +165,17 @@ export default function InvoiceImportPanel({ onStatus, onError }: Props) {
           <label>GST / tax amount<input inputMode="decimal" value={invoice.tax ?? ""} placeholder="0.00" onChange={(e) => updateField("tax", e.target.value || null)} /></label>
           <dl><div><dt>Subtotal</dt><dd>{subtotal.toFixed(2)} {invoice.currency}</dd></div><div><dt>Tax</dt><dd>{tax.toFixed(2)} {invoice.currency}</dd></div><div className="grand-total"><dt>Total</dt><dd>{total.toFixed(2)} {invoice.currency}</dd></div></dl>
         </div>
+        <label className="invoice-custom-filename">
+          PDF filename (optional)
+          <input
+            value={customPdfFilename}
+            onChange={(event) => setCustomPdfFilename(event.target.value)}
+            placeholder={`invoice-${invoice.invoice_number || "export"}`}
+            maxLength={120}
+            aria-label="Custom invoice PDF filename"
+          />
+          <small>Leave blank to use the invoice number or a default name.</small>
+        </label>
         <div className="invoice-actions">
           <button type="button" className="btn-secondary" onClick={addLineItem}>+ Add line item</button>
           <button type="button" className="btn-primary" onClick={downloadPdf} disabled={loading || invoice.line_items.length === 0 || invoice.line_items.some((li) => !li.description.trim() || Number(li.amount) <= 0)}>
