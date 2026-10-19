@@ -1133,6 +1133,7 @@ Total: 1029.00 INR
                 "app.agents.budget_planner.extract_monthly_income",
                 return_value=(Decimal("50000"), "INR"),
             ),
+            patch("app.agents.budget_planner._has_potential_duplicate_expenses", return_value=False),
             patch("app.agents.budget_planner.settings.finmate_use_llm", False),
         ):
             result = run_budget(self.user_id, prompt, self.db)
