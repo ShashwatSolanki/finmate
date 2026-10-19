@@ -236,6 +236,8 @@ def test_transaction_csv_import_is_persisted_as_user_attachment(database):
         "filename": "finmate_test_transactions.csv",
         "imported_count": 15,
         "skipped_count": 1,
+        "duplicate_rows_skipped": 1,
+        "already_imported": False,
         "preview": [
             {
                 "amount": "-450.00",
@@ -273,6 +275,8 @@ def test_transaction_csv_import_is_persisted_as_user_attachment(database):
     assert saved["metadata"]["filename"] == "finmate_test_transactions.csv"
     assert saved["metadata"]["imported_count"] == "15"
     assert saved["metadata"]["skipped_count"] == "1"
+    assert saved["metadata"]["duplicate_rows_skipped"] == "1"
+    assert saved["metadata"]["already_imported"] == "false"
     assert json.loads(saved["metadata"]["preview"])[0]["description"] == "Cafe lunch"
     assert json.loads(saved["metadata"]["sample_errors"]) == [
         "line 17: unsupported date 'not-a-date'"
@@ -294,6 +298,7 @@ def test_transaction_csv_import_is_persisted_as_user_attachment(database):
         recent_context = _build_recent_context(db, user.id, turns=1)
     assert recent_context is not None
     assert "Imported transactions CSV file: finmate_test_transactions.csv" in recent_context
+    assert "exact-match duplicate rows skipped: 1" in recent_context
     assert "Cafe lunch -450.00 INR" in recent_context
     assert "line 17: unsupported date" in recent_context
 
