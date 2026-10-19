@@ -429,11 +429,11 @@ Total: 1029.00 INR
         observations = [
             AgentResult(
                 AgentName.BUDGET_PLANNER,
-                '[AGENT: BUDGET]\\n\\n["Agent says: risk assessment", "tools_needed=[date_set]"]',
+                '[AGENT: BUDGET]\n\n["Agent says: risk assessment", "tools_needed=[date_set]"]',
             ),
             AgentResult(
                 AgentName.INVESTMENT_ANALYSER,
-                "[AGENT: INVESTMENT]\\n\\nMSFT last close is 529.05 USD.",
+                "[AGENT: INVESTMENT]\n\nMSFT last close is 529.05 USD.",
             ),
         ]
         with patch("app.agents.agentic_orchestrator.settings.finmate_use_llm", False):
