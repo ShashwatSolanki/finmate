@@ -99,12 +99,22 @@ def extract_ticker_candidates(message: str, *, max_candidates: int = 6) -> list[
     # do not force the Investment Analyser route.
     csv_file_context = bool(
         re.search(
-            r"\b(?:csv\s+file|csv\s+import|spreadsheet|data\s+file|transaction\s+data|transaction\s+rows|"
-            r"import(?:ed)?|upload(?:ed)?|from\s+the\s+(?:latest|most\s+recent)\s+csv|"
-            r"read|parse|process)\b",
+            r"\b(?:csv\s+file|csv\s+import|spreadsheet|data\s+file|transaction\s+data|transaction\s+rows)\b",
             lower,
             re.I,
         )
+        or re.search(
+            r"\b(?:import(?:ed)?|upload(?:ed)?|read|parse|process)\s+(?:the\s+)?"
+            r"(?:latest\s+|most\s+recent\s+)?csv\b",
+            lower,
+            re.I,
+        )
+        or re.search(
+            r"\bfrom\s+(?:the\s+)?(?:latest\s+|most\s+recent\s+)?csv\b",
+            lower,
+            re.I,
+        )
+        or re.search(r"\.csv\b", lower, re.I)
     )
     caps = [
         t
