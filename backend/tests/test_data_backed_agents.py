@@ -34,6 +34,7 @@ from app.agents.invoice_generator import (
 from app.agents.investment_analyser import (
     _SymbolAnalysis,
     _extract_lump_sum,
+    _is_market_source_audit_request,
     _extract_risk_from_context,
     run as run_investment,
 )
@@ -301,6 +302,24 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(invoice.tax, Decimal("5220.00"))
         self.assertEqual(invoice.total, Decimal("34220.00"))
 
+
+    def test_market_quote_source_audit_does_not_generate_generic_allocation(self):
+        prompt = (
+            "Audit my financial data before giving any recommendation. Identify which figures are directly "
+            "supported by recorded transactions, which are from my uploaded receipt, which are from market quotes, "
+            "and which are missing. Do not treat an uploaded receipt as a transaction, do not assume unrecorded "
+            "expenses are zero, and do not invent monthly totals or currency conversions."
+        )
+        self.assertTrue(_is_market_source_audit_request(prompt))
+
+        with patch("app.agents.investment_analyser._portfolio_plan_reply") as generic_plan:
+            result = run_investment(self.user_id, prompt, self.db)
+
+        generic_plan.assert_not_called()
+        self.assertEqual(result.metadata["source"], "market_source_audit_missing_ticker")
+        self.assertIn("does not identify a ticker", result.reply)
+        self.assertNotIn("60/30/10", result.reply)
+        self.assertNotIn("buy/sell recommendation", result.reply.lower())
 
     def test_combined_three_agent_invoice_request_exports_all_items_and_tax(self):
         prompt = (
