@@ -16,7 +16,7 @@ from app.agents.types import AgentName, AgentResult
 from app.db.models import MemoryChunk, Transaction
 from app.config import settings
 from app.invoice.parse_invoice import parse_invoice_text
-from app.invoice.schemas import ParsedLineItem, StructuredInvoice
+from app.invoice.schemas import ParsedLineItem, StructuredInvoice, TaxBreakdownItem
 from app.ml.finmate import generate
 
 _AMOUNT_LINE = re.compile(
@@ -372,6 +372,25 @@ def _invoice_from_memory_text(text: str) -> StructuredInvoice | None:
     subtotal = subtotal_value if subtotal_value is not None else sum(
         (item.amount for item in items), start=Decimal("0")
     )
+    tax_breakdown: list[TaxBreakdownItem] = []
+    for line in text.splitlines():
+        match = re.match(
+            r"^\\s*-\\s*((?:CGST|SGST|IGST)(?:\\s+\\d+(?:\\.\\d+)?\\s*%)?)\\s*:\\s*"
+            r"([\\d,]+(?:\\.\\d{1,2})?)\\s*(INR|USD|EUR|GBP|CAD|AUD|JPY|CHF|SGD)?\\s*$",
+            line.strip(),
+            re.I,
+        )
+        if not match:
+            continue
+        label, amount_raw, _currency = match.groups()
+        try:
+            component_amount = Decimal(amount_raw.replace(",", ""))
+        except InvalidOperation:
+            continue
+        if component_amount >= 0:
+            tax_breakdown.append(TaxBreakdownItem(label=label.strip(), amount=component_amount))
+    if tax is None and tax_breakdown:
+        tax = sum((component.amount for component in tax_breakdown), start=Decimal("0"))
     total = total_value if total_value is not None else subtotal + (tax or Decimal("0"))
 
     notes_parts = [field("Notes")] if field("Notes") else []
@@ -388,6 +407,7 @@ def _invoice_from_memory_text(text: str) -> StructuredInvoice | None:
         line_items=items,
         subtotal=subtotal,
         tax=tax,
+        tax_breakdown=tax_breakdown,
         total=total,
         notes="\n".join(notes_parts) if notes_parts else None,
     )
@@ -575,6 +595,11 @@ def _format_reply(
         lines.append(f"Subtotal: {invoice.subtotal:.2f} {invoice.currency}")
     if invoice.tax is not None:
         lines.append(f"Tax: {invoice.tax:.2f} {invoice.currency}")
+    if invoice.tax_breakdown:
+        lines.extend(
+            f"{component.label}: {component.amount:.2f} {invoice.currency}"
+            for component in invoice.tax_breakdown
+        )
     if invoice.total is not None:
         lines.append(f"Total: {invoice.total:.2f} {invoice.currency}")
     if invoice.notes:
@@ -598,6 +623,10 @@ def _format_reply(
         ],
         "subtotal": str(invoice.subtotal) if invoice.subtotal is not None else None,
         "tax": str(invoice.tax) if invoice.tax is not None else None,
+        "tax_breakdown": [
+            {"label": component.label, "amount": str(component.amount)}
+            for component in invoice.tax_breakdown
+        ],
         "total": str(invoice.total) if invoice.total is not None else None,
         "notes": invoice.notes,
     }
