@@ -143,7 +143,7 @@ def _looks_like_tool_or_debug_output(text: str) -> bool:
     return bool(
         re.search(
             r"\[\s*tokenized_tools\s*\]|\btools_needed\s*=|\btool_name\s*=|"
-            r"\bAgent says:|\bRAG chunks used\b|\bconfidence factors\b|"
+            r"\bAgent\s+(?:says|responds with)\b|\bRAG chunks used\b|\bconfidence factors\b|"
             r"\bexecution path\s*(?:rules|specialist|agentic)\b",
             text,
             re.I,
