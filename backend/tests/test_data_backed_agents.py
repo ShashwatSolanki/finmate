@@ -590,6 +590,49 @@ Total: 1029.00 INR
             )
         )
 
+    def test_uploaded_receipt_pdf_export_preserves_separate_cgst_sgst_components(self):
+        memory_text = """User: Uploaded invoice file: test_bill.jpg
+Source type: image; extraction confidence: medium.
+Invoice number: 73430
+Invoice date: 28/11/25
+Vendor: The Hole in wall Cafe
+Line items:
+- Chicken Fajita Breakfast Tacos: 300.00 INR
+- French Toast With Lemon Cream Cheese And Blueberry Compote: 190.00 INR
+- The Breakfast Bake: 210.00 INR
+- Tiramisu Those Pancakes: 280.00 INR
+Subtotal: 980.00 INR
+Tax: 49.00 INR
+Tax breakdown:
+- SGST 2.5%: 24.50 INR
+- CGST 2.5%: 24.50 INR
+Total: 1029.00 INR
+Extraction warnings:
+- The printed subtotal was not reliably read by OCR.
+"""
+        saved_invoice = _invoice_from_memory_text(memory_text)
+        self.assertIsNotNone(saved_invoice)
+        assert saved_invoice is not None
+
+        with patch("app.agents.invoice_generator._invoice_from_recent_upload", return_value=saved_invoice):
+            result = run_invoice(
+                self.user_id,
+                "Use the receipt I uploaded earlier in this conversation, then generate a PDF and CSV "
+                "from the saved extracted fields.",
+                self.db,
+            )
+
+        self.assertEqual(result.metadata["source"], "uploaded_invoice_context")
+        self.assertEqual(result.metadata["invoice_actions"], "pdf,csv")
+        payload = json.loads(result.metadata["invoice_payload"])
+        self.assertEqual(payload["total"], "1029.00")
+        self.assertEqual(
+            [(component["label"], component["amount"]) for component in payload["tax_breakdown"]],
+            [("SGST 2.5%", "24.50"), ("CGST 2.5%", "24.50")],
+        )
+        self.assertIn("SGST 2.5%: 24.50 INR", result.reply)
+        self.assertIn("CGST 2.5%: 24.50 INR", result.reply)
+
     def test_uploaded_receipt_followup_uses_saved_invoice_instead_of_parsing_prompt(self):
         saved_invoice = _invoice_from_memory_text(
             """User: Uploaded invoice file: test_bill.jpg
