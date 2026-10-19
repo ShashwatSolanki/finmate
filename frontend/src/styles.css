@@ -1639,3 +1639,11 @@ input:focus, textarea:focus, select:focus {
   font-size: .72rem;
   font-weight: 400;
 }
+
+
+@media (max-width: 768px) {
+  /* Hover is unreliable on touchscreens, so expose rename affordance directly. */
+  .conversation-rename {
+    opacity: 1;
+  }
+}
