@@ -107,6 +107,7 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [expandedCsvImports, setExpandedCsvImports] = useState<Record<string, boolean>>({});
 
   const loadConversations = useCallback(async () => {
     if (!token) return;
@@ -520,28 +521,48 @@ export default function ChatPage() {
                         <strong>{importedCsv.importedCount} imported</strong>
                         {importedCsv.skippedCount > 0 && <span>{importedCsv.skippedCount} skipped</span>}
                       </div>
-                      {importedCsv.preview.length > 0 && (
-                        <details className="invoice-attachment-details">
-                          <summary>Preview imported transactions ({importedCsv.preview.length})</summary>
-                          <ul>
-                            {importedCsv.preview.map((row, index) => (
-                              <li key={`${row.occurred_on}-${row.description || row.category || "transaction"}-${index}`}>
-                                <span className="csv-attachment-row-label">
-                                  <strong>{row.description || row.category || "Transaction"}</strong>
-                                  <small>
-                                    {row.occurred_on}{row.category && row.description ? ` · ${row.category}` : ""}
-                                  </small>
-                                </span>
-                                <strong>{row.amount} {row.currency}</strong>
-                              </li>
-                            ))}
-                            {importedCsv.importedCount > importedCsv.preview.length && (
-                              <li className="csv-attachment-more">
-                                <span>Showing the first {importedCsv.preview.length} of {importedCsv.importedCount} imported rows.</span>
-                              </li>
-                            )}
-                          </ul>
-                        </details>
+                      {importedCsv.preview.length > 0 ? (
+                        <div className="csv-attachment-details">
+                          <button
+                            type="button"
+                            className="csv-preview-toggle"
+                            aria-expanded={Boolean(expandedCsvImports[m.id])}
+                            aria-controls={`csv-preview-${m.id}`}
+                            onClick={() =>
+                              setExpandedCsvImports((previous) => ({
+                                ...previous,
+                                [m.id]: !previous[m.id],
+                              }))
+                            }
+                          >
+                            <span aria-hidden="true">{expandedCsvImports[m.id] ? "▾" : "▸"}</span>
+                            {expandedCsvImports[m.id]
+                              ? "Hide imported transactions"
+                              : `Preview imported transactions (${importedCsv.preview.length})`}
+                          </button>
+                          {expandedCsvImports[m.id] && (
+                            <ul id={`csv-preview-${m.id}`} className="csv-attachment-preview-list">
+                              {importedCsv.preview.map((row, index) => (
+                                <li key={`${row.occurred_on}-${row.description || row.category || "transaction"}-${index}`}>
+                                  <span className="csv-attachment-row-label">
+                                    <strong>{row.description || row.category || "Transaction"}</strong>
+                                    <small>
+                                      {row.occurred_on}{row.category && row.description ? ` · ${row.category}` : ""}
+                                    </small>
+                                  </span>
+                                  <strong>{row.amount} {row.currency}</strong>
+                                </li>
+                              ))}
+                              {importedCsv.importedCount > importedCsv.preview.length && (
+                                <li className="csv-attachment-more">
+                                  <span>Showing the first {importedCsv.preview.length} of {importedCsv.importedCount} imported rows.</span>
+                                </li>
+                              )}
+                            </ul>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="csv-attachment-no-preview">The import was saved, but this record has no stored transaction preview.</p>
                       )}
                       {importedCsv.sampleErrors.length > 0 && (
                         <div className="csv-attachment-errors" role="note">
