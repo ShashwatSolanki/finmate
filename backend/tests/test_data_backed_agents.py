@@ -56,17 +56,17 @@ class DataBackedAgentTests(unittest.TestCase):
     def test_agentic_synthesis_rejects_raw_tool_trace_and_keeps_clean_agents(self):
         raw_budget = AgentResult(
             AgentName.BUDGET_PLANNER,
-            "[AGENT: BUDGET]\\n\\nBudget Planner:\\n"
-            '[\\n"Agent says: Risk assessment needs date and asset valuation first.", '
-            '"tools_needed=[date_set, tool_name=budget_recommendation]"\\n]',
+            "[AGENT: BUDGET]\n\nBudget Planner:\n"
+            '[\n"Agent says: Risk assessment needs date and asset valuation first.", '
+            '"tools_needed=[date_set, tool_name=budget_recommendation]"\n]',
             metadata={"source": "llm"},
         )
         verified_investment = AgentResult(
             AgentName.INVESTMENT_ANALYSER,
-            "[AGENT: INVESTMENT]\\n\\n"
-            "Microsoft Corporation (MSFT)\\n"
-            "Latest available session: 2026-10-16\\n"
-            "Last close: 529.05 USD\\n20-day SMA: 520.22\\n\\n"
+            "[AGENT: INVESTMENT]\n\n"
+            "Microsoft Corporation (MSFT)\n"
+            "Latest available session: 2026-10-16\n"
+            "Last close: 529.05 USD\n20-day SMA: 520.22\n\n"
             '{"intent":"investment_info","tools_needed":["yfinance_lookup"],"notes":"test"}',
             metadata={"source": "verified_data_fallback"},
         )
@@ -84,6 +84,7 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertNotIn("Agent says:", reply)
         self.assertNotIn("tools_needed=", reply)
         self.assertNotIn("tool_name=", reply)
+
 
     def test_missing_risk_context_is_labelled_as_illustrative(self):
         result = run_investment(
