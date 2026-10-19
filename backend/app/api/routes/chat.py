@@ -43,6 +43,20 @@ def _normalized_tag(agent: AgentName) -> str:
     return "[AGENT: BUDGET]"
 
 
+def _contains_raw_agent_trace(text: str) -> bool:
+    """Detect tool-router/debug fragments that must never be shown as an answer."""
+    return bool(
+        re.search(
+            r"\[\s*tokenized_tools\s*\]|\btools_needed\s*=|\btool_name\s*=|"
+            r"\bAgent says:|\bAdditional tools:|\bRisk discussion:|"
+            r"\bRAG chunks used\b|\bconfidence factors\b|"
+            r"\bexecution path\s*(?:rules|specialist|agentic)\b",
+            text or "",
+            re.I,
+        )
+    )
+
+
 def _canonical_json_tail(agent: AgentName) -> str:
     if agent == AgentName.INVOICE_GENERATOR:
         return (
@@ -70,6 +84,17 @@ def _enforce_reply_contract(reply: str, agent: AgentName) -> str:
     # Preserve headings, portfolio rows, bullets, and paragraph breaks. Joining
     # every non-empty line with spaces turned structured financial answers into
     # one unreadable paragraph.
+    if _contains_raw_agent_trace(raw):
+        # Fail closed at the API boundary even if a specialist or synthesis step
+        # bypasses its own output validator. Never leak tool/debug traces as advice.
+        return (
+            f"{tag}\n\n"
+            "I couldn't produce a readable, verified answer from the agent output. "
+            "No financial conclusion should be drawn from this response. Please retry the request "
+            "or select the relevant specialist directly.\n\n"
+            f"{_canonical_json_tail(agent)}"
+        )
+
     paragraphs: list[str] = []
     current_lines: list[str] = []
     json_line = ""
