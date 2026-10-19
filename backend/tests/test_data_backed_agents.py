@@ -304,15 +304,25 @@ class DataBackedAgentTests(unittest.TestCase):
 
     def test_combined_three_agent_invoice_request_exports_all_items_and_tax(self):
         prompt = (
-            "Complete all three tasks. First, report my last-30-day recorded expenses by category and keep "
-            "uploaded receipts separate from transactions. Second, review my saved AAPL, MSFT, and NVDA portfolio. "
+            "Complete all three tasks. First, report my last-30-day recorded expenses by category and distinguish "
+            "them from the café receipt I uploaded. Second, review my saved AAPL, MSFT, and NVDA portfolio. "
             "Third, create an invoice from Shashwat Solanki to Acme Technologies: Website Development 2 units at "
             "INR 12,000 each, Hosting 1 unit at INR 2,000, SEO Audit 1 unit at INR 3,000, with 18% tax. "
             "Preserve the invoice fields for export. Clearly label transaction data, receipt data, market data, "
             "and newly generated invoice data."
         )
-
-        result = run_invoice(self.user_id, prompt, self.db)
+        saved_receipt = _invoice_from_memory_text(
+            """User: Uploaded invoice file: test_bill.jpg
+Vendor: The Hole in wall Cafe
+Line items:
+- Chicken Fajita Breakfast Tacos: 300.00 INR
+Subtotal: 300.00 INR
+Tax: 15.00 INR
+Total: 315.00 INR
+"""
+        )
+        with patch("app.agents.invoice_generator._invoice_from_recent_upload", return_value=saved_receipt):
+            result = run_invoice(self.user_id, prompt, self.db)
         payload = json.loads(result.metadata["invoice_payload"])
 
         self.assertEqual(result.metadata["source"], "structured_parse")
