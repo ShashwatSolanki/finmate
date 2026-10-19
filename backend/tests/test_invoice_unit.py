@@ -2,6 +2,9 @@
 
 import unittest
 from decimal import Decimal
+from io import BytesIO
+
+import pdfplumber
 
 from app.invoice.parse_invoice import parse_invoice_text
 from app.invoice.pdf_invoice import build_invoice_pdf, build_invoice_pdf_from_structured
@@ -279,6 +282,45 @@ class InvoicePdfBuilderUnitTests(unittest.TestCase):
         )
         pdf_bytes = build_invoice_pdf_from_structured(invoice, invoice_ref="INV-004", bill_to_fallback="fallback@x.com")
         self.assertTrue(pdf_bytes.startswith(b"%PDF-"))
+
+    def test_structured_pdf_displays_quantity_and_unit_price_columns(self):
+        invoice = StructuredInvoice(
+            invoice_number="INV-005",
+            vendor_name="Shashwat Solanki",
+            bill_to="Acme Technologies",
+            currency="INR",
+            line_items=[
+                ParsedLineItem(
+                    description="Website Development",
+                    quantity=2,
+                    unit_price=Decimal("12000.00"),
+                    amount=Decimal("24000.00"),
+                ),
+                ParsedLineItem(
+                    description="Hosting",
+                    quantity=1,
+                    unit_price=Decimal("2000.00"),
+                    amount=Decimal("2000.00"),
+                ),
+            ],
+            subtotal=Decimal("26000.00"),
+            tax=Decimal("4680.00"),
+            total=Decimal("30680.00"),
+        )
+        pdf_bytes = build_invoice_pdf_from_structured(
+            invoice,
+            invoice_ref="INV-005",
+            bill_to_fallback="fallback@example.test",
+        )
+
+        with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            text = "\\n".join(page.extract_text() or "" for page in pdf.pages)
+
+        self.assertIn("Qty", text)
+        self.assertIn("Unit Price (INR)", text)
+        self.assertIn("Website Development", text)
+        self.assertIn("12000.00", text)
+        self.assertIn("24000.00", text)
 
 
 if __name__ == "__main__":
