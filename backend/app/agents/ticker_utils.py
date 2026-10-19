@@ -92,7 +92,16 @@ def extract_ticker_candidates(message: str, *, max_candidates: int = 6) -> list[
             company_words_upper.add(name.upper())
 
     dynamic_stop = _STOP | company_words_upper
-    caps = [t for t in _TICKER_CAPS.findall(raw) if t not in dynamic_stop]
+    # An arbitrary uppercase acronym is not enough to infer a stock. In
+    # particular, "CSV" in a transaction-import prompt must not become
+    # Carriage Services. Known tickers are accepted bare; unfamiliar symbols
+    # must be explicit (e.g. $BABA) so file formats and finance abbreviations
+    # do not force the Investment Analyser route.
+    caps = [
+        t
+        for t in _TICKER_CAPS.findall(raw)
+        if t not in dynamic_stop and t in _KNOWN_TICKERS
+    ]
 
     ordered: list[str] = []
     seen: set[str] = set()
