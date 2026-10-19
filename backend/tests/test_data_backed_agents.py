@@ -89,6 +89,35 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertNotIn("tool_name=", reply)
 
 
+    def test_raw_agent_responds_with_list_is_rejected_from_orchestration_context(self):
+        raw_reply = (
+            "[AGENT: BUDGET]\\n\\n"
+            "Budget Planner:\\n"
+            "[\\n"
+            '"Agent responds with [AGENT: BUDGET]",\\n'
+            '"Review budget based on net expenditure of -94000.00 INR",\\n'
+            '"Set new spend limits for variables identified"\\n'
+            "]\\n\\n"
+            "Clarify time horizon and risk tolerance."
+        )
+        self.assertIsNone(_visible_specialist_observation(raw_reply))
+
+        observations = [
+            AgentResult(AgentName.BUDGET_PLANNER, raw_reply),
+            AgentResult(
+                AgentName.INVESTMENT_ANALYSER,
+                "[AGENT: INVESTMENT]\\n\\nMSFT last close is 529.05 USD.",
+            ),
+        ]
+        with patch("app.agents.agentic_orchestrator.settings.finmate_use_llm", False):
+            reply = _synthesize("Audit my budget and portfolio.", observations, AgentName.BUDGET_PLANNER)
+
+        self.assertIn("did not produce a readable, validated answer", reply)
+        self.assertIn("MSFT last close is 529.05 USD.", reply)
+        self.assertNotIn("net expenditure of -94000.00", reply)
+        self.assertNotIn("Agent responds with", reply)
+        self.assertNotIn("Clarify time horizon and risk tolerance", reply)
+
     def test_missing_risk_context_is_labelled_as_illustrative(self):
         result = run_investment(
             self.user_id,
