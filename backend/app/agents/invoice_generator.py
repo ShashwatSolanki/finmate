@@ -375,8 +375,8 @@ def _invoice_from_memory_text(text: str) -> StructuredInvoice | None:
     tax_breakdown: list[TaxBreakdownItem] = []
     for line in text.splitlines():
         match = re.match(
-            r"^\\s*-\\s*((?:CGST|SGST|IGST)(?:\\s+\\d+(?:\\.\\d+)?\\s*%)?)\\s*:\\s*"
-            r"([\\d,]+(?:\\.\\d{1,2})?)\\s*(INR|USD|EUR|GBP|CAD|AUD|JPY|CHF|SGD)?\\s*$",
+            r"^\s*-\s*((?:CGST|SGST|IGST)(?:\s+\d+(?:\.\d+)?\s*%)?)\s*:\s*"
+            r"([\d,]+(?:\.\d{1,2})?)\s*(INR|USD|EUR|GBP|CAD|AUD|JPY|CHF|SGD)?\s*$",
             line.strip(),
             re.I,
         )
