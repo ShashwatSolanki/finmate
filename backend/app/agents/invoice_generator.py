@@ -645,10 +645,10 @@ def run(
         invoice = _structured_from_message(request_text)
     if invoice is None and wants_invoice_output and _count_explicit_item_clauses(request_text) > 0:
         reply = (
-            "[AGENT: INVOICE]\\n\\n"
+            "[AGENT: INVOICE]\n\n"
             "I couldn't safely parse every quantity/unit-price item in your request, so I have not created "
             "or exported a partial invoice. Please clarify the missing item description, quantity, and unit price, "
-            "then try again.\\n\\n"
+            "then try again.\n\n"
             '{"intent":"invoice_parse_incomplete","steps":["Compare requested item clauses","Clarify missing item data","Rebuild invoice totals"],'
             '"tools_needed":[],"notes":"partial invoice export blocked"}'
         )
