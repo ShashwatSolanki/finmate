@@ -309,6 +309,21 @@ def _currency_total(categories: dict[str, Decimal]) -> Decimal:
     return sum(categories.values(), start=Decimal("0"))
 
 
+def _count_expenses(db: Session, user_id: UUID, start: date, end: date) -> int:
+    count = db.scalar(
+        select(func.count(Transaction.id)).where(
+            Transaction.user_id == user_id,
+            Transaction.occurred_on >= start,
+            Transaction.occurred_on <= end,
+            Transaction.amount < 0,
+        )
+    )
+    try:
+        return int(count or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _format_expense_groups(groups: dict[str, dict[str, Decimal]]) -> tuple[list[str], dict[str, Decimal]]:
     lines: list[str] = []
     totals: dict[str, Decimal] = {}
@@ -396,6 +411,8 @@ def _deterministic_spending_report(
     start, end, period_label = _expense_window(message, today)
     groups = _aggregate_expenses(db, user_id, start, end)
     lines, totals = _format_expense_groups(groups)
+    if re.search(r"\b(?:transaction count|count of transactions|number of transactions|how many transactions)\b", message, re.I):
+        lines.append(f"\nRecorded expense transaction count: {_count_expenses(db, user_id, start, end)}")
     income, income_currency = extract_monthly_income(message, rag_context)
     wants_surplus = _asks_for_investable_surplus(message)
     wants_budget_comparison = _explicitly_requests_budget_plan(message) or wants_surplus
