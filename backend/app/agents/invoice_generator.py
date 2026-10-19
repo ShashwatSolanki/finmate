@@ -32,7 +32,7 @@ _AMOUNT_FIRST_LINE = re.compile(
 )
 
 _EXPLICIT_ITEM_CLAUSE = re.compile(
-    r"(?P<description>[A-Z][^,:;\n.]{1,100}?)\s*:\s*"
+    r"(?P<description>[A-Z][^,:;\n.]{1,100}?)\s*:?\s*"
     r"(?P<quantity>\d+(?:\.\d+)?)\s*(?:units?|items?)?\s*(?:at|@|x|×)\s*"
     r"(?:(?:INR|Rs\.?|USD|EUR|GBP|₹|\$|€|£)\s*)?"
     r"(?P<unit_price>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?)"
@@ -50,19 +50,23 @@ def _extract_original_request(message: str) -> str:
 
 
 def _wants_expense_invoice(request: str) -> bool:
-    """Detect invoice requests that should be grounded in the user's expenses."""
-    has_invoice_signal = bool(
-        re.search(r"\b(invoice|invoices|bill|receipt)\b", request, re.I)
-    )
-    has_expense_signal = bool(
+    """Require explicit invoice-generation intent before creating an expense PDF."""
+    return bool(
         re.search(
-            r"\b(my|our|these|recent|monthly|last 30 days?|expenses?|"
-            r"spending|transactions?)\b",
+            r"\b(?:generate|create|make|draft|prepare|produce|build)\b.{0,55}"
+            r"\b(?:an?\s+)?(?:expense\s+)?invoice\b",
+            request,
+            re.I,
+        )
+        or re.search(r"\b(?:expense|spending|transaction)\s+invoice\b", request, re.I)
+        or re.search(r"\binvoice[- ]style\s+report\b", request, re.I)
+        or re.search(
+            r"\binvoice\b.{0,35}\b(?:for|from)\b.{0,30}\b(?:my|our|recent|recorded)\s+"
+            r"(?:expenses?|spending|transactions?)\b",
             request,
             re.I,
         )
     )
-    return has_invoice_signal and has_expense_signal
 
 
 def _detect_currency(message: str) -> str:
@@ -219,9 +223,15 @@ def _tax_from_rate(message: str, subtotal: Decimal) -> Decimal | None:
 def _extract_parties_and_due_date(message: str) -> tuple[str | None, str | None, str | None]:
     vendor = None
     bill_to = None
-    parties = re.search(
-        r"\bfrom\s+(.+?)\s+to\s+(.+?)(?=,\s*(?:due|dated|invoice date)\b|;|\n|$)",
+    invoice_context = re.search(
+        r"\b(?:create|generate|make|draft|prepare)\s+(?:an?\s+)?(?:client\s+)?invoice\b(.*)",
         message,
+        re.I | re.S,
+    )
+    parties_text = invoice_context.group(1) if invoice_context else message
+    parties = re.search(
+        r"\bfrom\s+(.+?)\s+to\s+(.+?)(?=:|,\s*(?:due|dated|invoice date)\b|;|\n|$)",
+        parties_text,
         re.I,
     )
     if parties:
