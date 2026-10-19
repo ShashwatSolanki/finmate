@@ -123,7 +123,9 @@ export default function InvoiceImportPanel({ onStatus, onError }: Props) {
   }
 
   const subtotal = invoice.line_items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-  const tax = Number(invoice.tax) || 0;
+  const tax = invoice.tax != null
+    ? Number(invoice.tax) || 0
+    : (invoice.tax_breakdown ?? []).reduce((sum, component) => sum + (Number(component.amount) || 0), 0);
   const total = subtotal + tax;
 
   function updateLine(index: number, changes: Partial<StructuredInvoice["line_items"][number]>) {
