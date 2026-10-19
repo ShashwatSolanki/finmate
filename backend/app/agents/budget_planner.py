@@ -323,6 +323,72 @@ def _count_transactions(db: Session, user_id: UUID, start: date, end: date) -> i
         return 0
 
 
+def _potential_duplicate_rows(
+    db: Session,
+    user_id: UUID,
+    start: date,
+    end: date,
+    *,
+    limit: int = 8,
+) -> list[str]:
+    """Report exact-match transaction groups without changing or excluding records."""
+    normalized_category = func.lower(func.trim(func.coalesce(Transaction.category, "")))
+    normalized_description = func.lower(func.trim(func.coalesce(Transaction.description, "")))
+    rows = db.execute(
+        select(
+            Transaction.occurred_on,
+            normalized_category,
+            normalized_description,
+            Transaction.amount,
+            Transaction.currency,
+            func.count(Transaction.id),
+        )
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.occurred_on >= start,
+            Transaction.occurred_on <= end,
+        )
+        .group_by(
+            Transaction.occurred_on,
+            normalized_category,
+            normalized_description,
+            Transaction.amount,
+            Transaction.currency,
+        )
+        .having(func.count(Transaction.id) > 1)
+        .order_by(func.count(Transaction.id).desc())
+        .limit(limit)
+    ).all()
+
+    findings: list[str] = []
+    for occurred_on, category, description, amount, currency_code, count in rows:
+        code = str(currency_code or "INR").upper()
+        value = Decimal(str(amount))
+        kind = "expense debit" if value < 0 else "transaction"
+        findings.append(
+            f"- {occurred_on.isoformat()} | {category or 'uncategorized'} | "
+            f"{description or 'no description'} | {_format_amount(abs(value))} {code} "
+            f"({kind}) appears {int(count)} times."
+        )
+    return findings
+
+
+def _duplicate_warning_lines(
+    db: Session,
+    user_id: UUID,
+    start: date,
+    end: date,
+) -> list[str]:
+    findings = _potential_duplicate_rows(db, user_id, start, end)
+    if not findings:
+        return []
+    return [
+        "\\nPotential exact-match duplicate-looking records (not removed or excluded from totals):",
+        *findings,
+        "These rows match on date, category, description, amount, and currency. Confirm manually before deciding whether they are duplicates.",
+    ]
+
+
 def _format_expense_groups(groups: dict[str, dict[str, Decimal]]) -> tuple[list[str], dict[str, Decimal]]:
     lines: list[str] = []
     totals: dict[str, Decimal] = {}
@@ -356,6 +422,8 @@ def _deterministic_spending_report(
         ]
         if not newer_data and not older_data:
             lines.append("There are no recorded expense debits for either month. This does not mean spending was zero.")
+        lines.extend(_duplicate_warning_lines(db, user_id, newer[0], newer[1]))
+        lines.extend(_duplicate_warning_lines(db, user_id, older[0], older[1]))
         for currency_code in sorted(set(newer_data) | set(older_data)):
             current = newer_data.get(currency_code, {})
             previous = older_data.get(currency_code, {})
@@ -410,6 +478,7 @@ def _deterministic_spending_report(
     start, end, period_label = _expense_window(message, today)
     groups = _aggregate_expenses(db, user_id, start, end)
     lines, totals = _format_expense_groups(groups)
+    lines.extend(_duplicate_warning_lines(db, user_id, start, end))
     if re.search(r"\b(?:transaction count|count of transactions|number of transactions|how many transactions)\b", message, re.I):
         lines.append(f"\nRecorded transaction count: {_count_transactions(db, user_id, start, end)}")
     income, income_currency = extract_monthly_income(message, rag_context)
