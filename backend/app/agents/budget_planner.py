@@ -351,7 +351,7 @@ def _latest_csv_import_summary(db: Session, user_id: UUID) -> tuple[str, int, in
         return None
 
     filename_match = re.search(
-        r"(?im)^\s*Imported transactions CSV file:\s*(.+?)\s*$",
+        r"(?im)^\s*(?:User:\s*)?Imported transactions CSV file:\s*(.+?)\s*$",
         content,
     )
     counts_match = re.search(
@@ -558,13 +558,13 @@ def _deterministic_spending_report(
         latest_import = _latest_csv_import_summary(db, user_id)
         if latest_import is None:
             lines.append(
-                "\\nNo saved CSV import receipt was found, so I cannot verify the most recent file's import count. "
+                "\nNo saved CSV import receipt was found, so I cannot verify the most recent file's import count. "
                 "The transaction count and category totals above are based on the transaction database."
             )
         else:
             filename, imported_count, skipped_count = latest_import
             lines.append(
-                f"\\nLatest saved CSV import: {filename} — {imported_count} row(s) imported, "
+                f"\nLatest saved CSV import: {filename} — {imported_count} row(s) imported, "
                 f"{skipped_count} row(s) skipped."
             )
             lines.append(
