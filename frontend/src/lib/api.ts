@@ -200,6 +200,7 @@ export type StructuredInvoice = {
   line_items: ParsedLineItem[];
   subtotal: string | null;
   tax: string | null;
+  tax_breakdown?: { label: string; amount: string }[];
   total: string | null;
   notes: string | null;
 };
