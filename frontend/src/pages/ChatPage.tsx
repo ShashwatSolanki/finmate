@@ -186,6 +186,27 @@ export default function ChatPage() {
     await loadConversations();
   }
 
+  async function renameConversation(id: string, title: string): Promise<boolean> {
+    if (!token) return false;
+    const cleanedTitle = title.trim();
+    if (!cleanedTitle) return false;
+    setError(null);
+    try {
+      const response = await apiFetch(`/api/conversations/${id}`, {
+        method: "PATCH",
+        headers: authHeaders(token),
+        body: JSON.stringify({ title: cleanedTitle }),
+      });
+      if (!response.ok) throw new Error(await response.text());
+      await loadConversations();
+      setStatus("Chat renamed.");
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not rename chat.");
+      return false;
+    }
+  }
+
   async function sendMessage(userText: string, agentOverride?: string) {
     if (!token || !userText.trim() || loading) return;
 
@@ -390,6 +411,7 @@ export default function ChatPage() {
           setSidebarOpen(false);
         }}
         onDelete={deleteConversation}
+        onRename={renameConversation}
       />
 
       <main className="chat-main">
