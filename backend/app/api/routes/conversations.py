@@ -142,6 +142,12 @@ def _invoice_memory_text(body: InvoiceImportCreate) -> str:
         lines.append(f"Subtotal: {invoice.subtotal} {invoice.currency}")
     if invoice.tax is not None:
         lines.append(f"Tax: {invoice.tax} {invoice.currency}")
+    if invoice.tax_breakdown:
+        lines.append("Tax breakdown:")
+        lines.extend(
+            f"- {component.label}: {component.amount:.2f} {invoice.currency}"
+            for component in invoice.tax_breakdown
+        )
     if invoice.total is not None:
         lines.append(f"Total: {invoice.total} {invoice.currency}")
     if invoice.notes:
