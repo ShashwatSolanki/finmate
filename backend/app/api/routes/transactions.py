@@ -1,6 +1,7 @@
-import uuid
 import csv
+import hashlib
 import io
+import uuid
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
@@ -11,7 +12,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
-from app.db.models import Transaction, User
+from app.db.models import MemoryChunk, Transaction, User
 from app.db.session import get_db
 
 router = APIRouter()
@@ -132,6 +133,8 @@ class CsvImportBody(BaseModel):
 class CsvImportOut(BaseModel):
     imported_count: int
     skipped_count: int
+    duplicate_rows_skipped: int = 0
+    already_imported: bool = False
     sample_errors: list[str] = Field(default_factory=list)
     imported_preview: list["CsvImportPreview"] = Field(default_factory=list)
 
@@ -199,21 +202,76 @@ def _parse_csv_amount(raw: str) -> Decimal:
     return -abs(amount) if negative else amount
 
 
+def _csv_import_fingerprint(body: CsvImportBody) -> str:
+    """Fingerprint the file and column-mapping settings to make repeated imports idempotent."""
+    parts = (
+        body.csv_text.lstrip("\\ufeff"),
+        body.amount_column,
+        body.date_column,
+        body.category_column,
+        body.description_column,
+        body.currency_column,
+        body.default_currency.upper(),
+        str(body.max_rows),
+    )
+    return hashlib.sha256("\\0".join(parts).encode("utf-8")).hexdigest()
+
+
+def _transaction_import_signature(
+    occurred_on: date,
+    amount: Decimal,
+    currency: str,
+    category: str | None,
+    description: str | None,
+) -> tuple[date, str, Decimal, str, str]:
+    """Normalized natural key used only to flag exact-match duplicate-looking rows."""
+    return (
+        occurred_on,
+        (category or "").strip().casefold(),
+        Decimal(amount).quantize(Decimal("0.01")),
+        (currency or "USD").strip().upper(),
+        (description or "").strip().casefold(),
+    )
+
+
 @router.post("/import/csv", response_model=CsvImportOut)
 def import_transactions_csv(
     body: CsvImportBody,
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ) -> CsvImportOut:
-    stream = io.StringIO(body.csv_text.lstrip("\ufeff"))
-    sample = body.csv_text[:4096]
+    fingerprint = _csv_import_fingerprint(body)
+    prior_import = db.scalar(
+        select(MemoryChunk.id).where(
+            MemoryChunk.user_id == current.id,
+            MemoryChunk.source == "transaction_csv_import_fingerprint",
+            MemoryChunk.content == fingerprint,
+        )
+    )
+    if prior_import is not None:
+        return CsvImportOut(
+            imported_count=0,
+            skipped_count=0,
+            duplicate_rows_skipped=0,
+            already_imported=True,
+            sample_errors=[
+                "This exact CSV content and column mapping was already imported for this account. "
+                "No transactions were added again."
+            ],
+            imported_preview=[],
+        )
+
+    csv_text = body.csv_text.lstrip("\\ufeff")
+    stream = io.StringIO(csv_text)
+    sample = csv_text[:4096]
     try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\\t|")
     except csv.Error:
         dialect = csv.excel
     reader = csv.DictReader(stream, dialect=dialect)
     if not reader.fieldnames:
         return CsvImportOut(imported_count=0, skipped_count=0, sample_errors=["CSV header not found"])
+
     headers = [h for h in reader.fieldnames if h]
     amount_col = _find_column(headers, body.amount_column, "amount")
     date_col = _find_column(headers, body.date_column, "date")
@@ -229,12 +287,14 @@ def import_transactions_csv(
             skipped_count=0,
             sample_errors=[f"Could not identify {needed} columns. Found: {', '.join(headers)}"],
         )
-    imported = 0
+
+    # Parse first, then compare exact transaction signatures against existing rows.
+    # This protects pre-fingerprint accounts when the same CSV is uploaded again.
+    candidates: list[tuple[int, Decimal, date, str, str | None, str | None]] = []
     skipped = 0
     errors: list[str] = []
-    preview: list[CsvImportPreview] = []
     for idx, row in enumerate(reader, start=2):
-        if imported >= body.max_rows:
+        if idx - 1 > body.max_rows:
             break
         try:
             raw_date = (row.get(date_col) or "").strip()
@@ -251,34 +311,96 @@ def import_transactions_csv(
             amount = _parse_csv_amount(raw_amount)
             occurred = _parse_csv_date(raw_date)
             currency = (row.get(currency_col) or body.default_currency).strip() if currency_col else body.default_currency
-            currency = currency or body.default_currency
-            tx = Transaction(
-                user_id=current.id,
-                amount=amount,
-                currency=currency[:8],
-                category=((row.get(category_col) or "").strip() or None) if category_col else None,
-                description=((row.get(description_col) or "").strip() or None) if description_col else None,
-                occurred_on=occurred,
-            )
-            db.add(tx)
-            imported += 1
-            if len(preview) < 8:
-                preview.append(
-                    CsvImportPreview(
-                        amount=amount,
-                        currency=currency[:8],
-                        category=((row.get(category_col) or "").strip() or None) if category_col else None,
-                        description=((row.get(description_col) or "").strip() or None) if description_col else None,
-                        occurred_on=occurred,
-                    )
-                )
-        except Exception as e:
+            currency = (currency or body.default_currency).strip()[:8].upper()
+            category = ((row.get(category_col) or "").strip() or None) if category_col else None
+            description = ((row.get(description_col) or "").strip() or None) if description_col else None
+            candidates.append((idx, amount, occurred, currency, category, description))
+        except Exception as exc:
             skipped += 1
             if len(errors) < 12:
-                errors.append(f"line {idx}: {e}")
-    db.commit()
-    return CsvImportOut(imported_count=imported, skipped_count=skipped, sample_errors=errors, imported_preview=preview)
+                errors.append(f"line {idx}: {exc}")
 
+    existing_counts: dict[tuple[date, str, Decimal, str, str], int] = {}
+    if candidates:
+        earliest = min(candidate[2] for candidate in candidates)
+        latest = max(candidate[2] for candidate in candidates)
+        existing_rows = db.scalars(
+            select(Transaction).where(
+                Transaction.user_id == current.id,
+                Transaction.occurred_on >= earliest,
+                Transaction.occurred_on <= latest,
+            )
+        ).all()
+        for row in existing_rows:
+            signature = _transaction_import_signature(
+                row.occurred_on,
+                row.amount,
+                row.currency,
+                row.category,
+                row.description,
+            )
+            existing_counts[signature] = existing_counts.get(signature, 0) + 1
+
+    incoming_counts: dict[tuple[date, str, Decimal, str, str], int] = {}
+    imported = 0
+    duplicate_rows_skipped = 0
+    preview: list[CsvImportPreview] = []
+    for idx, amount, occurred, currency, category, description in candidates:
+        signature = _transaction_import_signature(occurred, amount, currency, category, description)
+        incoming_counts[signature] = incoming_counts.get(signature, 0) + 1
+        if incoming_counts[signature] <= existing_counts.get(signature, 0):
+            skipped += 1
+            duplicate_rows_skipped += 1
+            if len(errors) < 12:
+                errors.append(
+                    f"line {idx}: exact-match transaction already exists; skipped to avoid duplicate import "
+                    f"({occurred.isoformat()}, {category or 'uncategorized'}, {amount} {currency}, "
+                    f"{description or 'no description'})."
+                )
+            continue
+
+        db.add(
+            Transaction(
+                user_id=current.id,
+                amount=amount,
+                currency=currency,
+                category=category,
+                description=description,
+                occurred_on=occurred,
+            )
+        )
+        imported += 1
+        if len(preview) < 8:
+            preview.append(
+                CsvImportPreview(
+                    amount=amount,
+                    currency=currency,
+                    category=category,
+                    description=description,
+                    occurred_on=occurred,
+                )
+            )
+
+    # Store a durable fingerprint in the same transaction as inserted rows. A
+    # repeat upload is now a no-op even when the import had no newly added rows
+    # because it matched legacy transactions created before this guard existed.
+    if candidates:
+        db.add(
+            MemoryChunk(
+                user_id=current.id,
+                source="transaction_csv_import_fingerprint",
+                content=fingerprint,
+            )
+        )
+    db.commit()
+    return CsvImportOut(
+        imported_count=imported,
+        skipped_count=skipped,
+        duplicate_rows_skipped=duplicate_rows_skipped,
+        already_imported=False,
+        sample_errors=errors,
+        imported_preview=preview,
+    )
 
 def _safe_csv_cell(value: object) -> str:
     """Prevent spreadsheet software from evaluating user-controlled CSV cells as formulas."""
