@@ -16,13 +16,13 @@ from app.db.models import ChatMessage, ChatSession, MemoryChunk, User
 
 def test_reply_contract_rejects_raw_agent_tool_traces():
     raw = (
-        "[AGENT: BUDGET]\\n\\n"
-        "Budget Planner:\\n"
-        "[\\n"
-        '"Agent says: Risk assessment needs date and asset valuation first.",\\n'
-        '"Additional tools: date_set, tool_name=budget_recommendation",\\n'
+        "[AGENT: BUDGET]\n\n"
+        "Budget Planner:\n"
+        "[\n"
+        '"Agent says: Risk assessment needs date and asset valuation first.",\n'
+        '"Additional tools: date_set, tool_name=budget_recommendation",\n'
         "tools_needed=[date_set, tool_name=budget_recommendation]"
-        "\\n]"
+        "\n]"
     )
 
     visible = _clean_assistant_display(
