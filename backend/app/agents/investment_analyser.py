@@ -103,6 +103,35 @@ def _extract_lump_sum(message: str) -> Decimal | None:
     return num if num >= 100 else None
 
 
+def _extract_lump_sum_currency(message: str) -> str | None:
+    """Return a currency explicitly adjacent to the requested investment amount."""
+    amount_pattern = (
+        r"(?:\d{1,3}(?:,\d{3})+|\d{1,2}(?:,\d{2})*,\d{3}|\d+)(?:\.\d{1,2})?"
+        r"(?:\s*(?:k|m|lakh|lakhs)?)(?!\d|,\d)"
+    )
+    currency_token = r"₹|\$|€|£|\bINR\b|\bUSD\b|\bEUR\b|\bGBP\b"
+    investment_label = (
+        r"\b(?:invest(?:ing)?|investment(?:\s+amount)?|lump[ -]?sum(?:\s+investment)?|"
+        r"investable\s+(?:amount|surplus)|allocat(?:e|ed|ing|ion)|(?:fixed|term)[ -]?deposit)\b"
+    )
+    match = re.search(
+        investment_label
+        + r"\s*(?:(?:of|about|around|approximately|is)\s+)?"
+        + r"(?:(?P<prefix_currency>" + currency_token + r")\s*)?"
+        + amount_pattern
+        + r"\s*(?P<suffix_currency>" + currency_token + r")?",
+        message,
+        re.I,
+    )
+    if not match:
+        return None
+    token = match.group("prefix_currency") or match.group("suffix_currency")
+    if not token:
+        return None
+    upper = token.upper()
+    return {"₹": "INR", "$": "USD", "€": "EUR", "£": "GBP"}.get(token, upper)
+
+
 def _is_portfolio_history_request(message: str) -> bool:
     return bool(
         re.search(
@@ -421,6 +450,7 @@ def _data_driven_market_reply(
     ok = [a for a in analyses if a.ok and a.last is not None and a.sma20 is not None]
     failed = [a.symbol for a in analyses if a not in ok]
     requested_amount = _extract_lump_sum(request or "")
+    requested_currency = _extract_lump_sum_currency(request or "")
 
     if not ok:
         failed_names = ", ".join(failed) or "the requested ticker"
@@ -429,10 +459,17 @@ def _data_driven_market_reply(
             "data-backed price or trend assessment right now. Check the ticker and try again later."
         )
         if requested_amount is not None:
-            prose += (
-                f" You mentioned an amount of {requested_amount:,.2f}; confirm its currency and "
-                "your investment time horizon before making a decision."
-            )
+            if requested_currency:
+                prose += (
+                    f" You specified {requested_currency} {requested_amount:,.2f}. "
+                    "The requested investment amount is clear, but a decision still depends on your "
+                    "time horizon, risk tolerance, existing concentration, debt, and emergency savings."
+                )
+            else:
+                prose += (
+                    f" You mentioned an amount of {requested_amount:,.2f} but did not specify its currency. "
+                    "Confirm the currency and your investment time horizon before making a decision."
+                )
         return (
             "[AGENT: INVESTMENT]\n\n"
             f"{prose}\n\n"
@@ -461,11 +498,30 @@ def _data_driven_market_reply(
     if failed:
         notes.append(f"Recent price data was unavailable for: {', '.join(failed)}.")
     if requested_amount is not None:
-        notes.append(
-            f"You mentioned an amount of {requested_amount:,.2f}. The quote alone cannot establish whether "
-            "that amount is suitable; confirm the currency and consider your time horizon, risk tolerance, "
-            "existing concentration, debt, and emergency savings before deciding."
-        )
+        quote_currencies = {
+            match.group(1).upper()
+            for analysis in ok
+            if (match := re.search(r"Last close:\s*[\d,.]+\s+([A-Z]{3})", analysis.text, re.I))
+        }
+        if requested_currency and quote_currencies and requested_currency not in quote_currencies:
+            quote_labels = ", ".join(sorted(quote_currencies))
+            notes.append(
+                f"You specified {requested_currency} {requested_amount:,.2f}, while the market quote currency "
+                f"is {quote_labels}. These currencies differ, so no share count is estimated without a verified "
+                "current exchange rate. The quote alone cannot establish suitability; consider your time horizon, "
+                "risk tolerance, concentration, debt, and emergency savings."
+            )
+        elif requested_currency:
+            notes.append(
+                f"You specified {requested_currency} {requested_amount:,.2f}. The quote alone cannot establish "
+                "suitability; consider your time horizon, risk tolerance, concentration, debt, and emergency savings."
+            )
+        else:
+            notes.append(
+                f"You mentioned an amount of {requested_amount:,.2f} without specifying its currency. "
+                "Confirm the currency before comparing it with the quote; also consider your time horizon, "
+                "risk tolerance, concentration, debt, and emergency savings."
+            )
     if saved_risk:
         notes.append(f"Your saved risk tolerance is {saved_risk}.")
     else:
