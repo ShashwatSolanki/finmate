@@ -304,22 +304,45 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(invoice.tax, Decimal("180.00"))
         self.assertEqual(invoice.total, Decimal("1180.00"))
 
-    def test_financial_data_audit_does_not_trigger_expense_invoice_generation(self):
+    def test_financial_data_audit_uses_uploaded_receipt_without_creating_new_invoice(self):
         prompt = (
             "Audit my financial data before giving any recommendation. Identify which figures are directly "
             "supported by recorded transactions, which are from my uploaded receipt, which are from market quotes, "
             "and which are missing. Do not treat an uploaded receipt as a transaction, do not assume unrecorded "
             "expenses are zero, and do not invent monthly totals or currency conversions."
         )
+        self.assertTrue(_references_uploaded_invoice(prompt))
         self.assertFalse(_wants_expense_invoice(prompt))
         self.assertFalse(_wants_invoice_output(prompt))
 
-        result = run_invoice(self.user_id, prompt, self.db)
+        saved_receipt = _invoice_from_memory_text(
+            """User: Uploaded invoice file: test_bill.jpg
+Source type: image; extraction confidence: medium.
+Invoice number: 73430
+Invoice date: 28/11/25
+Vendor: The Hole in wall Cafe
+Line items:
+- Chicken Fajita Breakfast Tacos: 300.00 INR
+- French Toast With Lemon Cream Cheese And Blueberry Compote: 190.00 INR
+- The Breakfast Bake: 210.00 INR
+- Tiramisu Those Pancakes: 280.00 INR
+Subtotal: 980.00 INR
+Tax: 49.00 INR
+Total: 1029.00 INR
+Extraction warnings:
+- The printed subtotal was not reliably read by OCR.
+"""
+        )
+        self.assertIsNotNone(saved_receipt)
+        with patch("app.agents.invoice_generator._invoice_from_recent_upload", return_value=saved_receipt):
+            result = run_invoice(self.user_id, prompt, self.db)
 
-        self.assertEqual(result.metadata["source"], "prompt")
+        self.assertEqual(result.metadata["source"], "uploaded_invoice_context")
         self.assertNotIn("invoice_actions", result.metadata)
         self.assertNotIn("invoice_payload", result.metadata)
-        self.assertIn("I could not detect invoice line items", result.reply)
+        self.assertIn("The Hole in wall Cafe", result.reply)
+        self.assertIn("1029.00 INR", result.reply)
+        self.assertIn("no new PDF was requested", result.reply)
 
     def test_explicit_invoice_with_spending_context_keeps_text_source(self):
         result = run_invoice(
