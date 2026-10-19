@@ -727,6 +727,64 @@ Total: 1029.00 INR
         self.assertIn("did not produce a readable, validated answer", reply)
         self.assertIn("MSFT last close is 529.05 USD.", reply)
 
+    def test_full_three_agent_turn_preserves_complete_invoice_payload_and_totals(self):
+        prompt = (
+            "Complete all three tasks. First, report my last-30-day recorded expenses by category and keep "
+            "uploaded receipts separate from transactions. Second, review my saved AAPL, MSFT, and NVDA portfolio "
+            "and discuss concentration risk. Third, create an invoice from Shashwat Solanki to Acme Technologies: "
+            "Website Development 2 units at INR 12,000 each, Hosting 1 unit at INR 2,000, "
+            "and SEO Audit 1 unit at INR 3,000, with 18% tax. Preserve the invoice fields for PDF and CSV export."
+        )
+        budget_result = AgentResult(
+            AgentName.BUDGET_PLANNER,
+            "[AGENT: BUDGET]\\n\\nRecorded expenses were summarized from transaction data.",
+            metadata={"source": "deterministic_spending_report"},
+        )
+        investment_result = AgentResult(
+            AgentName.INVESTMENT_ANALYSER,
+            "[AGENT: INVESTMENT]\\n\\nPortfolio data is summarized separately.",
+            metadata={"source": "portfolio_holdings"},
+        )
+
+        with (
+            patch("app.agents.agentic_orchestrator.budget_planner.run", return_value=budget_result),
+            patch("app.agents.agentic_orchestrator.investment_analyser.run", return_value=investment_result),
+            patch("app.agents.agentic_orchestrator.settings.finmate_use_llm", False),
+            patch("app.agents.agentic_orchestrator.settings.agentic_max_steps", 3),
+        ):
+            result = run_agentic_turn(self.user_id, prompt, self.db)
+
+        self.assertIsNotNone(result)
+        assert result is not None
+        self.assertEqual(
+            result.metadata["agents_executed"],
+            "budget_planner,investment_analyser,invoice_generator",
+        )
+        self.assertEqual(result.metadata["parsed_items_count"], "3")
+        self.assertEqual(result.metadata["parsed_total"], "34220.00")
+        self.assertEqual(result.metadata["invoice_actions"], "pdf,csv")
+        payload = json.loads(result.metadata["invoice_payload"])
+        self.assertEqual(
+            [(item["description"], Decimal(item["amount"])) for item in payload["line_items"]],
+            [
+                ("Website Development", Decimal("24000.00")),
+                ("Hosting", Decimal("2000.00")),
+                ("SEO Audit", Decimal("3000.00")),
+            ],
+        )
+        self.assertEqual(Decimal(payload["subtotal"]), Decimal("29000.00"))
+        self.assertEqual(Decimal(payload["tax"]), Decimal("5220.00"))
+        self.assertEqual(Decimal(payload["total"]), Decimal("34220.00"))
+        for visible_fact in (
+            "Website Development",
+            "Hosting",
+            "SEO Audit",
+            "Subtotal: 29000.00 INR",
+            "Tax: 5220.00 INR",
+            "Total: 34220.00 INR",
+        ):
+            self.assertIn(visible_fact, result.reply)
+
     def test_agentic_pipeline_preserves_invoice_export_payload(self):
         invoice = AgentResult(
             agent=AgentName.INVOICE_GENERATOR,
