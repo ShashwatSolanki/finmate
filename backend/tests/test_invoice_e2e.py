@@ -64,6 +64,40 @@ class InvoicePdfEndpointE2ETests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.content.startswith(b"%PDF-"))
 
+    def test_pdf_endpoint_rejects_line_amount_that_disagrees_with_quantity_price(self):
+        body = {
+            "bill_to": "Acme Corp",
+            "currency": "INR",
+            "line_items": [
+                {
+                    "description": "Hosting",
+                    "quantity": 2,
+                    "unit_price": "300.00",
+                    "amount": "500.00",
+                }
+            ],
+        }
+        response = self.client.post("/api/invoices/pdf", json=body)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("quantity", response.json()["detail"].lower())
+
+    def test_pdf_endpoint_rejects_subtotal_and_total_mismatch(self):
+        body = {
+            "bill_to": "Acme Corp",
+            "currency": "INR",
+            "line_items": [
+                {"description": "Website Development", "amount": "24000.00"},
+                {"description": "Hosting", "amount": "2000.00"},
+            ],
+            "subtotal": "5000.00",
+            "tax": "900.00",
+        }
+        response = self.client.post("/api/invoices/pdf", json=body)
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("subtotal", response.json()["detail"].lower())
+
     def test_pdf_structured_endpoint_rejects_empty_line_items(self):
         # The structured endpoint must return a clean client validation response,
         # not leak an unhandled ValueError as a server error.
