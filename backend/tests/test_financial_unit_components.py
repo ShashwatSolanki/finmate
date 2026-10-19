@@ -324,7 +324,7 @@ def test_spending_insights_uses_positive_debits_and_correct_direction(database) 
         result = category_delta_vs_prior_month(db, user_id, ref=date(2026, 10, 15))
 
     assert "Food: up about 10% vs prior month (1000.00 → 1100.00)." in result
-    assert "Transport: down about 10% vs prior month (2000 → 1800)." in result
+    assert "Transport: down about 10% vs prior month (2000.00 → 1800.00)." in result
     assert "(1000 → 1100)" in result
     assert "-1000" not in result
 
