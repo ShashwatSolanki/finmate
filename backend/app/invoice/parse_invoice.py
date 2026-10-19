@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from decimal import Decimal, InvalidOperation
 
-from app.invoice.schemas import ParsedLineItem, ParseInvoiceResult, StructuredInvoice
+from app.invoice.schemas import ParsedLineItem, ParseInvoiceResult, StructuredInvoice, TaxBreakdownItem
 
 _CURRENCY_SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP", "₹": "INR", "¥": "JPY"}
 _CURRENCY_CODE = re.compile(r"\b(USD|EUR|GBP|INR|JPY|CAD|AUD|CHF|SGD)\b", re.I)
@@ -58,6 +58,11 @@ _SUBTOTAL = re.compile(
 _TAX = re.compile(
     rf"(?:tax|vat|(?:c|s|i)?gst)\s*(?:\d+(?:\.\d+)?\s*%)?\s*"
     rf"(?:\([^)]*\))?\s*:?\s*{_CURRENCY_PREFIX}?\s*([\d,]+[.,]\d{{2}})",
+    re.I,
+)
+_TAX_COMPONENT_LINE = re.compile(
+    rf"^\s*(?P<label>(?:CGST|SGST|IGST)(?:\s+\d+(?:\.\d+)?\s*%)?)\s*:?\s*"
+    rf"(?:{_CURRENCY_PREFIX}\s*)?(?P<amount>[\d,]+[.,]\d{{2}})\s*$",
     re.I,
 )
 
@@ -452,10 +457,27 @@ def parse_invoice_text(
                         line_items.append(ParsedLineItem(description=desc, amount=amt))
 
     subtotal = _to_decimal(_first_match(_SUBTOTAL, normalized) or "")
-    # Indian invoices frequently split GST into CGST and SGST. They belong in
-    # one tax total, never as invoice line items.
+    # Preserve separate GST components for the attachment/PDF, while keeping a
+    # single aggregate tax value for arithmetic validation.
+    tax_breakdown: list[TaxBreakdownItem] = []
+    for line in lines:
+        match = _TAX_COMPONENT_LINE.match(line)
+        if not match:
+            continue
+        amount = _to_decimal(match.group("amount"))
+        if amount is not None and amount >= 0:
+            tax_breakdown.append(
+                TaxBreakdownItem(
+                    label=re.sub(r"\s+", " ", match.group("label")).strip(),
+                    amount=amount,
+                )
+            )
     tax_values = [_to_decimal(m.group(1)) for m in _TAX.finditer(normalized)]
-    tax = sum((value for value in tax_values if value is not None), start=Decimal("0")) or None
+    tax = (
+        sum((component.amount for component in tax_breakdown), start=Decimal("0"))
+        if tax_breakdown
+        else sum((value for value in tax_values if value is not None), start=Decimal("0")) or None
+    )
     total_matches = [_to_decimal(m.group(1)) for m in _TOTAL.finditer(total_text)]
     total_matches = [t for t in total_matches if t is not None]
     total = total_matches[-1] if total_matches else None
@@ -517,6 +539,7 @@ def parse_invoice_text(
         line_items=line_items,
         subtotal=subtotal,
         tax=tax,
+        tax_breakdown=tax_breakdown,
         total=total,
     )
 
