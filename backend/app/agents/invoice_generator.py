@@ -49,6 +49,20 @@ def _extract_original_request(message: str) -> str:
     return message.strip()
 
 
+def _wants_invoice_output(request: str) -> bool:
+    """Only offer a generated artifact when the user actually asks to create/export one."""
+    return bool(
+        re.search(
+            r"\b(?:create|generate|make|draft|prepare|produce|build)\b.{0,60}"
+            r"\b(?:an?\s+)?(?:client\s+)?invoice\b",
+            request,
+            re.I,
+        )
+        or re.search(r"\b(?:export|download|render)\b.{0,35}\b(?:invoice|pdf|csv)\b", request, re.I)
+        or re.search(r"\bpdf\s+and\s+csv\s+export\b", request, re.I)
+    )
+
+
 def _wants_expense_invoice(request: str) -> bool:
     """Require explicit invoice-generation intent before creating an expense PDF."""
     return bool(
@@ -514,7 +528,13 @@ def _expense_invoice_from_transactions(
     )
 
 
-def _format_reply(invoice: StructuredInvoice, inv_id: str, *, source_note: str) -> str:
+def _format_reply(
+    invoice: StructuredInvoice,
+    inv_id: str,
+    *,
+    source_note: str,
+    allow_export: bool,
+) -> str:
     lines = [
         f"Invoice ref: #{inv_id}",
     ]
@@ -562,17 +582,26 @@ def _format_reply(invoice: StructuredInvoice, inv_id: str, *, source_note: str) 
         "notes": invoice.notes,
     }
 
-    prose = (
-        "Structured invoice data extracted. Review the fields below, then generate a PDF from Settings "
-        "(Invoice import) or POST /api/invoices/pdf/structured with this payload.\n\n"
-        + "\n".join(lines)
-    )
+    if allow_export:
+        prose = (
+            "Structured invoice data extracted. Review the fields below, then generate a PDF from Settings "
+            "(Invoice import) or POST /api/invoices/pdf/structured with this payload.\n\n"
+            + "\n".join(lines)
+        )
+        intent = "create_invoice"
+        steps = ["Review parsed fields", "Edit in Settings if needed", "Download PDF"]
+        tools_needed = ["parse_invoice_upload", "render_invoice_pdf"]
+    else:
+        prose = "Extracted invoice/receipt details (no new PDF was requested).\n\n" + "\n".join(lines)
+        intent = "review_invoice"
+        steps = ["Review extracted fields", "Correct any OCR errors"]
+        tools_needed = ["parse_invoice_upload"]
 
     json_tail = json.dumps(
         {
-            "intent": "create_invoice",
-            "steps": ["Review parsed fields", "Edit in Settings if needed", "Download PDF"],
-            "tools_needed": ["parse_invoice_upload", "render_invoice_pdf"],
+            "intent": intent,
+            "steps": steps,
+            "tools_needed": tools_needed,
             "notes": source_note,
             "structured": payload,
         },
@@ -592,6 +621,7 @@ def run(
     inv_id = str(uuid.uuid4())[:8].upper()
     request_text = _extract_original_request(message)
     request = request_text.lower()
+    wants_invoice_output = _wants_invoice_output(request_text)
     wants_uploaded_invoice = _references_uploaded_invoice(request_text)
     invoice = _invoice_from_recent_upload(db, user_id) if wants_uploaded_invoice else None
     invoice_from_uploaded_context = invoice is not None
@@ -621,6 +651,7 @@ def run(
                 if invoice_from_uploaded_context
                 else "parsed from message text"
             ),
+            allow_export=wants_invoice_output,
         )
         source = (
             "transaction_summary"
@@ -641,8 +672,14 @@ def run(
                 "parsed_total": f"{total:.2f}",
                 "source": source,
                 "currency": invoice.currency,
-                "invoice_payload": invoice.model_dump_json(),
-                "invoice_actions": "pdf,csv",
+                **(
+                    {
+                        "invoice_payload": invoice.model_dump_json(),
+                        "invoice_actions": "pdf,csv",
+                    }
+                    if wants_invoice_output
+                    else {}
+                ),
             },
         )
 
