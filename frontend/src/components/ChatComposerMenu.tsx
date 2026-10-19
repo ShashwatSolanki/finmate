@@ -29,6 +29,8 @@ type Props = {
     source: string,
     importedCount: number,
     skippedCount: number,
+    duplicateRowsSkipped: number,
+    alreadyImported: boolean,
     sampleErrors: string[],
   ) => Promise<void>;
 };
@@ -149,16 +151,20 @@ export default function ChatComposerMenu({
       const data = (await res.json()) as {
         imported_count: number;
         skipped_count: number;
+        duplicate_rows_skipped?: number;
+        already_imported?: boolean;
         sample_errors?: string[];
         imported_preview?: ImportedTransactionPreview[];
       };
       transactionsWereImported = data.imported_count > 0;
-      if (data.imported_count > 0 || data.skipped_count > 0) {
+      if (data.imported_count > 0 || data.skipped_count > 0 || data.already_imported) {
         await onTransactionsImported(
           data.imported_preview ?? [],
           file.name,
           data.imported_count,
           data.skipped_count,
+          data.duplicate_rows_skipped ?? 0,
+          data.already_imported ?? false,
           data.sample_errors ?? [],
         );
         // A saved CSV attachment now records the import, so no floating success
