@@ -792,9 +792,9 @@ Total: 1029.00 INR
     def test_latest_csv_import_summary_comes_from_persisted_import_event(self):
         import_event = MagicMock()
         import_event.content = (
-            "User: Imported transactions CSV file: finmate_test_transactions.csv\\n"
-            "Rows imported: 15; rows skipped: 1.\\n"
-            "Imported transaction preview:\\n"
+            "User: Imported transactions CSV file: finmate_test_transactions.csv\n"
+            "Rows imported: 15; rows skipped: 1.\n"
+            "Imported transaction preview:\n"
             "- 2026-10-10: Cafe lunch -450.00 INR"
         )
         self.db.scalars.return_value.first.return_value = import_event
