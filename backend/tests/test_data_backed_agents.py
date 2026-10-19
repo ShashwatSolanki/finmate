@@ -186,6 +186,34 @@ class DataBackedAgentTests(unittest.TestCase):
         self.assertEqual(invoice.tax, Decimal("5220.00"))
         self.assertEqual(invoice.total, Decimal("34220.00"))
 
+
+    def test_invoice_export_is_blocked_if_explicit_item_count_is_incomplete(self):
+        prompt = (
+            "Create an invoice from Shashwat Solanki to Acme Technologies: "
+            "Website Development 2 units at INR 12,000 each, Hosting 1 unit at INR 2,000, "
+            "SEO Audit 1 unit at INR 3,000, with 18% tax."
+        )
+        partial_items = [
+            # Simulate a parser regression that missed two valid quantity/price clauses.
+            __import__("app.invoice.schemas", fromlist=["ParsedLineItem"]).ParsedLineItem(
+                description="Hosting",
+                quantity=1,
+                unit_price=Decimal("2000"),
+                amount=Decimal("2000"),
+            )
+        ]
+        with (
+            patch("app.agents.invoice_generator._explicit_items_from_request", return_value=partial_items),
+            patch("app.agents.invoice_generator._invoice_from_recent_upload", return_value=None),
+        ):
+            result = run_invoice(self.user_id, prompt, self.db)
+
+        self.assertEqual(result.metadata["source"], "incomplete_invoice_request")
+        self.assertNotIn("invoice_payload", result.metadata)
+        self.assertNotIn("invoice_actions", result.metadata)
+        self.assertIn("not created or exported a partial invoice", result.reply)
+        self.assertEqual(result.metadata["expected_item_clauses"], "3")
+
     def test_financial_data_audit_does_not_trigger_expense_invoice_generation(self):
         prompt = (
             "Audit my financial data before giving any recommendation. Identify which figures are directly "
