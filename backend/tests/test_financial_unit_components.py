@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.agents.budget_planner import _potential_duplicate_rows
 from app.agents.finance_context import extract_monthly_income
 from app.agents.investment_analyser import _extract_lump_sum
 from app.agents.intent import classify_agent
@@ -14,6 +15,7 @@ from app.agents.ticker_utils import (
     pick_validated_tickers,
 )
 from app.agents.types import AgentName
+from app.db.models import Transaction
 from app.api.routes.transactions import _parse_csv_amount, _parse_csv_date
 from app.security.jwt_tokens import (
     create_access_token,
@@ -174,6 +176,52 @@ def test_csv_parsers_reject_malformed_values() -> None:
         _parse_csv_amount("abc")
     with pytest.raises(ValueError, match="unsupported date"):
         _parse_csv_date("2026.01.01")
+
+
+
+def test_duplicate_transaction_detector_reports_exact_repeats_without_mutation(database) -> None:
+    user_id = uuid4()
+    occurred_on = date(2026, 10, 10)
+    with database.begin() as db:
+        db.add_all(
+            [
+                Transaction(
+                    user_id=user_id,
+                    amount=Decimal("-450.00"),
+                    currency="INR",
+                    category="Food",
+                    description="Cafe lunch",
+                    occurred_on=occurred_on,
+                )
+                for _ in range(5)
+            ]
+            + [
+                Transaction(
+                    user_id=user_id,
+                    amount=Decimal("-1200.00"),
+                    currency="INR",
+                    category="Rent",
+                    description="October rent",
+                    occurred_on=occurred_on,
+                )
+                for _ in range(2)
+            ]
+        )
+
+    with database() as db:
+        food_findings = _potential_duplicate_rows(
+            db, user_id, date(2026, 10, 1), date(2026, 10, 31), category="food"
+        )
+        all_findings = _potential_duplicate_rows(
+            db, user_id, date(2026, 10, 1), date(2026, 10, 31)
+        )
+        saved_count = db.query(Transaction).filter(Transaction.user_id == user_id).count()
+
+    assert len(food_findings) == 1
+    assert "cafe lunch" in food_findings[0]
+    assert "appears 5 times" in food_findings[0]
+    assert len(all_findings) == 2
+    assert saved_count == 7
 
 
 def test_spending_insights_empty_data_returns_empty(database) -> None:
