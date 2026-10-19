@@ -696,6 +696,7 @@ def run(
             .where(
                 Transaction.user_id == user_id,
                 Transaction.occurred_on >= start,
+                Transaction.occurred_on <= today,
                 func.lower(func.trim(Transaction.category)) == requested_category,
                 Transaction.amount < 0,
             )
