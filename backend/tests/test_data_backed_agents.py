@@ -6,7 +6,12 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from app.agents.agentic_orchestrator import _synthesize, build_plan, run_agentic_turn
+from app.agents.agentic_orchestrator import (
+    _synthesize,
+    _visible_specialist_observation,
+    build_plan,
+    run_agentic_turn,
+)
 from app.agents.budget_planner import (
     _asks_for_investable_surplus,
     _asks_for_spending_report,
@@ -47,6 +52,38 @@ class DataBackedAgentTests(unittest.TestCase):
     def setUp(self):
         self.db = MagicMock()
         self.user_id = uuid4()
+
+    def test_agentic_synthesis_rejects_raw_tool_trace_and_keeps_clean_agents(self):
+        raw_budget = AgentResult(
+            AgentName.BUDGET_PLANNER,
+            "[AGENT: BUDGET]\\n\\nBudget Planner:\\n"
+            '[\\n"Agent says: Risk assessment needs date and asset valuation first.", '
+            '"tools_needed=[date_set, tool_name=budget_recommendation]"\\n]',
+            metadata={"source": "llm"},
+        )
+        verified_investment = AgentResult(
+            AgentName.INVESTMENT_ANALYSER,
+            "[AGENT: INVESTMENT]\\n\\n"
+            "Microsoft Corporation (MSFT)\\n"
+            "Latest available session: 2026-10-16\\n"
+            "Last close: 529.05 USD\\n20-day SMA: 520.22\\n\\n"
+            '{"intent":"investment_info","tools_needed":["yfinance_lookup"],"notes":"test"}',
+            metadata={"source": "verified_data_fallback"},
+        )
+
+        self.assertIsNone(_visible_specialist_observation(raw_budget.reply))
+        with patch("app.agents.agentic_orchestrator.settings.finmate_use_llm", False):
+            reply = _synthesize(
+                "Audit transactions and compare Microsoft with my portfolio.",
+                [raw_budget, verified_investment],
+                AgentName.BUDGET_PLANNER,
+            )
+
+        self.assertIn("did not produce a readable, validated answer", reply)
+        self.assertIn("Last close: 529.05 USD", reply)
+        self.assertNotIn("Agent says:", reply)
+        self.assertNotIn("tools_needed=", reply)
+        self.assertNotIn("tool_name=", reply)
 
     def test_missing_risk_context_is_labelled_as_illustrative(self):
         result = run_investment(
