@@ -14,6 +14,28 @@ from app.api.routes.conversations import router as conversations_router
 from app.db.models import ChatMessage, ChatSession, MemoryChunk, User
 
 
+def test_reply_contract_rejects_raw_agent_tool_traces():
+    raw = (
+        "[AGENT: BUDGET]\\n\\n"
+        "Budget Planner:\\n"
+        "[\\n"
+        '"Agent says: Risk assessment needs date and asset valuation first.",\\n'
+        '"Additional tools: date_set, tool_name=budget_recommendation",\\n'
+        "tools_needed=[date_set, tool_name=budget_recommendation]"
+        "\\n]"
+    )
+
+    visible = _clean_assistant_display(
+        _enforce_reply_contract(raw, AgentName.BUDGET_PLANNER)
+    )
+
+    assert "couldn't produce a readable, verified answer" in visible.lower()
+    assert "Agent says:" not in visible
+    assert "tools_needed=" not in visible
+    assert "tool_name=" not in visible
+    assert "Additional tools:" not in visible
+
+
 def test_reply_contract_preserves_portfolio_rows_and_paragraphs():
     raw = (
         "[AGENT: INVESTMENT]\n\n"
