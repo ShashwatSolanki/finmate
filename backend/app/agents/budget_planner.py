@@ -186,6 +186,49 @@ def _asks_for_investable_surplus(message: str) -> bool:
     )
 
 
+def _asks_for_surplus_prerequisites(message: str) -> bool:
+    """Detect requests asking what must be verified before a surplus estimate."""
+    return bool(
+        _asks_for_investable_surplus(message)
+        and re.search(
+            r"\b(?:before estimating|before calculating|what additional data|what information is required|"
+            r"what data is required|additional data is required|missing inputs)\b",
+            message,
+            re.I,
+        )
+    )
+
+
+def _has_potential_duplicate_expenses(
+    db: Session,
+    user_id: UUID,
+    start: date,
+    end: date,
+) -> bool:
+    """Return whether any exact-match expense-debit groups need manual review."""
+    normalized_category = func.lower(func.trim(func.coalesce(Transaction.category, "")))
+    normalized_description = func.lower(func.trim(func.coalesce(Transaction.description, "")))
+    match = db.execute(
+        select(Transaction.id)
+        .where(
+            Transaction.user_id == user_id,
+            Transaction.occurred_on >= start,
+            Transaction.occurred_on <= end,
+            Transaction.amount < 0,
+        )
+        .group_by(
+            Transaction.occurred_on,
+            normalized_category,
+            normalized_description,
+            Transaction.amount,
+            Transaction.currency,
+        )
+        .having(func.count(Transaction.id) > 1)
+        .limit(1)
+    ).first()
+    return match is not None
+
+
 def _contains_category_term(text: str, term: str) -> bool:
     return bool(re.search(rf"(?<![a-z]){re.escape(term)}(?![a-z])", text.casefold()))
 
@@ -697,6 +740,53 @@ def _deterministic_spending_report(
     )
     wants_surplus = _asks_for_investable_surplus(message)
     wants_budget_comparison = _explicitly_requests_budget_plan(message) or wants_surplus
+    if wants_surplus and (
+        _asks_for_surplus_prerequisites(message)
+        or _has_potential_duplicate_expenses(db, user_id, start, end)
+    ):
+        if income is not None:
+            lines.append(
+                f"\nMonthly income from {income_source}: {_format_amount(income)} {income_currency or 'INR'}."
+            )
+        else:
+            lines.append(
+                "\nMonthly income is missing from the request and saved/retrieved context."
+            )
+        lines.append(
+            "\nInvestable surplus estimate: NOT CALCULATED. The available record is not decision-ready."
+        )
+        if _has_potential_duplicate_expenses(db, user_id, start, end):
+            lines.append(
+                "Reason: exact-match duplicate-looking expense debits remain unresolved. They are included in "
+                "the recorded-spending totals and must be reviewed manually before using those totals in a surplus estimate."
+            )
+        lines.append(
+            "Required before estimating: (1) reconcile flagged repeated rows without silently deleting data; "
+            "(2) confirm the ledger covers the full reporting period; (3) verify net take-home income against a "
+            "reliable income record; (4) provide current cash/bank balances, unpaid debts and bills, and upcoming "
+            "essential expenses; (5) specify the emergency-reserve target and near-term financial goals. "
+            "Any cross-currency comparison also requires a dated exchange-rate source."
+        )
+        return AgentResult(
+            agent=AgentName.BUDGET_PLANNER,
+            reply="[AGENT: BUDGET]\n\n" + "\n".join(lines),
+            planned_steps=[
+                "audit_recorded_expenses",
+                "check_duplicate_risk",
+                "identify_missing_surplus_inputs",
+                "withhold_unreliable_surplus_estimate",
+            ],
+            metadata={
+                "source": "deterministic_budget_comparison",
+                "period_start": start.isoformat(),
+                "period_end": end.isoformat(),
+                "currency_groups": str(len(totals)),
+                "surplus_estimate": "withheld",
+                "unresolved_duplicate_expenses": str(
+                    _has_potential_duplicate_expenses(db, user_id, start, end)
+                ).lower(),
+            },
+        )
     if wants_budget_comparison:
         if income is None:
             lines.append("\nMonthly income was not found in the request or saved context, so I cannot calculate a remainder.")
