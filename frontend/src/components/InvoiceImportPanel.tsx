@@ -105,7 +105,13 @@ export default function InvoiceImportPanel({ onStatus, onError }: Props) {
   }
 
   function updateField<K extends keyof StructuredInvoice>(key: K, value: StructuredInvoice[K]) {
-    setInvoice((prev) => ({ ...prev, [key]: value }));
+    setInvoice((prev) => ({
+      ...prev,
+      [key]: value,
+      // Editing the aggregate tax manually invalidates the extracted component
+      // breakdown. Let the user override tax without producing a stale mismatch.
+      ...(key === "tax" ? { tax_breakdown: [] } : {}),
+    }));
   }
 
   function addLineItem() {
@@ -163,7 +169,21 @@ export default function InvoiceImportPanel({ onStatus, onError }: Props) {
         </div>
         <div className="invoice-totals-editor">
           <label>GST / tax amount<input inputMode="decimal" value={invoice.tax ?? ""} placeholder="0.00" onChange={(e) => updateField("tax", e.target.value || null)} /></label>
-          <dl><div><dt>Subtotal</dt><dd>{subtotal.toFixed(2)} {invoice.currency}</dd></div><div><dt>Tax</dt><dd>{tax.toFixed(2)} {invoice.currency}</dd></div><div className="grand-total"><dt>Total</dt><dd>{total.toFixed(2)} {invoice.currency}</dd></div></dl>
+          <dl>
+            <div><dt>Subtotal</dt><dd>{subtotal.toFixed(2)} {invoice.currency}</dd></div>
+            <div><dt>{invoice.tax_breakdown?.length ? "Total tax" : "Tax"}</dt><dd>{tax.toFixed(2)} {invoice.currency}</dd></div>
+            <div className="grand-total"><dt>Total</dt><dd>{total.toFixed(2)} {invoice.currency}</dd></div>
+          </dl>
+          {invoice.tax_breakdown && invoice.tax_breakdown.length > 0 && (
+            <dl className="invoice-tax-breakdown">
+              {invoice.tax_breakdown.map((component, index) => (
+                <div key={`${component.label}-${index}`}>
+                  <dt>{component.label}</dt>
+                  <dd>{(Number(component.amount) || 0).toFixed(2)} {invoice.currency}</dd>
+                </div>
+              ))}
+            </dl>
+          )}
         </div>
         <label className="invoice-custom-filename">
           PDF filename (optional)
