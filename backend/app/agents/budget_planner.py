@@ -405,7 +405,7 @@ def _deterministic_spending_report(
         if not totals and wants_surplus:
             lines.append(
                 "\nI cannot estimate investable surplus because no recorded expense debits were found for this period. "
-                "Unrecorded expenses are not assumed to be zero; import or add the missing expenses first."
+                "The missing expenses cannot safely be treated as zero; import or add them first."
             )
         elif not totals and _explicitly_requests_budget_plan(message) and income is not None:
             lines.append(
