@@ -97,10 +97,21 @@ def extract_ticker_candidates(message: str, *, max_candidates: int = 6) -> list[
     # Carriage Services. Known tickers are accepted bare; unfamiliar symbols
     # must be explicit (e.g. $BABA) so file formats and finance abbreviations
     # do not force the Investment Analyser route.
+    csv_file_context = bool(
+        re.search(
+            r"\b(?:csv\s+file|csv\s+import|spreadsheet|data\s+file|transaction\s+data|transaction\s+rows|"
+            r"import(?:ed)?|upload(?:ed)?|from\s+the\s+(?:latest|most\s+recent)\s+csv|"
+            r"read|parse|process)\b",
+            lower,
+            re.I,
+        )
+    )
     caps = [
         t
         for t in _TICKER_CAPS.findall(raw)
-        if t not in dynamic_stop and t in _KNOWN_TICKERS
+        if t not in dynamic_stop
+        and t in _KNOWN_TICKERS
+        and not (t == "CSV" and csv_file_context)
     ]
 
     ordered: list[str] = []
