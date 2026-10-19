@@ -716,6 +716,14 @@ def run(
         rag_block = "\n\n[Past context]\n" + rag_context.strip()[:2000]
 
     if invoice and invoice.line_items:
+        # The invoice reference shown in chat must be the same identifier serialized
+        # into the structured payload and consumed by both PDF and CSV export.
+        # Preserve a source invoice number when reviewing an uploaded invoice.
+        if invoice.invoice_number and invoice.invoice_number.strip():
+            inv_id = invoice.invoice_number.strip().upper()[:24]
+        else:
+            invoice.invoice_number = inv_id
+
         # Invoice generation is intentionally deterministic here. The structured
         # invoice object is the source of truth for PDF/CSV export artifacts; using
         # the general LLM response path can discard those machine-readable fields.
