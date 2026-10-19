@@ -1510,3 +1510,132 @@ input:focus, textarea:focus, select:focus {
     min-width: 3rem;
   }
 }
+
+
+/* CSV preview uses an explicit button so its expand/collapse control is reliable
+   on touch devices as well as desktop browsers. */
+.csv-preview-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  width: 100%;
+  padding: .55rem 0 .1rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.csv-preview-toggle:focus-visible,
+.conversation-rename:focus-visible,
+.conversation-delete:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 2px;
+}
+
+.csv-attachment-preview-list {
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+  margin: .55rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.csv-attachment-no-preview {
+  margin: .25rem 0 0;
+  font-size: .78rem;
+  opacity: .82;
+  overflow-wrap: anywhere;
+}
+
+.conversation-rename {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  padding: .25rem .35rem;
+  background: transparent;
+  color: #b8bce0;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .15s ease, background .15s ease;
+}
+
+.conversation-item:hover .conversation-rename,
+.conversation-item.active .conversation-rename,
+.conversation-rename:focus-visible {
+  opacity: 1;
+}
+
+.conversation-rename:hover,
+.conversation-rename-save:hover,
+.conversation-rename-cancel:hover {
+  background: rgba(255,255,255,.12);
+}
+
+.conversation-rename-form {
+  display: flex;
+  flex: 1 1 100%;
+  min-width: 0;
+  align-items: center;
+  gap: .25rem;
+  padding: .25rem;
+}
+
+.conversation-rename-form input {
+  flex: 1 1 auto;
+  width: 1px;
+  min-width: 0;
+  padding: .4rem .45rem;
+  background: #fff;
+  color: #172033;
+  font-size: .8rem;
+  border-radius: 7px;
+}
+
+.conversation-rename-save,
+.conversation-rename-cancel {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  padding: .35rem .4rem;
+  background: transparent;
+  color: #e5e7ff;
+  cursor: pointer;
+}
+
+.invoice-export-filename,
+.invoice-custom-filename {
+  display: flex;
+  flex-direction: column;
+  gap: .3rem;
+  min-width: min(100%, 260px);
+  max-width: 100%;
+  margin: .35rem 0 .55rem;
+  font-size: .8rem;
+  font-weight: 650;
+}
+
+.invoice-export-filename input,
+.invoice-custom-filename input {
+  width: 100%;
+  min-width: 0;
+  padding: .5rem .6rem;
+  border: 1px solid #dce0ed;
+  border-radius: 9px;
+  color: #172033;
+  background: #fff;
+  font-size: .85rem;
+  font-weight: 400;
+}
+
+.invoice-export-filename small,
+.invoice-custom-filename small {
+  color: #7c8398;
+  font-size: .72rem;
+  font-weight: 400;
+}
