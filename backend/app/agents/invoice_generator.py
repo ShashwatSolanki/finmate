@@ -642,12 +642,21 @@ def run(
     request_text = _extract_original_request(message)
     request = request_text.lower()
     wants_invoice_output = _wants_invoice_output(request_text)
-    wants_uploaded_invoice = _references_uploaded_invoice(request_text)
-    invoice = _invoice_from_recent_upload(db, user_id) if wants_uploaded_invoice else None
-    invoice_from_uploaded_context = invoice is not None
-    if invoice is None:
+    expected_item_clauses = _count_explicit_item_clauses(request_text)
+    # An explicit new multi-item invoice request takes priority over unrelated
+    # receipt references elsewhere in a combined prompt. Do not accidentally
+    # export the previously uploaded receipt instead of the invoice the user asked for.
+    new_invoice_from_text = wants_invoice_output and expected_item_clauses > 0
+    if new_invoice_from_text:
         invoice = _structured_from_message(request_text)
-    if invoice is None and wants_invoice_output and _count_explicit_item_clauses(request_text) > 0:
+        invoice_from_uploaded_context = False
+    else:
+        wants_uploaded_invoice = _references_uploaded_invoice(request_text)
+        invoice = _invoice_from_recent_upload(db, user_id) if wants_uploaded_invoice else None
+        invoice_from_uploaded_context = invoice is not None
+        if invoice is None:
+            invoice = _structured_from_message(request_text)
+    if invoice is None and wants_invoice_output and expected_item_clauses > 0:
         reply = (
             "[AGENT: INVOICE]\n\n"
             "I couldn't safely parse every quantity/unit-price item in your request, so I have not created "
@@ -663,7 +672,7 @@ def run(
             metadata={
                 "source": "incomplete_invoice_request",
                 "parsed_items_count": "0",
-                "expected_item_clauses": str(_count_explicit_item_clauses(request_text)),
+                "expected_item_clauses": str(expected_item_clauses),
             },
         )
     wants_expense_invoice = _wants_expense_invoice(request)
