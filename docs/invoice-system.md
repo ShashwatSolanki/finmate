@@ -132,7 +132,7 @@ POST /api/invoices/pdf
 POST /api/invoices/pdf/structured
 ```
 
-The structured endpoint is suitable for edited/imported invoice data. When item quantities and unit prices are present, generated PDFs show separate quantity, unit-price, and line-amount columns; long descriptions wrap instead of being silently truncated. Invoice payload/export actions are emitted only when the prompt explicitly requests invoice creation or export, not for a financial-data audit that merely mentions an uploaded receipt.
+The structured endpoint is suitable for edited/imported invoice data. When item quantities and unit prices are present, generated PDFs show separate quantity, unit-price, and line-amount columns; long descriptions wrap instead of being silently truncated. Invoice payload/export actions are emitted only when the prompt explicitly requests invoice creation or export, not for a financial-data audit that merely mentions an uploaded receipt. For explicit quantity/unit-price clauses, the parser counts expected numeric item clauses; if fewer items parse than the request specifies, export is blocked and the user is asked to clarify rather than receiving a silently incomplete PDF.
 
 ## 10. Frontend Invoice Studio
 
