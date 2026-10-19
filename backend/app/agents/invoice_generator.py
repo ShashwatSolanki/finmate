@@ -288,6 +288,14 @@ def _references_uploaded_invoice(request: str) -> bool:
             request,
             re.I,
         )
+        or re.search(
+            r"\b(?:identify|distinguish|separate|show|report|list|tell me)\b.{0,180}"
+            r"\b(?:from|in|on)\s+(?:(?:my|the|this|that)\s+)?"
+            r"(?:(?:previously|already)\s+)?(?:uploaded|attached|imported)\s+"
+            r"(?:invoice|receipt|bill|document)\b",
+            request,
+            re.I,
+        )
     )
 
 
