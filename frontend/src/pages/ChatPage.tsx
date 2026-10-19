@@ -532,8 +532,15 @@ export default function ChatPage() {
                           {importedInvoice.subtotal !== null && (
                             <span>Subtotal: {importedInvoice.subtotal} {importedInvoice.currency}</span>
                           )}
+                          {importedInvoice.tax_breakdown?.map((component, index) => (
+                            <span key={`${component.label}-${index}`}>
+                              {component.label}: {component.amount} {importedInvoice.currency}
+                            </span>
+                          ))}
                           {importedInvoice.tax !== null && (
-                            <span>Tax: {importedInvoice.tax} {importedInvoice.currency}</span>
+                            <span>
+                              {importedInvoice.tax_breakdown?.length ? "Total tax" : "Tax"}: {importedInvoice.tax} {importedInvoice.currency}
+                            </span>
                           )}
                         </div>
                       </details>
