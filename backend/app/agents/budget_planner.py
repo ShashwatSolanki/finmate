@@ -607,6 +607,14 @@ def _deterministic_spending_report(
         for currency_code in sorted(set(newer_data) | set(older_data)):
             current = newer_data.get(currency_code, {})
             previous = older_data.get(currency_code, {})
+            if not current or not previous:
+                missing = newer[2] if not current else older[2]
+                lines.append(
+                    f"\n{currency_code} spending comparison: INSUFFICIENT DATA for {missing}; "
+                    "there are no recorded expense debits in this currency for that period. "
+                    "The missing period is not treated as zero spending, so category deltas and percentages are omitted."
+                )
+                continue
             lines.append(f"\n{currency_code} spending:")
             for category in sorted(set(current) | set(previous)):
                 now_amount = current.get(category, Decimal("0"))
