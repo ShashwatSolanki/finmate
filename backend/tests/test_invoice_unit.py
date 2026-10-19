@@ -314,7 +314,7 @@ class InvoicePdfBuilderUnitTests(unittest.TestCase):
         )
 
         with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
-            text = "\\n".join(page.extract_text() or "" for page in pdf.pages)
+            text = "\n".join(page.extract_text() or "" for page in pdf.pages)
 
         self.assertIn("Qty", text)
         self.assertIn("Unit Price (INR)", text)
