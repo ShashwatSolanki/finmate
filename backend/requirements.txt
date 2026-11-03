@@ -20,7 +20,7 @@ python-multipart==0.0.32
 pdfplumber==0.11.10
 pypdf>=5.0.0
 pymupdf==1.28.2
-pillow==12.3.0
+pillow==13.0.0
 pytesseract==0.3.13
 # Use CPU wheels on Windows unless you install CUDA PyTorch with enough disk space:
 #   pip install torch --index-url https://download.pytorch.org/whl/cu124
