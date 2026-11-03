@@ -781,7 +781,7 @@ def run(
                 + symbol_note
                 + " A saved holding identifies a ticker, not a historical price source. This is a missing-evidence "
                 "finding; it does not mean market data never existed. I have not substituted a fresh quote for a "
-                "historical quote or generated a buy/sell recommendation."
+                "historical quote. I have not generated a buy/sell recommendation."
             )
             return AgentResult(
                 agent=AgentName.INVESTMENT_ANALYSER,
