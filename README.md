@@ -2,7 +2,7 @@
 
 <div align="center">
 
-  <img src="https://raw.githubusercontent.com/ShashwatSolanki/ShashwatSolanki/main/assets/finmate.jpeg" alt="FinMate application preview" width="920" />
+  <img src="https://raw.githubusercontent.com/ShashwatSolanki/ShashwatSolanki/main/assets/finmate-2.png" alt="FinMate project screenshot" width="920" />
 
   [![CI](https://github.com/ShashwatSolanki/finmate/actions/workflows/backend-tests.yml/badge.svg)](https://github.com/ShashwatSolanki/finmate/actions/workflows/backend-tests.yml)
   <a href="https://shashwatsolanki.github.io/ShashwatSolanki/#work">Portfolio preview &amp; project overview</a>
